@@ -45,7 +45,10 @@ pub struct KnownSpeaker {
 
 pub(super) fn is_local_batch(params: &BatchParams) -> bool {
     match params.provider {
-        BatchProvider::WhisperLocal | BatchProvider::Soniqo | BatchProvider::AppleSpeech => true,
+        BatchProvider::WhisperLocal
+        | BatchProvider::Soniqo
+        | BatchProvider::AppleSpeech
+        | BatchProvider::LocalDiarization => true,
         _ => is_loopback_url(&params.base_url),
     }
 }
@@ -58,6 +61,48 @@ fn is_loopback_url(url: &str) -> bool {
         _ => authority,
     };
     matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "0.0.0.0")
+}
+
+/// An existing transcript's words as an unlabeled response, so the diarizer
+/// labels them exactly as it labels a local engine's output. Mic and system
+/// audio keep their channels on a stereo recording; anything else is heard
+/// as the mic.
+pub(super) fn existing_words_response(
+    words: &[batch::Word],
+    recording_channels: u8,
+) -> batch::Response {
+    let channel_count = if recording_channels >= 2 { 2 } else { 1 };
+    let mut channels = vec![(String::new(), Vec::new()); channel_count];
+    for word in words {
+        let index = usize::from(word.channel == 1 && channel_count == 2);
+        let (transcript, channel_words) = &mut channels[index];
+        // Stored words carry their own leading space, so their concatenation
+        // is the channel's transcript.
+        transcript.push_str(&word.word);
+        let text = word.word.trim().to_string();
+        channel_words.push(batch::Word {
+            word: text.clone(),
+            punctuated_word: Some(text),
+            channel: index as i32,
+            speaker: None,
+            ..word.clone()
+        });
+    }
+    batch::Response {
+        metadata: serde_json::json!({}),
+        results: batch::Results {
+            channels: channels
+                .into_iter()
+                .map(|(transcript, words)| batch::Channel {
+                    alternatives: vec![batch::Alternatives {
+                        transcript,
+                        confidence: 1.0,
+                        words,
+                    }],
+                })
+                .collect(),
+        },
+    }
 }
 
 /// Which recorded audio backs one transcript channel.
@@ -114,23 +159,19 @@ pub(super) fn channel_audio(
     }
 }
 
-/// Whether a stereo capture was an in-person meeting: the session expected
-/// several participants, yet the system-audio channel stayed silent, so they
-/// were all in the room sharing the microphone. Headphones are not a factor;
-/// they keep the far end out of the mic, not the people beside it. Unknown
-/// participant counts stay closed: a solo memo and a two-person meeting sound
-/// the same to the recorder.
-pub(super) fn in_person_capture(
-    listen_params: &owhisper_interface::ListenParams,
-    response: &batch::Response,
-) -> bool {
+/// Whether a stereo capture was an in-person meeting: the mic heard speech
+/// while the system-audio channel stayed silent, so nobody was on the far end
+/// and everyone who spoke shared the microphone. Headphones are not a factor;
+/// they keep the far end out of the mic, not the people beside it. No
+/// participant count is needed: a solo memo also qualifies, and stays one
+/// speaker because the mic only becomes shared once two voices are found.
+pub(super) fn in_person_capture(response: &batch::Response) -> bool {
     let channels = &response.results.channels;
     if channels.len() != 2 {
         return false;
     }
-    let several_participants = listen_params.num_speakers.is_some_and(|count| count >= 2)
-        || listen_params.min_speakers.is_some_and(|count| count >= 2);
-    several_participants && channel_speech_seconds(&channels[1]) <= REMOTE_SILENCE_MAX_SECONDS
+    channel_speech_seconds(&channels[0]) > 0.0
+        && channel_speech_seconds(&channels[1]) <= REMOTE_SILENCE_MAX_SECONDS
 }
 
 fn channel_speech_seconds(channel: &batch::Channel) -> f64 {
@@ -247,7 +288,7 @@ pub(super) async fn apply_local_diarization(
         return;
     }
     let transcript_channels = output.response.results.channels.len();
-    let in_person = in_person_capture(listen_params, &output.response);
+    let in_person = in_person_capture(&output.response);
     // Only word timings cross into the blocking task; the transcript itself
     // stays here so a panic in the diarizer cannot lose it. Channels that no
     // recording layout could plan are dropped now, before the recording is
@@ -292,11 +333,18 @@ pub(super) async fn apply_local_diarization(
             embedding: speaker.embedding.clone(),
         })
         .collect();
+    // Without a transcription step the diarizer is the whole run.
+    let progress_start = if matches!(params.provider, BatchProvider::LocalDiarization) {
+        0.0
+    } else {
+        DIARIZATION_PROGRESS_START
+    };
     let started_at = Instant::now();
     let result = tokio::task::spawn_blocking({
         let runtime = runtime.clone();
         move || {
-            let heartbeat = Heartbeat::new(runtime.as_ref(), session_id);
+            let heartbeat =
+                Heartbeat::new(runtime.as_ref(), session_id).starting_at(progress_start);
             diarize_channels(
                 runtime.as_ref(),
                 &heartbeat,
@@ -382,7 +430,12 @@ fn apply_labels(response: &mut batch::Response, labels: &[ChannelLabels]) -> Dia
         let Some(channel) = response.results.channels.get_mut(channel_labels.index) else {
             continue;
         };
-        let share_mic = channel_labels.shared_mic && channel_labels.speaker_count >= 2;
+        // A shared mic that turned out to hold one voice is the owner alone,
+        // exactly as before diarization.
+        if channel_labels.shared_mic && channel_labels.speaker_count < 2 {
+            continue;
+        }
+        let share_mic = channel_labels.shared_mic;
         for (alternative, speakers) in channel
             .alternatives
             .iter_mut()
@@ -425,6 +478,7 @@ pub(super) struct Heartbeat<'a> {
     runtime: &'a dyn BatchRuntime,
     session_id: String,
     last_sent: Cell<Option<Instant>>,
+    start: f64,
 }
 
 impl<'a> Heartbeat<'a> {
@@ -433,7 +487,12 @@ impl<'a> Heartbeat<'a> {
             runtime,
             session_id,
             last_sent: Cell::new(None),
+            start: DIARIZATION_PROGRESS_START,
         }
+    }
+
+    pub(super) fn starting_at(self, start: f64) -> Self {
+        Self { start, ..self }
     }
 
     /// Emits unless a heartbeat went out within [`HEARTBEAT_INTERVAL`].
@@ -452,7 +511,7 @@ impl<'a> Heartbeat<'a> {
         self.runtime.emit(BatchEvent::BatchResponseStreamed {
             session_id: self.session_id.clone(),
             event: BatchStreamEvent::Progress {
-                percentage: percentage.clamp(DIARIZATION_PROGRESS_START, 1.0),
+                percentage: percentage.clamp(self.start, 1.0),
                 partial_text: None,
             },
         });
@@ -472,12 +531,12 @@ fn diarize_channels(
         unlabeled,
         known_speakers,
     } = *job;
-    heartbeat.emit(DIARIZATION_PROGRESS_START);
+    heartbeat.emit(heartbeat.start);
     let source = anlg_audio_utils::source_from_path(file_path).map_err(|e| e.to_string())?;
     // A stereo file whose channels were identical collapses to one file, so
     // the recording layout is only known after resampling.
     let channel_files = resample_audio_to_channel_files_until(file_path, source, || {
-        heartbeat.beat(DIARIZATION_PROGRESS_START);
+        heartbeat.beat(heartbeat.start);
         runtime.is_cancelled()
     })?;
     let plans: Vec<(&UnlabeledChannel, ChannelAudio, SpeakerBounds)> = unlabeled
@@ -500,18 +559,18 @@ fn diarize_channels(
     // Loading the models can include an accelerator cache rebuild, which is a
     // full recompile of both; give it a fresh idle window rather than whatever
     // the last throttled resample beat left over.
-    heartbeat.emit(DIARIZATION_PROGRESS_START);
+    heartbeat.emit(heartbeat.start);
     let mut diarizer = Diarizer::new(DiarizationConfig::default()).map_err(|e| e.to_string())?;
     let is_cancelled = || runtime.is_cancelled();
     let plan_count = plans.len() as f64;
-    let progress_span = 1.0 - DIARIZATION_PROGRESS_START;
+    let progress_span = 1.0 - heartbeat.start;
 
     let mut labels = Vec::new();
     for (plan_index, (channel, audio, bounds)) in plans.into_iter().enumerate() {
         let mut audio = MixedAudioSource::for_audio(&channel_files, audio)?;
         let on_progress = |fraction: f32| {
             let done = (plan_index as f64 + f64::from(fraction)) / plan_count;
-            heartbeat.beat(DIARIZATION_PROGRESS_START + progress_span * done);
+            heartbeat.beat(heartbeat.start + progress_span * done);
         };
         let diarization = diarizer
             .diarize(
@@ -830,25 +889,16 @@ mod tests {
     }
 
     #[test]
-    fn in_person_needs_several_participants_and_a_silent_remote_channel() {
+    fn in_person_is_heard_from_the_audio_without_a_participant_count() {
+        // Nobody listed, mic speech, silent system audio: the mic is planned
+        // with open bounds, so "Transcribe again" on an old in-person note
+        // separates the room too.
         let silent = two_channel_response(vec![]);
-        assert!(in_person_capture(
-            &listen_params(Some(2), None, None),
-            &silent
-        ));
-        assert!(in_person_capture(
-            &listen_params(None, Some(2), None),
-            &silent
-        ));
-        // A solo memo and a two-person meeting sound the same to the recorder.
-        assert!(!in_person_capture(
-            &listen_params(None, None, None),
-            &silent
-        ));
-        assert!(!in_person_capture(
-            &listen_params(Some(1), None, None),
-            &silent
-        ));
+        assert!(in_person_capture(&silent));
+        assert_eq!(
+            plan_channel(&listen_params(None, None, None), 2, 2, 0, true),
+            Some((ChannelAudio::File(0), SpeakerBounds::default()))
+        );
 
         // A stray word of noise on system audio is still silence.
         let noise = two_channel_response(vec![batch::Word {
@@ -857,10 +907,7 @@ mod tests {
             channel: 1,
             ..word(None)
         }]);
-        assert!(in_person_capture(
-            &listen_params(Some(2), None, None),
-            &noise
-        ));
+        assert!(in_person_capture(&noise));
 
         // Real far-end speech means a call, however many people were invited.
         let call = two_channel_response(vec![batch::Word {
@@ -869,10 +916,16 @@ mod tests {
             channel: 1,
             ..word(Some(0))
         }]);
-        assert!(!in_person_capture(
-            &listen_params(Some(3), None, None),
-            &call
-        ));
+        assert!(!in_person_capture(&call));
+
+        // A mic that heard nothing has nobody to separate.
+        let empty = batch::Response {
+            metadata: serde_json::json!({}),
+            results: batch::Results {
+                channels: vec![channel(vec![]), channel(vec![])],
+            },
+        };
+        assert!(!in_person_capture(&empty));
 
         // Downmixed transcripts have no remote channel to judge by.
         let downmixed = batch::Response {
@@ -881,10 +934,7 @@ mod tests {
                 channels: vec![channel(vec![word(None)])],
             },
         };
-        assert!(!in_person_capture(
-            &listen_params(Some(3), None, None),
-            &downmixed
-        ));
+        assert!(!in_person_capture(&downmixed));
     }
 
     #[test]
@@ -900,7 +950,9 @@ mod tests {
         assert!(!channel_needs_diarization(&channel(vec![])));
     }
 
-    use super::super::test_fixtures::{NeverCancelled, in_person_fixture, params, stereo_fixture};
+    use super::super::test_fixtures::{
+        NeverCancelled, in_person_fixture, params, solo_in_person_fixture, stereo_fixture,
+    };
 
     #[test]
     fn local_providers_are_detected() {
@@ -1113,16 +1165,16 @@ mod tests {
 
     #[tokio::test]
     async fn in_person_meeting_separates_the_people_sharing_the_mic() {
+        // Nobody was listed on the note: the silent system audio alone shows
+        // the room.
         let file = in_person_fixture();
-        let mut params = params(
+        let params = params(
             BatchProvider::WhisperLocal,
             "http://localhost:1234",
             file.path().to_str().unwrap(),
         );
-        params.num_speakers = Some(2);
         let listen_params = owhisper_interface::ListenParams {
             channels: 2,
-            num_speakers: Some(2),
             ..Default::default()
         };
         let mut output = in_person_output(300, 153.0);
@@ -1147,6 +1199,93 @@ mod tests {
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(speakers.len(), 2, "expected both people, got {speakers:?}");
         assert_eq!(output.response.metadata["diarization"]["shared_mic"], true);
+    }
+
+    /// The live transcript of a stereo capture as stored words, timed
+    /// against the recording: mic words on channel 0, nothing on system audio.
+    fn live_mic_words(word_count: usize, duration: f64) -> Vec<batch::Word> {
+        (0..word_count)
+            .map(|index| {
+                let start = index as f64 * duration / word_count as f64;
+                batch::Word {
+                    word: format!(" w{index}"),
+                    start,
+                    end: start + duration / word_count as f64,
+                    confidence: 1.0,
+                    channel: 0,
+                    speaker: None,
+                    punctuated_word: None,
+                }
+            })
+            .collect()
+    }
+
+    async fn diarize_live_words(
+        file: &tempfile::NamedTempFile,
+        words: Vec<batch::Word>,
+    ) -> batch::Response {
+        let mut params = params(
+            BatchProvider::LocalDiarization,
+            "",
+            file.path().to_str().unwrap(),
+        );
+        params.diarize_words = words;
+        let listen_params = owhisper_interface::ListenParams {
+            channels: 2,
+            ..Default::default()
+        };
+        let mut output = BatchRunOutput {
+            session_id: "s".to_string(),
+            mode: super::super::BatchRunMode::Direct,
+            response: existing_words_response(&params.diarize_words, listen_params.channels),
+        };
+        apply_local_diarization(
+            Arc::new(NeverCancelled),
+            &params,
+            &listen_params,
+            &mut output,
+        )
+        .await;
+        output.response
+    }
+
+    #[tokio::test]
+    async fn diarize_only_labels_the_existing_words_of_an_in_person_meeting() {
+        let words = live_mic_words(300, 153.0);
+        let response = diarize_live_words(&in_person_fixture(), words.clone()).await;
+
+        let labelled = &response.results.channels[0].alternatives[0].words;
+        assert_eq!(labelled.len(), words.len());
+        for (labelled, live) in labelled.iter().zip(&words) {
+            assert_eq!(labelled.word, live.word.trim());
+            assert_eq!((labelled.start, labelled.end), (live.start, live.end));
+            assert_eq!(labelled.channel, SHARED_MIC_CHANNEL);
+        }
+        let speakers = labelled
+            .iter()
+            .filter_map(|word| word.speaker)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(speakers.len(), 2, "expected both people, got {speakers:?}");
+        assert_eq!(
+            response.results.channels[0].alternatives[0].transcript,
+            words
+                .iter()
+                .map(|word| word.word.as_str())
+                .collect::<String>()
+        );
+    }
+
+    #[tokio::test]
+    async fn diarize_only_leaves_a_solo_recording_as_the_owner() {
+        // One person talking, with the other fixture voice muted out.
+        let words = live_mic_words(300, 153.0);
+        let response = diarize_live_words(&solo_in_person_fixture(), words).await;
+
+        let mic = &response.results.channels[0].alternatives[0].words;
+        assert!(
+            mic.iter()
+                .all(|word| word.channel == 0 && word.speaker.is_none())
+        );
     }
 
     #[tokio::test]

@@ -15,7 +15,7 @@ use crate::{BatchEvent, BatchRuntime};
 
 use consolidate::consolidate_hosted_speakers;
 pub use diarize::KnownSpeaker;
-use diarize::apply_local_diarization;
+use diarize::{apply_local_diarization, existing_words_response};
 use progressive::run_progressive_batch_session;
 use simple::{run_apple_speech_batch, run_direct_batch_for_adapter_kind, run_soniqo_batch};
 
@@ -65,6 +65,9 @@ pub enum BatchProvider {
     Xai,
     SmallestAI,
     WisprFlow,
+    #[serde(rename = "local_diarization")]
+    #[strum(serialize = "local_diarization")]
+    LocalDiarization,
 }
 
 impl BatchProvider {
@@ -97,7 +100,11 @@ impl BatchProvider {
             Self::Xai => Some(AdapterKind::Xai),
             Self::SmallestAI => Some(AdapterKind::SmallestAI),
             Self::WisprFlow => Some(AdapterKind::WisprFlow),
-            Self::WhisperLocal | Self::Soniqo | Self::AppleSpeech | Self::DashScope => None,
+            Self::WhisperLocal
+            | Self::Soniqo
+            | Self::AppleSpeech
+            | Self::DashScope
+            | Self::LocalDiarization => None,
         }
     }
 }
@@ -127,6 +134,11 @@ pub struct BatchParams {
     /// provider.
     #[serde(default)]
     pub known_speakers: Vec<KnownSpeaker>,
+    /// Words of an existing transcript, timed against `file_path`. With
+    /// [`BatchProvider::LocalDiarization`] nothing is transcribed: the
+    /// on-device diarizer labels these words from the recording.
+    #[serde(default)]
+    pub diarize_words: Vec<owhisper_interface::batch::Word>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -253,6 +265,11 @@ async fn run_batch_inner(
         }
         BatchProvider::Soniqo => run_soniqo_batch(runtime, params, listen_params).await,
         BatchProvider::AppleSpeech => run_apple_speech_batch(runtime, params, listen_params).await,
+        BatchProvider::LocalDiarization => Ok(BatchRunOutput {
+            session_id: params.session_id.clone(),
+            mode: BatchRunMode::Direct,
+            response: existing_words_response(&params.diarize_words, listen_params.channels),
+        }),
         BatchProvider::DashScope => Err(crate::BatchFailure::BatchCapabilityUnsupported {
             provider: batch_provider_label(BatchProvider::DashScope),
         }
@@ -411,6 +428,7 @@ mod tests {
             min_speakers: None,
             max_speakers: None,
             known_speakers: vec![],
+            diarize_words: vec![],
         }
     }
 

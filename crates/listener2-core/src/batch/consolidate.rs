@@ -9,6 +9,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use anlg_pyannote_local::DiarizationConfig;
 use anlg_pyannote_local::clustering::normalize;
 use anlg_voiceprint::{
     MIN_UNIQUE_MARGIN, MIN_UNIQUE_SCORE, SelectedSpan, SpanConfig, SpanWord, cosine_similarity,
@@ -59,7 +60,7 @@ pub(super) async fn consolidate_hosted_speakers(
     let transcript_channels = output.response.results.channels.len();
     let recording_channels = usize::from(listen_params.channels).max(1);
     let has_known = !params.known_speakers.is_empty();
-    let in_person = in_person_capture(listen_params, &output.response);
+    let in_person = in_person_capture(&output.response);
 
     let mut work: Vec<ChannelWork> = Vec::new();
     let mut settled_shared_mic = false;
@@ -79,7 +80,11 @@ pub(super) async fn consolidate_hosted_speakers(
         if !over_cap && !has_known {
             // The provider already split the room mic correctly; only the
             // channel needs to change so those people stop rendering as "You".
-            settled_shared_mic |= shared_mic && labels.len() >= 2;
+            // Without a participant count a stray label on a solo memo must
+            // not count as a second person.
+            settled_shared_mic |= shared_mic
+                && labels.len() >= 2
+                && (cap.is_some() || labels_holding_speech(channel) >= 2);
             continue;
         }
         work.push(ChannelWork {
@@ -186,6 +191,32 @@ fn distinct_labels(channel: &batch::Channel) -> Vec<usize> {
         }
     }
     labels
+}
+
+/// Labels with at least as much speech as the diarizer asks of a voice
+/// before it trusts it as a speaker.
+fn labels_holding_speech(channel: &batch::Channel) -> usize {
+    let min_seconds = f64::from(DiarizationConfig::default().min_cluster_seconds);
+    let mut speech: Vec<(usize, f64)> = Vec::new();
+    for word in channel
+        .alternatives
+        .first()
+        .into_iter()
+        .flat_map(|alternative| alternative.words.iter())
+    {
+        let Some(speaker) = word.speaker else {
+            continue;
+        };
+        let seconds = (word.end - word.start).max(0.0);
+        match speech.iter_mut().find(|(label, _)| *label == speaker) {
+            Some((_, total)) => *total += seconds,
+            None => speech.push((speaker, seconds)),
+        }
+    }
+    speech
+        .iter()
+        .filter(|(_, seconds)| *seconds >= min_seconds)
+        .count()
 }
 
 fn word_timings(channel: &batch::Channel) -> Vec<Vec<(f64, f64, Option<usize>)>> {
@@ -1062,9 +1093,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn in_person_mic_already_within_count_is_shared_without_decoding() {
-        // Two labels for two people: nothing to merge, so the recording is
-        // never opened, but the words still have to leave the "You" channel.
+    async fn in_person_mic_is_shared_without_a_participant_count_or_decoding() {
+        // Two labels with real speech each and a silent system-audio channel:
+        // a room nobody listed, so nothing to merge and the recording is never
+        // opened, but the words still have to leave the "You" channel. A stray
+        // label of a few seconds on a solo memo is not a second person.
         let params = params(
             BatchProvider::Deepgram,
             "https://api.deepgram.com/v1",
@@ -1072,28 +1105,39 @@ mod tests {
         );
         let listen_params = owhisper_interface::ListenParams {
             channels: 2,
-            num_speakers: Some(2),
             ..Default::default()
         };
-        let mut output = output(vec![in_person_mic_channel(1), channel(vec![])]);
-        let before_labels = distinct_labels(&output.response.results.channels[0]);
+        for (mic, shared) in [
+            (in_person_mic_channel(1), true),
+            (
+                channel(vec![
+                    word(0.0, 30.0, 0, Some(0)),
+                    word(30.0, 32.0, 0, Some(1)),
+                ]),
+                false,
+            ),
+        ] {
+            let mut output = output(vec![mic, channel(vec![])]);
+            let before_labels = distinct_labels(&output.response.results.channels[0]);
 
-        consolidate_hosted_speakers(
-            Arc::new(NeverCancelled),
-            &params,
-            &listen_params,
-            &mut output,
-        )
-        .await;
+            consolidate_hosted_speakers(
+                Arc::new(NeverCancelled),
+                &params,
+                &listen_params,
+                &mut output,
+            )
+            .await;
 
-        let mic = &output.response.results.channels[0];
-        assert_eq!(distinct_labels(mic), before_labels);
-        assert!(
-            mic.alternatives[0]
-                .words
-                .iter()
-                .all(|word| word.channel == SHARED_MIC_CHANNEL)
-        );
+            let mic = &output.response.results.channels[0];
+            assert_eq!(distinct_labels(mic), before_labels);
+            assert!(
+                mic.alternatives[0]
+                    .words
+                    .iter()
+                    .all(|word| (word.channel == SHARED_MIC_CHANNEL) == shared),
+                "shared: {shared}"
+            );
+        }
     }
 
     #[tokio::test]
