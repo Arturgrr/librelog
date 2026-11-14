@@ -41,7 +41,7 @@ The app only talks to the AI provider you select, Hugging Face when you download
 
 Librelog is in public beta. Download `Librelog_<version>_aarch64.dmg` from [GitHub Releases](https://github.com/Arturgrr/librelog/releases/latest). It needs a Mac with Apple silicon (M1 or later) and macOS 15 Sequoia or later; Intel Macs are not supported.
 
-Linux and Windows builds are not published yet; build from source (below).
+On Linux x86_64, download the RPM (Fedora), deb (Ubuntu 24.04 or later, Debian) or AppImage from the same release; see [Install on Linux](docs/install-linux.mdx) for requirements, how updates work there, and what is not available on Linux yet. Windows and Linux ARM64 builds are not published; build from source (below).
 
 Librelog has its own bundle identifier (`com.arturgrr.librelog`), data folder, and keychain entries. It does not read or import data from an installed Anarlog or Hyprnote app, and both can be installed side by side.
 

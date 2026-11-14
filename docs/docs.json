@@ -12,7 +12,12 @@
     "pages": [
       {
         "group": "Getting started",
-        "pages": ["index", "desktop-installation", "quickstart"]
+        "pages": [
+          "index",
+          "desktop-installation",
+          "install-linux",
+          "quickstart"
+        ]
       },
       {
         "group": "Using Librelog",
