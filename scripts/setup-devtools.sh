@@ -44,8 +44,13 @@ if [[ -x "$HOME/.dprint/bin/dprint" ]]; then
 fi
 
 if ! command -v task &> /dev/null; then
-  curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash
-  sudo apt-get install -y task
+  if command -v dnf &> /dev/null; then
+    curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.rpm.sh' | sudo -E bash
+    sudo dnf install -y task
+  else
+    curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash
+    sudo apt-get install -y task
+  fi
 fi
 
 if ! command -v dasel &> /dev/null; then
