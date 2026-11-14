@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import { type ReactNode, useId } from "react";
 
 import { commands as shortcutCommands } from "@anlg/plugin-shortcut";
@@ -178,6 +179,15 @@ export function CaptureShortcutRows({
           </SettingRow>
         );
       })}
+      {platform() === "linux" && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>
+            On Wayland, your desktop asks you to approve these shortcuts and may
+            let you choose other keys. Change them later in its keyboard
+            settings.
+          </Trans>
+        </p>
+      )}
       {recorder.editing !== null && (
         <ShortcutCaptureHint id={hintId} doubleTap={false} />
       )}

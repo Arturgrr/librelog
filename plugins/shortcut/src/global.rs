@@ -38,9 +38,52 @@ pub struct GlobalState {
 struct Registration {
     keys: Keys,
     #[cfg(target_os = "linux")]
-    portal: Option<portal::Registration>,
-    #[cfg(target_os = "linux")]
-    paste_last_portal: Option<portal::Registration>,
+    portal: Portal,
+}
+
+/// Wayland's one Global Shortcuts portal session, which binds what `held`
+/// holds; see [`bindings`].
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct Portal {
+    held: bindings::Held,
+    bound: Vec<bindings::Binding>,
+    session: Option<portal::Registration>,
+}
+
+#[cfg(target_os = "linux")]
+impl Portal {
+    /// Binds what is held now in a new session, unless the live session
+    /// already binds exactly that. If binding fails, no session is left.
+    async fn rebind(&mut self, app: &tauri::AppHandle) -> Result<(), String> {
+        let bindings = self.held.bindings()?;
+        let live = self
+            .session
+            .as_ref()
+            .is_some_and(|session| !session.ended());
+        if bindings == self.bound && (live || bindings.is_empty()) {
+            return Ok(());
+        }
+        if let Some(session) = self.session.take() {
+            session.close().await;
+        }
+        self.bound.clear();
+        if bindings.is_empty() {
+            return Ok(());
+        }
+        self.session = Some(portal::bind(app.clone(), bindings.clone()).await?);
+        self.bound = bindings;
+        Ok(())
+    }
+}
+
+/// Both errors when both failed.
+#[cfg(target_os = "linux")]
+fn both(first: Result<(), String>, second: Result<(), String>) -> Result<(), String> {
+    match (first, second) {
+        (Err(first), Err(second)) => Err(format!("{first}\n{second}")),
+        (first, second) => first.and(second),
+    }
 }
 
 /// The accelerators held through tauri-plugin-global-shortcut, kept by what
@@ -64,7 +107,7 @@ struct Keys {
     annotate_escape_wanted: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     /// Starts and stops dictation; the shortcut's position in the configured
     /// list.
@@ -424,12 +467,31 @@ type GlobalShortcut = tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>;
 pub async fn configure(app: tauri::AppHandle, shortcuts: Vec<String>) -> Result<(), String> {
     let plan = plan(&shortcuts, app.try_state::<GlobalShortcut>().is_some())?;
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     state.active.store(false, Ordering::SeqCst);
     app.state::<press::Presses>().reset();
-    unregister(&app, &state, &mut registration).await?;
+    unregister(&app, &state, registration)?;
 
-    let result = async {
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        let portal = &mut registration.portal;
+        if let Err(error) = registration
+            .keys
+            .add_dictation(&portal.held, plan.accelerators)
+        {
+            let _ = registration.keys.remove_dictation(&portal.held);
+            let _ = portal.rebind(&app).await;
+            return Err(error);
+        }
+        let result = portal.rebind(&app).await;
+        if result.is_err() {
+            let _ = registration.keys.remove_dictation(&portal.held);
+        }
+        return result;
+    }
+
+    let result = (|| {
         #[cfg(target_os = "macos")]
         if !plan.native.is_empty() {
             app.shortcut()
@@ -439,23 +501,18 @@ pub async fn configure(app: tauri::AppHandle, shortcuts: Vec<String>) -> Result<
         if plan.accelerators.is_empty() {
             return Ok(());
         }
-        #[cfg(target_os = "linux")]
-        if uses_portal() {
-            registration.portal = Some(portal::register(app.clone(), plan.accelerators).await?);
-            return Ok(());
-        }
         let global = global(&app, &state).ok_or(UNAVAILABLE)?;
         registration.keys.add_dictation(&global, plan.accelerators)
-    }
-    .await;
+    })();
     if result.is_err() {
-        let _ = unregister(&app, &state, &mut registration).await;
+        let _ = unregister(&app, &state, registration);
     }
     result
 }
 
-/// Releases the dictation shortcuts; the paste-last one stays.
-async fn unregister(
+/// Releases the dictation shortcuts; the paste-last one stays. On Wayland
+/// the portal session keeps them until the next rebind.
+fn unregister(
     app: &tauri::AppHandle,
     state: &GlobalState,
     registration: &mut Registration,
@@ -465,8 +522,10 @@ async fn unregister(
         registration.keys.remove_dictation(&global)?;
     }
     #[cfg(target_os = "linux")]
-    if let Some(portal) = registration.portal.take() {
-        portal.close().await;
+    if uses_portal() {
+        registration
+            .keys
+            .remove_dictation(&registration.portal.held)?;
     }
     Ok(())
 }
@@ -485,18 +544,14 @@ pub async fn configure_paste_last(
         .map(|shortcut| paste_last_key(&shortcut, global_available))
         .transpose()?;
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
-    #[cfg(target_os = "linux")]
-    if let Some(portal) = registration.paste_last_portal.take() {
-        portal.close().await;
-    }
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     #[cfg(target_os = "linux")]
     if uses_portal() {
-        if let Some(key) = key {
-            registration.paste_last_portal =
-                Some(portal::register_paste_last(app.clone(), key).await?);
-        }
-        return Ok(());
+        let result = registration
+            .keys
+            .set_paste_last(&registration.portal.held, key);
+        return both(result, registration.portal.rebind(&app).await);
     }
     match global(&app, &state) {
         Some(global) => registration.keys.set_paste_last(&global, key),
@@ -550,9 +605,19 @@ pub async fn configure_annotate(
     };
     let (annotate, paste) = (key(shortcut)?, key(paste)?);
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     // A release lost to re-registering would leave the key held forever.
     app.state::<annotate::AnnotateGesture>().release_key();
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        let held = &registration.portal.held;
+        let result = registration.keys.set_annotate(held, annotate, paste);
+        if result.is_err() {
+            let _ = registration.keys.set_annotate(held, None, None);
+        }
+        return both(result, registration.portal.rebind(&app).await);
+    }
     let Some(global) = global(&app, &state) else {
         return if annotate.is_none() && paste.is_none() {
             Ok(())
@@ -657,7 +722,15 @@ pub async fn configure_capture(
     })
     .collect();
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        let result = registration
+            .keys
+            .set_capture(&registration.portal.held, keys);
+        return both(result, registration.portal.rebind(&app).await);
+    }
     let Some(global) = global(&app, &state) else {
         return if keys.is_empty() {
             Ok(())
@@ -684,6 +757,8 @@ pub fn validate_capture(
     )
 }
 
+#[cfg(any(target_os = "linux", test))]
+mod bindings;
 #[cfg(target_os = "linux")]
 mod portal;
 #[cfg(any(target_os = "linux", test))]

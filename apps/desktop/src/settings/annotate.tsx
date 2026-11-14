@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import { type ReactNode, useId } from "react";
 
 import { commands as annotate } from "@anlg/plugin-annotate";
@@ -289,6 +290,16 @@ function AnnotateShortcutSettings() {
           </SettingRow>
         );
       })}
+      {platform() === "linux" && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>
+            On Wayland, your desktop asks you to approve these shortcuts and may
+            let you choose other keys. Change them later in its keyboard
+            settings. Control + Alt + Escape turns drawing off, and holding the
+            shortcut draws only where the desktop reports when you let go.
+          </Trans>
+        </p>
+      )}
       {recorder.editing !== null && (
         <ShortcutCaptureHint id={hintId} doubleTap={false} />
       )}

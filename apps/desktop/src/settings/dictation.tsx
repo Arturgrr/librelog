@@ -191,9 +191,11 @@ export function SettingsDictation() {
         <p className="text-muted-foreground text-xs">
           {platform() === "linux" ? (
             <Trans>
-              On Wayland, approve the shortcuts in your desktop's prompt. Use
-              Control + Alt + Escape to cancel. On X11, press Escape to cancel.
-              The target app must expose an editable accessibility field.
+              On Wayland, your desktop asks you to approve the shortcuts and may
+              let you choose other keys; change them later in its keyboard
+              settings. Use Control + Alt + Escape to cancel. On X11, press
+              Escape to cancel. The target app must expose an editable
+              accessibility field.
             </Trans>
           ) : (
             <Trans>
