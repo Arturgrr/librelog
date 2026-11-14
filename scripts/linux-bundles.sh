@@ -28,6 +28,8 @@ SRC_TAURI="$ROOT/apps/desktop/src-tauri"
 BUNDLE_DIR="${CARGO_TARGET_DIR:-$SRC_TAURI/target}/$TARGET/release/bundle"
 VERSION="$(jq -r .version "$ROOT/apps/desktop/package.json")"
 PACKAGE_VERSION="$(node "$ROOT/scripts/release.mjs" linux-package-version "$VERSION")"
+# The containers read these through `docker run --env NAME`.
+export PACKAGE_VERSION
 FEDORA_IMAGE=fedora:latest
 UBUNTU_IMAGE=ubuntu:24.04
 # Installed by every package; the smoke tests run each.
@@ -253,6 +255,7 @@ dnf install -y gtk3 pipewire-libs alsa-lib mesa-libGL mesa-libEGL mesa-libgbm \
   xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon mesa-dri-drivers util-linux which
 cd /tmp
 cp "$PACKAGE" Librelog.AppImage
+chmod +x Librelog.AppImage
 ./Librelog.AppImage --appimage-extract >/dev/null
 check_libraries squashfs-root/usr/bin/librelog squashfs-root/usr/lib
 launch ./Librelog.AppImage --appimage-extract-and-run
