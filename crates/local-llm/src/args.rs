@@ -58,6 +58,14 @@ const INHERITED: &[&str] = &[
     "APPDATA",
 ];
 
+/// Hides every Vulkan driver and GPU from the server, which then runs on the
+/// CPU. Set after a start failed with them visible.
+pub const CPU_ONLY_ENVIRONMENT: &[(&str, &str)] = &[
+    ("GGML_VK_VISIBLE_DEVICES", ""),
+    ("VK_DRIVER_FILES", "/nonexistent"),
+    ("VK_ICD_FILENAMES", "/nonexistent"),
+];
+
 pub fn server_environment(
     inherited: impl IntoIterator<Item = (OsString, OsString)>,
     api_key: &str,

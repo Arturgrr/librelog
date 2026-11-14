@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::args::{Launch, server_args, server_environment};
+use crate::args::{CPU_ONLY_ENVIRONMENT, Launch, server_args, server_environment};
 use crate::process;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
@@ -65,6 +65,10 @@ pub struct ServerConfig {
     pub idle_poll_interval: Duration,
     pub start_timeout: Duration,
     pub max_failed_starts: u32,
+    /// After a server exits while starting, start it again with every GPU
+    /// hidden, and keep it on the CPU from then on: a Vulkan driver can
+    /// abort the process, which llama.cpp cannot catch.
+    pub cpu_fallback: bool,
 }
 
 impl ServerConfig {
@@ -77,6 +81,7 @@ impl ServerConfig {
             idle_poll_interval: Duration::from_secs(30),
             start_timeout: Duration::from_secs(180),
             max_failed_starts: 3,
+            cpu_fallback: false,
         }
     }
 
@@ -118,6 +123,8 @@ struct Inner {
     running: Mutex<Option<Running>>,
     status: StdMutex<Status>,
     pid: StdMutex<Option<u32>>,
+    /// Set once a start failed with the GPU available.
+    cpu_only: AtomicBool,
     listener: StateListener,
 }
 
@@ -161,6 +168,7 @@ impl ServerManager {
                     last_error: String::new(),
                 }),
                 pid: StdMutex::new(None),
+                cpu_only: AtomicBool::new(false),
                 listener: Box::new(listener),
             }),
         }
@@ -353,6 +361,7 @@ impl Inner {
         for _ in 0..PORT_ATTEMPTS {
             let port = free_port().map_err(|error| format!("No free local port: {error}"))?;
             let api_key = new_api_key();
+            let cpu_only = this.cpu_only.load(Ordering::Relaxed);
 
             let mut command = Command::new(&config.binary);
             command
@@ -366,6 +375,7 @@ impl Inner {
                 }))
                 .env_clear()
                 .envs(server_environment(std::env::vars_os(), &api_key))
+                .envs(CPU_ONLY_ENVIRONMENT.iter().filter(|_| cpu_only).copied())
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -435,6 +445,12 @@ impl Inner {
                     }
                     for line in &lines {
                         tracing::warn!(target: "llama_server", "{line}");
+                    }
+                    if config.cpu_fallback && !cpu_only {
+                        tracing::warn!(%status, "llama_server_retrying_on_cpu");
+                        this.cpu_only.store(true, Ordering::Relaxed);
+                        last_error = start_failure_message(&status, &lines);
+                        continue;
                     }
                     return Err(start_failure_message(&status, &lines));
                 }

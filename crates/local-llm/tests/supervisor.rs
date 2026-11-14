@@ -23,6 +23,9 @@ with open(count, "a") as f:
 if mode == "crash":
     print("llama_model_load: error loading model: corrupted file", file=sys.stderr)
     sys.exit(1)
+if mode == "gpu-crash" and "GGML_VK_VISIBLE_DEVICES" not in os.environ:
+    print("ggml_vulkan: vk::Device::createBuffer: ErrorDeviceLost", file=sys.stderr)
+    os.abort()
 port = int(sys.argv[sys.argv.index("--port") + 1])
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -80,6 +83,15 @@ impl StandIn {
     }
 
     fn manager(&self, mode: &str, idle_stop_after: Duration) -> ServerManager {
+        self.manager_with(mode, idle_stop_after, false)
+    }
+
+    fn manager_with(
+        &self,
+        mode: &str,
+        idle_stop_after: Duration,
+        cpu_fallback: bool,
+    ) -> ServerManager {
         let mut config = ServerConfig::new(python3(), self.dir.path().join("state"));
         config.leading_args = vec![
             "-c".into(),
@@ -90,6 +102,7 @@ impl StandIn {
         config.idle_stop_after = idle_stop_after;
         config.idle_poll_interval = Duration::from_millis(100);
         config.start_timeout = Duration::from_secs(20);
+        config.cpu_fallback = cpu_fallback;
         let states = self.states.clone();
         ServerManager::new(config, move |state| {
             states.lock().unwrap().push(state.clone())
@@ -139,6 +152,23 @@ async fn three_failed_starts_stop_retries_until_stopped() {
     assert_eq!(manager.state(), ServerState::Stopped);
     let _ = manager.ensure(request("qwen3-4b")).await.unwrap_err();
     assert_eq!(stand_in.starts(), 4);
+}
+
+// A Vulkan driver that aborts the server must not keep Linux users from
+// their built-in model: the next start hides the GPU, and later ones stay on
+// the CPU.
+#[tokio::test]
+async fn server_that_dies_on_the_gpu_starts_again_on_the_cpu() {
+    let stand_in = StandIn::new();
+    let manager = stand_in.manager_with("gpu-crash", Duration::from_secs(300), true);
+
+    manager.ensure(request("qwen3-4b")).await.unwrap();
+    assert_eq!(stand_in.starts(), 2);
+
+    manager.stop().await;
+    manager.ensure(request("qwen3-4b")).await.unwrap();
+    assert_eq!(stand_in.starts(), 3);
+    manager.stop().await;
 }
 
 // The server holds gigabytes of memory, so it stops once idle, but never
