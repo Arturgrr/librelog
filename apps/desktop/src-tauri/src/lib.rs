@@ -80,6 +80,22 @@ pub fn main() {
     let context = tauri::generate_context!();
     let identifier = context.config().identifier.clone();
 
+    #[cfg(target_os = "linux")]
+    {
+        let product_name = context.config().product_name.clone().unwrap_or_default();
+        anlg_desktop_portal::set_app_id(anlg_desktop_portal::app_id(
+            &product_name,
+            &identifier,
+            &anlg_desktop_portal::xdg_data_dirs(),
+        ));
+        // Registers before the first portal request, which waits for it.
+        runtime.spawn(async {
+            if let Err(error) = anlg_desktop_portal::connection().await {
+                tracing::warn!(%error, "the desktop portals are unreachable");
+            }
+        });
+    }
+
     // The single-instance plugin only starts with the builder, which is too
     // late to keep a second launch from racing an in-flight startup migration.
     let launch_lock = match startup::acquire_launch_lock(&identifier) {

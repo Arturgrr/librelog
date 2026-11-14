@@ -2933,6 +2933,7 @@ dependencies = [
  "chrono",
  "db-app",
  "db-core",
+ "desktop-portal",
  "dirs 6.0.0",
  "host",
  "intercept",
@@ -3007,6 +3008,16 @@ dependencies = [
  "tracing",
  "windows 0.62.2",
  "windows-registry 0.5.3",
+]
+
+[[package]]
+name = "desktop-portal"
+version = "0.1.0"
+dependencies = [
+ "ashpd",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -13415,6 +13426,7 @@ name = "tauri-plugin-shortcut"
 version = "0.1.0"
 dependencies = [
  "ashpd",
+ "desktop-portal",
  "futures-util",
  "serde",
  "serde_json",

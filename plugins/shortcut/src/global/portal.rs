@@ -101,9 +101,14 @@ async fn bind(
     on_event: impl Fn(&tauri::AppHandle, &str, bool) + Send + 'static,
     on_end: impl FnOnce(&tauri::AppHandle) + Send + 'static,
 ) -> Result<Registration, String> {
-    let portal = GlobalShortcuts::new().await.map_err(|e| {
-        format!("This Wayland desktop does not provide the Global Shortcuts portal: {e}")
+    let connection = anlg_desktop_portal::connection().await.map_err(|e| {
+        format!("Librelog could not reach the desktop portals for global shortcuts: {e}")
     })?;
+    let portal = GlobalShortcuts::with_connection(connection)
+        .await
+        .map_err(|e| {
+            format!("This Wayland desktop does not provide the Global Shortcuts portal: {e}")
+        })?;
     let session = portal
         .create_session(Default::default())
         .await

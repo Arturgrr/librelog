@@ -123,6 +123,9 @@ tauri-plugin-local-stt = { workspace = true, features = ["gguf-vulkan"] }
 [target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
 tauri-plugin-local-stt = { workspace = true, features = ["gguf-vulkan"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+anlg-desktop-portal = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 windows-registry = "0.5.3"

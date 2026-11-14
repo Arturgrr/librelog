@@ -27,5 +27,6 @@ tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 anlg-shortcut-macos = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+anlg-desktop-portal = { workspace = true }
 ashpd = { workspace = true, features = ["tokio", "global_shortcuts"] }
 futures-util = { workspace = true }
