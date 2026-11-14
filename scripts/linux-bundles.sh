@@ -243,12 +243,14 @@ EOF
   echo "::endgroup::"
 
   echo "::group::AppImage on $FEDORA_IMAGE"
-  # GTK stands in for the desktop libraries AppImages leave to the system;
-  # pipewire-libs and Wayland come with it, as the repack expects.
+  # What a Fedora desktop has and AppImages leave to the system (AppImage's
+  # excludelist: GL, X11, fontconfig, ALSA, PipeWire; the repack adds Wayland
+  # and PipeWire's SPA modules).
   docker run "${common[@]}" --env PACKAGE="/bundle/appimage/$(basename "$appimage")" \
     "$FEDORA_IMAGE" bash -euxo pipefail -s <<'EOF'
 eval "$LAUNCH"
-dnf install -y gtk3 pipewire-libs xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon mesa-dri-drivers util-linux which
+dnf install -y gtk3 pipewire-libs alsa-lib mesa-libGL mesa-libEGL mesa-libgbm \
+  xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon mesa-dri-drivers util-linux which
 cd /tmp
 cp "$PACKAGE" Librelog.AppImage
 ./Librelog.AppImage --appimage-extract >/dev/null
