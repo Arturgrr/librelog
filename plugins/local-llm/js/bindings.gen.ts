@@ -257,9 +257,13 @@ export type ServerState =
 export type UnavailableReason =
   /**
    * Built-in models ship only in the macOS Apple silicon build outside
-   * the App Store.
+   * the App Store and the Linux x86-64 build.
    */
   | "unsupported_platform"
+  /**
+   * The Linux server needs AVX2, FMA, F16C and BMI2.
+   */
+  | "unsupported_cpu"
   /**
    * The build has no llama-server next to the app.
    */
