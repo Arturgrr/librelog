@@ -1107,6 +1107,10 @@ msgid "Berlin"
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Best for this computer"
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
 #: src/settings/ai/stt/model-rows.tsx
 msgid "Best for this Mac"
 msgstr ""
@@ -4305,6 +4309,10 @@ msgid "Minimize"
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Mistral AI's 3-billion-parameter multilingual model, for computers with less memory."
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "Mistral AI's 3-billion-parameter multilingual model, for Macs with less memory."
 msgstr ""
 
@@ -5507,7 +5515,15 @@ msgid "Quote"
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Qwen's 4-billion-parameter model: good summaries at a size most computers can run."
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "Qwen's 4-billion-parameter model: good summaries at a size most Macs can run."
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
+msgid "Qwen's 8-billion-parameter model: better summaries, for computers with 16 GB of memory or more."
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
@@ -5534,6 +5550,11 @@ msgstr ""
 
 #: src/settings/general/permissions.tsx
 msgid "Read meeting controls and visible chat."
+msgstr ""
+
+#. placeholder {0}: meetingMinutes(context)
+#: src/settings/ai/llm/builtin.tsx
+msgid "Reads about {0} minutes of meeting at once on this computer"
 msgstr ""
 
 #. placeholder {0}: meetingMinutes(context)
@@ -5997,6 +6018,10 @@ msgstr ""
 
 #: src/onboarding/index.tsx
 msgid "Run a model on this computer, sign in with a subscription or use an API key. It’s the same list as Settings › Intelligence."
+msgstr ""
+
+#: src/onboarding/model-setup.tsx
+msgid "Run Intelligence on this computer"
 msgstr ""
 
 #: src/onboarding/model-setup.tsx
@@ -7257,6 +7282,10 @@ msgid "This annotation is no longer waiting to be finished."
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "This build of Librelog doesn’t include the model server. The release for Linux on x86-64 does."
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "This build of Librelog doesn’t include the model server. The release for Macs with Apple silicon does."
 msgstr ""
 
@@ -7266,6 +7295,10 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "This capture is no longer in the list."
+msgstr ""
+
+#: src/ai/builtin-fetch.ts
+msgid "This computer needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
 msgstr ""
 
 #: src/session/components/version-history-dialog.tsx
@@ -7302,10 +7335,6 @@ msgstr ""
 
 #: src/settings/ai/shared/list-apple-foundation.ts
 msgid "This Mac does not support Apple Intelligence."
-msgstr ""
-
-#: src/ai/builtin-fetch.ts
-msgid "This Mac needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
 msgstr ""
 
 #: src/ai/builtin-fetch.ts
@@ -7445,6 +7474,10 @@ msgstr ""
 
 #: src/sidebar/timeline/utils/index.ts
 msgid "Tomorrow"
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
+msgid "Too large for this computer"
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx
@@ -7936,6 +7969,10 @@ msgstr ""
 
 #: src/settings/ai/llm/provider-context.ts
 msgid "Uses Alibaba Cloud Model Studio's **OpenAI-compatible API**. The default endpoint is the Singapore region; change the Base URL under Advanced when your API key belongs to another region."
+msgstr ""
+
+#: src/settings/ai/llm/builtin.tsx
+msgid "Uses at most half of this computer’s memory."
 msgstr ""
 
 #: src/settings/ai/llm/builtin.tsx

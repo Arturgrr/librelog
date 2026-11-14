@@ -51,6 +51,14 @@ const DESCRIPTIONS: Record<LlmModel, MessageDescriptor> = {
   "ministral-3-3b": msg`Mistral AI's 3-billion-parameter multilingual model, for Macs with less memory.`,
 };
 
+// Linux on x86-64 runs the same models, on any GPU Vulkan reaches or else
+// on the CPU.
+const COMPUTER_DESCRIPTIONS: Partial<Record<LlmModel, MessageDescriptor>> = {
+  "qwen3-4b": msg`Qwen's 4-billion-parameter model: good summaries at a size most computers can run.`,
+  "qwen3-8b": msg`Qwen's 8-billion-parameter model: better summaries, for computers with 16 GB of memory or more.`,
+  "ministral-3-3b": msg`Mistral AI's 3-billion-parameter multilingual model, for computers with less memory.`,
+};
+
 // About 150 spoken words a minute, plus room for the instructions and the
 // summary itself.
 function meetingMinutes(context: number) {
@@ -84,11 +92,18 @@ export function BuiltinModels({
     };
   });
 
+  const mac = platform() === "macos";
+
   if (runtime.data && !runtime.data.available) {
     return (
       <DetailSection title={<Trans>Models</Trans>}>
         <p className="text-muted-foreground text-xs">
-          {runtime.data.reason === "missing_binary" ? (
+          {runtime.data.reason === "missing_binary" && !mac ? (
+            <Trans>
+              This build of Librelog doesn’t include the model server. The
+              release for Linux on x86-64 does.
+            </Trans>
+          ) : runtime.data.reason === "missing_binary" ? (
             <Trans>
               This build of Librelog doesn’t include the model server. The
               release for Macs with Apple silicon does.
@@ -145,20 +160,34 @@ export function BuiltinModels({
                     <>
                       {entry.best ? (
                         <Chip emphasis>
-                          <Trans>Best for this Mac</Trans>
+                          {mac ? (
+                            <Trans>Best for this Mac</Trans>
+                          ) : (
+                            <Trans>Best for this computer</Trans>
+                          )}
                         </Chip>
                       ) : null}
-                      <FitChip fit={fit} />
+                      <FitChip fit={fit} mac={mac} />
                     </>
                   }
-                  description={i18n._(DESCRIPTIONS[entry.id])}
+                  description={i18n._(
+                    (!mac && COMPUTER_DESCRIPTIONS[entry.id]) ||
+                      DESCRIPTIONS[entry.id],
+                  )}
                   details={
                     context ? (
                       <span className="text-muted-foreground text-xs">
-                        <Trans>
-                          Reads about {meetingMinutes(context)} minutes of
-                          meeting at once on this Mac
-                        </Trans>
+                        {mac ? (
+                          <Trans>
+                            Reads about {meetingMinutes(context)} minutes of
+                            meeting at once on this Mac
+                          </Trans>
+                        ) : (
+                          <Trans>
+                            Reads about {meetingMinutes(context)} minutes of
+                            meeting at once on this computer
+                          </Trans>
+                        )}
                       </span>
                     ) : (
                       <span className="text-muted-foreground text-xs">
@@ -187,12 +216,24 @@ export function BuiltinModels({
   );
 }
 
-function FitChip({ fit }: { fit: LlmModelEntry["admission"]["fit"] }) {
+function FitChip({
+  fit,
+  mac,
+}: {
+  fit: LlmModelEntry["admission"]["fit"];
+  mac: boolean;
+}) {
   const { t } = useLingui();
   switch (fit) {
     case "fits":
       return (
-        <Chip title={t`Uses at most half of this Mac’s memory.`}>
+        <Chip
+          title={
+            mac
+              ? t`Uses at most half of this Mac’s memory.`
+              : t`Uses at most half of this computer’s memory.`
+          }
+        >
           <Trans>Fits</Trans>
         </Chip>
       );
@@ -207,7 +248,11 @@ function FitChip({ fit }: { fit: LlmModelEntry["admission"]["fit"] }) {
     case "tooLarge":
       return (
         <Chip>
-          <Trans>Too large for this Mac</Trans>
+          {mac ? (
+            <Trans>Too large for this Mac</Trans>
+          ) : (
+            <Trans>Too large for this computer</Trans>
+          )}
         </Chip>
       );
   }

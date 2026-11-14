@@ -309,7 +309,7 @@ export function builtinErrorMessage(error: LlmError): string {
     case "too_large":
       return t`This model needs more memory than this computer has. Choose a smaller built-in model.`;
     case "capture_active":
-      return t`This Mac needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done.`;
+      return t`This computer needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done.`;
     case "gave_up":
       return t`The built-in model failed to start three times in a row. Open Settings › Intelligence to try again.`;
     case "start_failed":

@@ -51,9 +51,9 @@ async function builtinRuntimeStatus() {
   };
 }
 
-// Windows, Linux and the App Store build can never run built-in models, so
-// they do not list them. A Mac build without the server, such as a dev
-// build, lists them with the reason.
+// Windows, Linux on ARM, CPUs without AVX2 and the App Store build can never
+// run built-in models, so they do not list them. A Mac or Linux x86-64 build
+// without the server, such as a dev build, lists them with the reason.
 export function useBuiltinProviderListed(): boolean {
   const runtime = useQuery(builtinQueries.runtime());
   return (
