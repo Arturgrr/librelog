@@ -40,7 +40,7 @@ You can also keep audio on your network by pointing **Custom**, or Deepgram's **
   Compatibility code still recognizes some older local model IDs, but they are not offered as new choices. The table above is the current user-facing model list.
 </Note>
 
-For local summaries and chat, download one of the [Built-in models](#built-in-models) on an Apple Silicon Mac, or connect **LM Studio**, **Ollama**, or **Unsloth** and choose any compatible model they serve. Librelog does not silently substitute another model. **Apple Intelligence** is also available as an experimental, text-only Intelligence provider on eligible Macs running macOS 26 or later.
+For local summaries and chat, download one of the [Built-in models](#built-in-models) on an Apple Silicon Mac or a Linux x86_64 computer, or connect **LM Studio**, **Ollama**, or **Unsloth** and choose any compatible model they serve. Librelog does not silently substitute another model. **Apple Intelligence** is also available as an experimental, text-only Intelligence provider on eligible Macs running macOS 26 or later.
 
 If a selected local model or server is unavailable, Librelog reports a connection error instead of sending the request to another provider.
 
@@ -80,7 +80,7 @@ Local models use Metal on Apple Silicon and Vulkan on Windows and Linux. The pro
 
 ### Built-in models
 
-**Built-in models** run language models for summaries, titles, and chat with [llama.cpp](https://github.com/ggml-org/llama.cpp), which ships inside the Librelog release for Apple Silicon Macs. Each model is one Q4_K_M GGUF file downloaded on request from its publisher's own Hugging Face repository, pinned to one revision and checked against its size and SHA-256. Settings shows each model's download size, license, source, and whether it fits your Mac.
+**Built-in models** run language models for summaries, titles, and chat with [llama.cpp](https://github.com/ggml-org/llama.cpp), which ships inside the Librelog releases for Apple Silicon Macs and for Linux x86_64. Each model is one Q4_K_M GGUF file downloaded on request from its publisher's own Hugging Face repository, pinned to one revision and checked against its size and SHA-256. Settings shows each model's download size, license, source, and whether it fits your computer.
 
 | Model | Download | Most context in Librelog | License |
 | --- | --- | --- | --- |
@@ -92,6 +92,7 @@ Local models use Metal on Apple Silicon and Vulkan on Windows and Linux. The pro
 
 - **Memory.** Librelog estimates each model's memory from its file and the context it needs, and loads it with the longest of 8,192, 16,384, 32,768, and 65,536 tokens, or the model's own limit if lower, that stays within half of your Mac's memory. It never reserves more than 65,536 tokens, however much memory is free. **Tight** means only the shortest context, 8,192 tokens, fits, using up to 65% of memory. **Too large for this Mac** models cannot be selected. On a Mac with 8 GB of memory or less, a model does not start while a meeting is being recorded or its recording transcribed; it starts once that is done. A model that is already running keeps serving.
 - **Long meetings.** Librelog sends the whole transcript in one request. Each model shows about how many minutes of meeting it can read at once on your Mac. A meeting that leaves too little room for the summary fails with **This meeting is too long for this model**, before the model spends time on it; choose a model that reads more, or a hosted provider, for it. A summary that runs out of room while it is being written fails the same way and is not saved.
+- **Linux.** The model runs on a GPU that Vulkan reaches, through your graphics driver's Vulkan support, and otherwise on the CPU, which works but is slow: expect a summary to take minutes. If the server stops while it starts on the GPU, Librelog starts it again on the CPU until you quit. The processor needs AVX2, FMA, F16C, and BMI2; without them Built-in models are not offered. Memory is judged from the computer's RAM, not the GPU's. The project has not yet exercised the Vulkan path on real GPUs.
 - **Thinking.** Built-in models answer without a separate reasoning step, so there is no reasoning-effort setting for them.
 - **Lifecycle.** The model loads with the first request and unloads after five idle minutes. It listens only on `127.0.0.1` with a key that changes every time it starts, and Librelog stops it when you quit.
 

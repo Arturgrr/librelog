@@ -1,7 +1,8 @@
 //! End to end against a real llama-server, when `LIBRELOG_LLAMA_SERVER`
 //! names its binary and `LIBRELOG_LLAMA_TEST_MODEL` a small GGUF chat model.
-//! Without them these tests do nothing. CI runs them with the pinned upstream
-//! Ubuntu build and the pinned stories260K model.
+//! Without them these tests do nothing. CI runs them with the pinned
+//! stories260K model and the server xtask builds, or on Linux, when xtask is
+//! unchanged, the pinned upstream Ubuntu build.
 #![cfg(unix)]
 
 use std::path::{Path, PathBuf};

@@ -395,10 +395,14 @@ jobs:
           cache-key: desktop-v3
       # The built-in model server's end-to-end tests
       # (crates/local-llm/tests/llama_server.rs) run in the next step against
-      # llama.cpp's own Ubuntu build and a 1 MB model, both pinned by SHA-256.
-      # If a download fails they skip themselves, with a warning here; a
-      # hash mismatch fails the job.
+      # a 1 MB model pinned by SHA-256 and, when `changes` says xtask builds
+      # (crates/xtask changed, or a schedule or manual run), the server the
+      # Linux packages ship, built by `cargo xtask prepare-llama-server`;
+      # otherwise llama.cpp's own Ubuntu build, pinned by SHA-256. If a
+      # download fails they skip themselves, with a warning here; a hash
+      # mismatch or a failed build fails the job.
       - env:
+          BUILD_SERVER: ${{ needs.changes.outputs.xtask }}
           LLAMA_URL: https://github.com/ggml-org/llama.cpp/releases/download/b12110/llama-b12110-bin-ubuntu-x64.tar.gz
           LLAMA_SHA256: 368227edcc229be5f9bed16a2223d79b5e41d0ac2e19bcf5825e82291c060e55
           MODEL_URL: https://huggingface.co/ggml-org/test-model-stories260K/resolve/479896ec924af6d40fd419ab8f4d1eb2101de00d/stories260K-f32.gguf
@@ -406,16 +410,26 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/llama"
           mkdir -p "$dir"
-          if ! curl -fsSL --retry 3 -o "$dir/llama.tar.gz" "$LLAMA_URL" ||
-            ! curl -fsSL --retry 3 -o "$dir/model.gguf" "$MODEL_URL"; then
-            echo "::warning::Could not download llama-server or its test model; the built-in model end-to-end tests skip."
+          if [[ "$BUILD_SERVER" == true ]]; then
+            cargo xtask prepare-llama-server
+            server="$GITHUB_WORKSPACE/apps/desktop/src-tauri/binaries/librelog-llama-server-x86_64-unknown-linux-gnu"
+            "$server" --version
+          else
+            if ! curl -fsSL --retry 3 -o "$dir/llama.tar.gz" "$LLAMA_URL"; then
+              echo "::warning::Could not download llama-server; the built-in model end-to-end tests skip."
+              exit 0
+            fi
+            echo "$LLAMA_SHA256  $dir/llama.tar.gz" | sha256sum --check --strict
+            tar -xzf "$dir/llama.tar.gz" -C "$dir"
+            server="$dir/llama-b12110/llama-server"
+          fi
+          if ! curl -fsSL --retry 3 -o "$dir/model.gguf" "$MODEL_URL"; then
+            echo "::warning::Could not download the test model; the built-in model end-to-end tests skip."
             exit 0
           fi
-          echo "$LLAMA_SHA256  $dir/llama.tar.gz" | sha256sum --check --strict
           echo "$MODEL_SHA256  $dir/model.gguf" | sha256sum --check --strict
-          tar -xzf "$dir/llama.tar.gz" -C "$dir"
           {
-            echo "LIBRELOG_LLAMA_SERVER=$dir/llama-b12110/llama-server"
+            echo "LIBRELOG_LLAMA_SERVER=$server"
             echo "LIBRELOG_LLAMA_TEST_MODEL=$dir/model.gguf"
           } >>"$GITHUB_ENV"
       # The app and every crate outside MACOS_TESTS, CLI_TESTS and SKIP_TESTS.
