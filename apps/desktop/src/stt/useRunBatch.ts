@@ -6,6 +6,7 @@ import {
   commands as transcriptionCommands,
   type BatchRefinementSource,
   type BatchProvider,
+  type BatchWord,
   type BatchTranscriptPromotion,
   type StoredSpeakerHint,
   type StoredTranscriptWord,
@@ -37,6 +38,7 @@ import { serializeBatchResumeContext } from "~/stt/batch-resume-context";
 import {
   getTranscriptionLanguages,
   isLocalFileSttModel,
+  LOCAL_DIARIZATION_TARGET,
   isLocalSttProviderAvailable,
   isOnDeviceSttModel,
   isSupportedLanguagesBatch,
@@ -73,6 +75,9 @@ type RunOptions = {
         startedAt: number;
       };
   captureInterval?: { startedAtMs: number; stoppedAtMs: number };
+  // Words of the current capture to label with the on-device diarizer instead
+  // of transcribing the recording again.
+  diarizeWords?: WordWithId[];
 };
 
 type BatchTarget = {
@@ -131,6 +136,36 @@ export async function reconcileRefinedSpeakerClusters(
   });
   if (result.status === "error") throw new Error(result.error);
   return result.data.map(toSpeakerHintWithId);
+}
+
+const LOCAL_DIARIZATION_BATCH_TARGET = {
+  ...LOCAL_DIARIZATION_TARGET,
+  label: LOCAL_DIARIZATION_TARGET.model,
+} satisfies BatchTarget;
+
+// The diarizer reads the whole recording, so words move from the capture's
+// clock to the file's, the same offset the saved replacement removes again.
+function toDiarizeWords(
+  words: WordWithId[],
+  promotion: RunOptions["promotion"],
+): BatchWord[] {
+  const offsetMs =
+    promotion?.scope === "current_capture" ? promotion.audioOffsetMs : 0;
+  let previousEndMs = 0;
+  return words.map((word) => {
+    const startMs = word.start_ms ?? previousEndMs;
+    const endMs = Math.max(word.end_ms ?? startMs, startMs);
+    previousEndMs = endMs;
+    return {
+      word: word.text ?? "",
+      punctuated_word: null,
+      start: (startMs + offsetMs) / 1000,
+      end: (endMs + offsetMs) / 1000,
+      confidence: 1,
+      channel: word.channel ?? 0,
+      speaker: null,
+    };
+  });
 }
 
 const DIRECT_BATCH_PROVIDERS: Set<TranscriptionParams["provider"]> = new Set([
@@ -367,17 +402,19 @@ export const useRunBatch = (sessionId: string) => {
       const shouldUseSelectedTarget =
         selectedTargetSupported ||
         (fallbackTarget && sameBatchTarget(selectedTarget, fallbackTarget));
-      const target = options?.resume
-        ? {
-            provider: options.resume.provider,
-            model: options.resume.model,
-            baseUrl: conn?.baseUrl ?? "",
-            apiKey: conn?.apiKey ?? "",
-            label: options.resume.model,
-          }
-        : shouldUseSelectedTarget
-          ? (selectedTarget ?? fallbackTarget)
-          : fallbackTarget;
+      const target = options?.diarizeWords
+        ? LOCAL_DIARIZATION_BATCH_TARGET
+        : options?.resume
+          ? {
+              provider: options.resume.provider,
+              model: options.resume.model,
+              baseUrl: conn?.baseUrl ?? "",
+              apiKey: conn?.apiKey ?? "",
+              label: options.resume.model,
+            }
+          : shouldUseSelectedTarget
+            ? (selectedTarget ?? fallbackTarget)
+            : fallbackTarget;
 
       if (!target) {
         const providerLabel = selectedProviderLabel(conn, selectedModel);
@@ -388,7 +425,12 @@ export const useRunBatch = (sessionId: string) => {
         );
       }
 
-      if (!shouldUseSelectedTarget && !options?.recovery && !options?.resume) {
+      if (
+        !shouldUseSelectedTarget &&
+        !options?.recovery &&
+        !options?.resume &&
+        !options?.diarizeWords
+      ) {
         const unavailableLabel = selectedTarget
           ? selectedProviderLabel(conn, selectedModel)
           : selectedProviderLabel(conn);
@@ -503,6 +545,9 @@ export const useRunBatch = (sessionId: string) => {
         num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
         min_speakers: options?.minSpeakers,
         max_speakers: options?.maxSpeakers,
+        diarize_words: options?.diarizeWords
+          ? toDiarizeWords(options.diarizeWords, options.promotion)
+          : [],
         resume_context:
           !handlePersist &&
           !options?.recovery &&

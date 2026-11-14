@@ -455,7 +455,7 @@ export async function recoverRunningBatchSessions<T extends BatchStore>(
 }
 
 export function shouldUseSyntheticBatchProgress(params: TranscriptionParams) {
-  if (params.provider === "soniqo") {
+  if (params.provider === "soniqo" || params.provider === "local_diarization") {
     return false;
   }
 

@@ -6341,10 +6341,6 @@ msgstr "Seoul"
 msgid "Separate speakers after meetings"
 msgstr "Separate speakers after meetings"
 
-#: src/sidebar/toast/registry.tsx
-msgid "Separating speakers after meetings needs Parakeet Batch"
-msgstr "Separating speakers after meetings needs Parakeet Batch"
-
 #: src/session/components/note-input/transcript/screens/empty.tsx
 msgid "Separating speakers..."
 msgstr "Separating speakers..."
@@ -7700,10 +7696,6 @@ msgstr "Unpin organization"
 msgid "Unpin Organization"
 msgstr "Unpin Organization"
 
-#: src/sidebar/toast/registry.tsx
-msgid "Until it is downloaded, everyone heard through your computer stays one speaker."
-msgstr "Until it is downloaded, everyone heard through your computer stays one speaker."
-
 #: src/chat/components/message/tool/search-meetings.tsx
 #: src/chat/context/session-drag.ts
 #: src/services/tray-recording.tsx
@@ -8143,8 +8135,8 @@ msgid "What's new in {version}?"
 msgstr "What's new in {version}?"
 
 #: src/settings/general/audio-settings.tsx
-msgid "When a meeting is transcribed live on this Mac, transcribe the saved recording again after it ends to tell apart the people heard through your computer. Needs saved audio and Parakeet Batch or Apple Speech, and takes a few minutes after each meeting."
-msgstr "When a meeting is transcribed live on this Mac, transcribe the saved recording again after it ends to tell apart the people heard through your computer. Needs saved audio and Parakeet Batch or Apple Speech, and takes a few minutes after each meeting."
+msgid "When a meeting is transcribed live on this Mac, tell apart the people who shared your microphone or your computer's audio once it ends. Needs saved audio and takes a few minutes after each meeting."
+msgstr "When a meeting is transcribed live on this Mac, tell apart the people who shared your microphone or your computer's audio once it ends. Needs saved audio and takes a few minutes after each meeting."
 
 #: src/settings/ai/stt/index.tsx
 msgid "When it transcribes"

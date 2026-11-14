@@ -421,6 +421,38 @@ describe("useRunBatch", () => {
     expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
   });
 
+  test("separates the voices of the live words on the recording's clock without a batch model", async () => {
+    const { result } = renderHook(() => useRunBatch("session-1"));
+
+    await act(async () => {
+      await result.current("/tmp/session.wav", {
+        provider: "local_diarization",
+        model: "local-diarization",
+        baseUrl: "",
+        apiKey: "",
+        diarizeWords: [
+          { id: "w1", text: " Hello", start_ms: 0, end_ms: 400, channel: 0 },
+          { id: "w2", text: " there", start_ms: 400, end_ms: 900, channel: 0 },
+        ],
+        promotion: {
+          scope: "current_capture",
+          audioOffsetMs: 60_000,
+          replaceTranscriptId: "live",
+          startedAt: 1000,
+        },
+      });
+    });
+
+    expect(startTranscriptionMock.mock.calls[0]?.[0]).toMatchObject({
+      provider: "local_diarization",
+      diarize_words: [
+        { word: " Hello", start: 60, end: 60.4, channel: 0, speaker: null },
+        { word: " there", start: 60.4, end: 60.9, channel: 0, speaker: null },
+      ],
+    });
+    expect(toastWarningMock).not.toHaveBeenCalled();
+  });
+
   test("repairs a chunk separately from live capture and waits for its database commit", async () => {
     startTranscriptionMock.mockImplementation(async (_params, options) => {
       options.handlePersist(

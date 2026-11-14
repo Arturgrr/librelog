@@ -65,6 +65,8 @@ import type {
 } from "~/store/zustand/listener/transcript";
 import {
   getSpeakerRefinementTarget,
+  LOCAL_DIARIZATION_TARGET,
+  shouldRefineSpeakers,
   getTranscriptionLanguages,
   requiresRetainedBatchAudio,
 } from "~/stt/capabilities";
@@ -315,10 +317,10 @@ export function useCaptureLifecycle(sessionId: string) {
         new Set(
           humanIds.filter((humanId) => humanId && humanId !== ownerUserId),
         ).size;
-      // A local live engine labels words by channel only, so every remote
-      // voice shares one speaker until a batch pass over the retained
-      // recording separates them. One known remote participant already names
-      // the far end, and splitting a single voice would only add noise.
+      // A local live engine labels words by channel only, so the voices that
+      // share a channel (everyone on the far end, or everyone in the room)
+      // stay one speaker until a pass over the retained recording separates
+      // them.
       const speakerRefinementTarget = () => {
         const { enabled, parakeetBatchDownloaded, languages } =
           speakerRefinementRef.current;
@@ -353,17 +355,13 @@ export function useCaptureLifecycle(sessionId: string) {
             () => participantHumanIds,
           ),
         );
-        if (remoteParticipants === 1) return null;
         const words =
           (await getTranscriptRecord(transcriptId).catch(() => null))?.words ??
           [];
-        // Without listed participants only speech on the system-audio channel
-        // shows there was a far end to separate; a memo has none.
-        const hasSpeech =
-          remoteParticipants > 1
-            ? words.length > 0
-            : words.some((word) => word.channel === 1);
-        return hasSpeech ? target : null;
+        if (!shouldRefineSpeakers(words, remoteParticipants)) return null;
+        return target.provider === LOCAL_DIARIZATION_TARGET.provider
+          ? { ...target, diarizeWords: words }
+          : target;
       };
       let pendingSummaryMode = recoveredMarker?.summaryMode;
       const refreshSummaryAfterRepair =
@@ -1258,7 +1256,6 @@ export function useCaptureLifecycle(sessionId: string) {
         const mayRefineSpeakers =
           details.liveTranscriptionActive &&
           !details.needsBatchRepair &&
-          remoteParticipantCount(participantHumanIds) !== 1 &&
           speakerRefinementTarget() !== null;
         if (
           (!usesChunkedAudio || batchFromRetainedAudio || mayRefineSpeakers) &&
