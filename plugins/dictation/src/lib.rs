@@ -51,7 +51,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             app.manage(Handler::new(app.clone()));
             app.manage(Recorder::new());
             match app.path().app_data_dir() {
-                Ok(directory) => anlg_recording_environment::recover(directory),
+                Ok(directory) => {
+                    #[cfg(target_os = "linux")]
+                    insertion::set_data_dir(directory.clone());
+                    anlg_recording_environment::recover(directory)
+                }
                 Err(error) => {
                     tracing::warn!(%error, "dictation cannot restore audio a previous run left quiet")
                 }

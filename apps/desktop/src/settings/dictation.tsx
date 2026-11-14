@@ -194,8 +194,10 @@ export function SettingsDictation() {
               On Wayland, your desktop asks you to approve the shortcuts and may
               let you choose other keys; change them later in its keyboard
               settings. Use Control + Alt + Escape to cancel. On X11, press
-              Escape to cancel. The target app must expose an editable
-              accessibility field.
+              Escape to cancel. Where a field doesn't take text through
+              accessibility, Librelog pastes it through the clipboard; on
+              Wayland your desktop asks once to allow Librelog to control the
+              keyboard for that.
             </Trans>
           ) : (
             <Trans>

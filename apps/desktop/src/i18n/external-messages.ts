@@ -36,6 +36,12 @@ export function localizeExternalMessage(message: string): string {
       return t`Clear the text selection before dictating, or copy your last dictation to replace it.`;
     case "Dictation is unavailable in password fields.":
       return t`Dictation is unavailable in password fields.`;
+    case "Your dictation is on the clipboard. Press Control+V to paste it.":
+      return t`Your dictation is on the clipboard. Press Control+V to paste it.`;
+    case "Your dictation is on the clipboard. Press Control+Shift+V to paste it.":
+      return t`Your dictation is on the clipboard. Press Control+Shift+V to paste it.`;
+    case "Could not put your dictation on the clipboard. Copy your last dictation from Settings > Dictation.":
+      return t`Could not put your dictation on the clipboard. Copy your last dictation from Settings > Dictation.`;
     case "This field does not expose whether it is editable. Copy your last dictation from Settings > Dictation.":
       return t`This field does not expose whether it is editable. Copy your last dictation from Settings > Dictation.`;
     case "This text field does not expose an accessibility identity.":

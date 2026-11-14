@@ -14,6 +14,8 @@
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::set_data_dir;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -29,7 +31,9 @@ static LANE: Mutex<()> = Mutex::const_new(());
 /// then so the next one never replaces the text first, but no longer than
 /// this, for an app that ignores the paste. It returns only afterwards, so a
 /// dictation that waits for a capture to end checks right before its own
-/// turn. Elsewhere text is typed or set in place, in order.
+/// turn. Linux pastes the same way when AT-SPI cannot set the text, and
+/// restores the clipboard before its insertion returns. Elsewhere text is
+/// typed or set in place, in order.
 const PASTE_READ_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Fails when text could not go where the focus is now; passes without

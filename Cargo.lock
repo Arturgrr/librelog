@@ -367,6 +367,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.2",
  "serde",
+ "serde_repr",
  "tokio",
  "zbus",
 ]
@@ -12873,8 +12874,11 @@ dependencies = [
 name = "tauri-plugin-dictation"
 version = "0.1.0"
 dependencies = [
+ "arboard",
+ "ashpd",
  "atspi",
  "audio",
+ "desktop-portal",
  "dictation-ui-macos",
  "futures-util",
  "hound",
@@ -12899,6 +12903,7 @@ dependencies = [
  "tracing",
  "url",
  "windows 0.62.2",
+ "x11rb",
 ]
 
 [[package]]
