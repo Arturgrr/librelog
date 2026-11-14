@@ -12705,9 +12705,13 @@ name = "tauri-plugin-capture"
 version = "0.1.0"
 dependencies = [
  "annotate-macos",
+ "ashpd",
  "base64 0.22.1",
  "capture-core",
+ "futures-util",
+ "gif 0.14.2",
  "image",
+ "libc",
  "objc2-foundation",
  "plist",
  "serde",
@@ -12722,6 +12726,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "url",
+ "x11rb",
 ]
 
 [[package]]

@@ -18,7 +18,7 @@ anlg-annotate-macos = { workspace = true }
 anlg-capture-core = { workspace = true }
 
 base64 = { workspace = true }
-image = { workspace = true, features = ["jpeg", "png"] }
+image = { workspace = true, features = ["gif", "jpeg", "png"] }
 plist = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -36,6 +36,16 @@ default = []
 # Turning macOS's own screenshot shortcuts off runs `defaults import`; only
 # for builds outside the App Store.
 system-shortcuts = []
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The card and area windows load files from the captures folder.
+tauri = { workspace = true, features = ["protocol-asset"] }
+ashpd = { workspace = true, features = ["screencast", "screenshot", "tokio"] }
+futures-util = { workspace = true }
+gif = "0.14"
+libc = "0.2"
+url = { workspace = true }
+x11rb = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { workspace = true, features = ["NSError", "NSFileManager", "NSString", "NSURL"] }

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-card-hovered"
+description = "Enables the card_hovered command without any pre-configured scope."
+commands.allow = ["card_hovered"]
+
+[[permission]]
+identifier = "deny-card-hovered"
+description = "Denies the card_hovered command without any pre-configured scope."
+commands.deny = ["card_hovered"]

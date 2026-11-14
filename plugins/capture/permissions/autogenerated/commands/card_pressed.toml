@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-card-pressed"
+description = "Enables the card_pressed command without any pre-configured scope."
+commands.allow = ["card_pressed"]
+
+[[permission]]
+identifier = "deny-card-pressed"
+description = "Denies the card_pressed command without any pre-configured scope."
+commands.deny = ["card_pressed"]

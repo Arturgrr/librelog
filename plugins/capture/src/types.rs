@@ -232,7 +232,7 @@ pub enum CapturePhase {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureStatus {
-    /// False off macOS, where nothing captures.
+    /// False where nothing captures (Windows).
     pub available: bool,
     pub phase: CapturePhase,
     /// How long the recording has run; 0 otherwise.
@@ -251,4 +251,81 @@ pub struct SystemShortcuts {
     pub options: bool,
     /// Librelog turned them off and remembers how they were.
     pub replaced: bool,
+}
+
+/// A card's words in the app's language.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CardLabels {
+    pub copy: String,
+    pub save: String,
+    /// Shows a saved capture in the file manager.
+    pub show: String,
+    pub edit: String,
+    pub close: String,
+}
+
+/// A card in the Linux card window.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureCard {
+    pub id: String,
+    /// `screenshot`, `video` or `gif`.
+    pub kind: String,
+    /// Empty when there is none.
+    pub thumbnail_path: String,
+    /// In the user's folder (its button shows it), not only the library.
+    pub saved: bool,
+    pub duration_ms: u64,
+}
+
+/// The cards up on Linux, newest first: what the card window shows. Sent
+/// whenever it changes.
+#[derive(
+    Clone, Debug, Default, PartialEq, Serialize, Deserialize, specta::Type, tauri_specta::Event,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureCards {
+    pub cards: Vec<CaptureCard>,
+    pub labels: CardLabels,
+}
+
+/// Pixels of the area selector's picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AreaRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// What the Linux area selector shows: the frozen picture of every
+/// monitor, the part of it under the selector's own monitor, and the hint.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AreaFrame {
+    pub image_path: String,
+    pub image_width: u32,
+    pub image_height: u32,
+    pub region: AreaRect,
+    pub hint: String,
+}
+
+/// What the user did in the Linux area selector. An area is in the
+/// picture's pixels.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AreaChoice {
+    Area {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+    /// The whole screen.
+    Whole,
+    /// A window instead, picked in the desktop's dialog.
+    Window,
+    Cancel,
 }

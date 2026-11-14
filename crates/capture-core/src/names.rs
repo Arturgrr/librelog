@@ -128,6 +128,16 @@ impl FileName {
         }
     }
 
+    /// A movie named for its own file: `.webm` (what the Linux recorder
+    /// writes when no H.264 encoder is installed) stays `.webm`; anything
+    /// else is `.mp4`.
+    pub fn movie(at: Stamp, movie: &Path) -> Self {
+        Self {
+            extension: movie_extension(movie),
+            ..Self::recording(at, false)
+        }
+    }
+
     /// A movie a quit or crash left unnamed: `… (recovered).mp4`.
     pub fn recovered(at: Stamp) -> Self {
         Self {
@@ -136,9 +146,32 @@ impl FileName {
         }
     }
 
+    /// [`FileName::recovered`] for the movie at `movie`, keeping `.webm`.
+    pub fn recovered_movie(at: Stamp, movie: &Path) -> Self {
+        Self {
+            extension: movie_extension(movie),
+            ..Self::recovered(at)
+        }
+    }
+
     /// The name for the `copy`th capture with this name (1 is the first).
     pub fn nth(&self, copy: u32) -> String {
         name_with(self.stem, self.suffix, self.extension, self.at, copy)
+    }
+}
+
+/// The movie extensions Capture writes: `webm` or `mp4`.
+pub const MOVIE_EXTENSIONS: [&str; 2] = ["mp4", "webm"];
+
+fn movie_extension(movie: &Path) -> &'static str {
+    match movie
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("webm") => "webm",
+        _ => "mp4",
     }
 }
 
@@ -226,6 +259,21 @@ mod tests {
         assert_eq!(
             moved.file_name().unwrap(),
             "Librelog Screenshot 2026-11-04 at 14.03.22 (2).jpg"
+        );
+    }
+
+    #[test]
+    fn a_webm_movie_keeps_its_extension_when_named_or_recovered() {
+        let webm = Path::new("/x/.capture-1.webm");
+        let mp4 = Path::new("/x/.capture-1.mp4");
+        assert_eq!(
+            FileName::movie(AT, webm).nth(1),
+            "Librelog Recording 2026-11-04 at 14.03.22.webm"
+        );
+        assert_eq!(FileName::movie(AT, mp4), FileName::recording(AT, false));
+        assert_eq!(
+            FileName::recovered_movie(AT, webm).nth(2),
+            "Librelog Recording 2026-11-04 at 14.03.22 (recovered) (2).webm"
         );
     }
 }
