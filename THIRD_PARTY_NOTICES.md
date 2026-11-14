@@ -40,7 +40,7 @@ transcribe.cpp's crates carry `THIRD-PARTY-LICENSES.md` with the ggml, miniz and
 
 ### llama.cpp server
 
-The macOS Apple silicon build outside the App Store bundles `librelog-llama-server`, the `llama-server` program of [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) at tag `b12110` (v0.9.0, `cd959bae`), built unmodified and statically linked by `cargo xtask prepare-binaries` (`crates/xtask/src/llama_server.rs`) without the web UI, RPC, HTTPS or subprocess support. It runs the built-in language models. It contains this code, whose license texts are in `licenses/llama.cpp/`:
+The macOS Apple silicon build outside the App Store and the Linux x86_64 build bundle `librelog-llama-server`, the `llama-server` program of [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) at tag `b12110` (v0.9.0, `cd959bae`), built unmodified and statically linked by `cargo xtask prepare-binaries` (`crates/xtask/src/llama_server.rs`) without the web UI, RPC, HTTPS or subprocess support; the Linux build adds ggml's Vulkan backend and links the system's Vulkan loader. It runs the built-in language models. It contains this code, whose license texts are in `licenses/llama.cpp/`:
 
 | Material | License | License file |
 | --- | --- | --- |
@@ -52,6 +52,7 @@ The macOS Apple silicon build outside the App Store bundles `librelog-llama-serv
 | SHA-1 in C by Steve Reid; SHA-256 by Igor Pavlov | Public domain | `licenses/llama.cpp/sha1-LICENSE`, `licenses/llama.cpp/sha256-LICENSE` |
 | stb_image 2.30, Copyright (c) 2017 Sean Barrett | MIT or public domain | `licenses/llama.cpp/stb_image-LICENSE` |
 | miniaudio 0.11.26, Copyright 2026 David Reid | Public domain or MIT-0 | `licenses/llama.cpp/miniaudio-LICENSE` |
+| Vulkan-Hpp, Copyright 2015-2024 The Khronos Group Inc. (Linux build only) | Apache-2.0 or MIT | `licenses/MIT.txt` |
 
 llama.cpp's `common/base64.hpp` is public domain (notice in the file).
 

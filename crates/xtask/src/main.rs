@@ -17,6 +17,7 @@ fn main() -> Result<()> {
 
     match args.first().map(String::as_str) {
         Some("prepare-binaries") => prepare_binaries::prepare_binaries(),
+        Some("prepare-llama-server") => prepare_binaries::prepare_llama_server(),
         None => {
             print_help();
             Ok(())
@@ -26,7 +27,9 @@ fn main() -> Result<()> {
 }
 
 fn print_help() {
-    println!("xtask\n\nUSAGE:\n    cargo xtask prepare-binaries\n");
+    println!(
+        "xtask\n\nUSAGE:\n    cargo xtask prepare-binaries\n    cargo xtask prepare-llama-server\n"
+    );
 }
 
 pub(crate) fn repo_root() -> PathBuf {
