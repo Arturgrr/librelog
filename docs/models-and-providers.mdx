@@ -97,16 +97,18 @@ Local models use Metal on Apple Silicon and Vulkan on Windows and Linux. The pro
 
 ### Speakers after a live on-device meeting
 
-During the meeting, Parakeet Streaming and Apple Speech label words only by where they came from: your microphone, or your computer's audio. Everyone you hear through the computer shares one speaker until the meeting ends. When you stop, Librelog transcribes the saved recording again on this Mac and separates the voices on the computer-audio channel:
+During the meeting, Parakeet Streaming and Apple Speech label words only by where they came from: your microphone, or your computer's audio. Everyone you hear through the computer shares one speaker, and everyone in the room with you shares your microphone, until the meeting ends. Voices are never separated live. When you stop, Librelog separates them on this Mac from the saved recording:
 
-- If **Parakeet Batch** is downloaded and supports the meeting's language, Librelog uses it. With Apple Speech and no usable Parakeet Batch, Apple Speech transcribes the recording again.
-- Parakeet Streaming cannot separate speakers by itself. Librelog never downloads Parakeet Batch for this on its own; it shows a hint next to the transcript instead.
+- If **Parakeet Batch** is downloaded and supports the meeting's language, Librelog transcribes the recording again with it. With Apple Speech and no usable Parakeet Batch, Apple Speech transcribes it again.
+- Otherwise, including with Parakeet Streaming alone, the bundled speaker model labels the live transcript's words without transcribing again. Nothing is downloaded for this.
 - The recording must be kept. With **Audio file retention** set to **Don't save**, voices are not separated.
-- It runs when the meeting lists no participants besides you, or two or more. With exactly one other participant, the far end stays one speaker named after that person. Without listed participants, a recording with no speech from the computer's audio, such as a memo, is skipped.
+- **In person.** When your microphone heard speech and your computer's audio stayed silent (a few seconds of stray sound still count as silent), the people sharing your microphone are separated into **Speaker 1**, **Speaker 2**, and so on, however many participants the note lists. If only one voice is found, as in a memo or a meeting where only you spoke, your words stay yours.
+- **On a call.** The voices heard through your computer are separated when the meeting lists no participants besides you, or two or more. With exactly one other participant, the far end stays one speaker named after that person. Your microphone stays yours.
 - The transcript shows **Separating speakers...** while it runs, and the summary is written from the result. If you stop it, start another recording, or it fails, the live transcript stays as it was.
-- Your microphone channel is only split for an in-person meeting that has no computer audio and lists two or more other participants.
 
-The new transcript replaces the live one for that recording. Speakers you named during the meeting keep their names where the words line up. Turn this off under **Settings → Meetings → Separate speakers after meetings** if you prefer not to spend the extra minutes and processing after each meeting.
+The new transcript replaces the live one for that recording. Speakers you named during the meeting keep their names where the words line up. Turn this off under **Settings → Meetings → Separate speakers after meetings** if you prefer not to spend the extra processing after each meeting.
+
+For a note recorded before this worked, right-click **Transcript** and choose **Re-transcribe**. An in-person recording is separated the same way when the model keeps your microphone and your computer's audio apart, as Parakeet Batch and Apple Speech do.
 
 ## Other model-backed features
 
