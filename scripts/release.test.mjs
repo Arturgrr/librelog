@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
 
 import {
+  linuxPackageVersion,
   releaseNotes,
   resolveReleaseVersion,
   updaterManifest,
+  verifyUpdaterSignature,
 } from "./release.mjs";
 
 test("release versions come from the app on main or from the input", () => {
@@ -70,7 +73,7 @@ test("release versions come from the app on main or from the input", () => {
   );
 });
 
-test("release notes explain the macOS 15 first launch and include the changelog", () => {
+test("release notes explain the macOS 15 first launch, list the Linux packages and include the changelog", () => {
   const notes = releaseNotes({
     version: "0.1.0-beta.1",
     repository: "Arturgrr/librelog",
@@ -86,6 +89,15 @@ test("release notes explain the macOS 15 first launch and include the changelog"
   assert.doesNotMatch(notes, /right-click/i);
   assert.match(
     notes,
+    /sudo dnf install \.\/Librelog-0\.1\.0-beta\.1-1\.x86_64\.rpm/,
+  );
+  assert.match(
+    notes,
+    /sudo apt install \.\/Librelog_0\.1\.0-beta\.1_amd64\.deb/,
+  );
+  assert.match(notes, /Librelog_0\.1\.0-beta\.1_amd64\.AppImage/);
+  assert.match(
+    notes,
     /## What's new\n\n> \[!NOTE\]\n> \*\*Welcome\*\*\n>\n> Line one\.\n>\n> Line two\.\n\n## Hello\n$/,
   );
   assert.doesNotMatch(notes, /summary:|<banner/);
@@ -95,26 +107,41 @@ test("release notes explain the macOS 15 first launch and include the changelog"
   );
 });
 
-test("the updater manifest points Apple silicon Macs at the public download URL", () => {
+const manifestAssets = [
+  { name: "Librelog_0.1.0-beta.1_aarch64.dmg" },
+  { name: "Librelog_0.1.0-beta.1_aarch64.app.tar.gz" },
+  {
+    name: "Librelog_0.1.0-beta.1_aarch64.app.tar.gz.sig",
+    content: "arm-signature\n",
+  },
+  { name: "Librelog_0.1.0-beta.1_amd64.AppImage" },
+  {
+    name: "Librelog_0.1.0-beta.1_amd64.AppImage.sig",
+    content: "appimage-signature\n",
+  },
+  { name: "Librelog_0.1.0-beta.1_amd64.deb" },
+  { name: "Librelog-0.1.0-beta.1-1.x86_64.rpm" },
+];
+
+test("the updater manifest updates Macs and AppImages but leaves RPM and deb installs to the release page", () => {
   const manifest = updaterManifest({
     version: "0.1.0-beta.1",
     notes: "notes",
     pubDate: "2026-11-06T00:00:00.000Z",
     repository: "Arturgrr/librelog",
     tag: "desktop_v0.1.0-beta.1",
-    assets: [
-      { name: "Librelog_0.1.0-beta.1_aarch64.dmg" },
-      { name: "Librelog_0.1.0-beta.1_aarch64.app.tar.gz" },
-      {
-        name: "Librelog_0.1.0-beta.1_aarch64.app.tar.gz.sig",
-        content: "arm-signature\n",
-      },
-    ],
+    assets: manifestAssets,
   });
 
+  const download =
+    "https://github.com/Arturgrr/librelog/releases/download/desktop_v0.1.0-beta.1";
   const arm = {
     signature: "arm-signature",
-    url: "https://github.com/Arturgrr/librelog/releases/download/desktop_v0.1.0-beta.1/Librelog_0.1.0-beta.1_aarch64.app.tar.gz",
+    url: `${download}/Librelog_0.1.0-beta.1_aarch64.app.tar.gz`,
+  };
+  const appImage = {
+    signature: "appimage-signature",
+    url: `${download}/Librelog_0.1.0-beta.1_amd64.AppImage`,
   };
   assert.deepEqual(manifest, {
     version: "0.1.0-beta.1",
@@ -123,11 +150,13 @@ test("the updater manifest points Apple silicon Macs at the public download URL"
     platforms: {
       "darwin-aarch64": arm,
       "darwin-aarch64-app": arm,
+      "linux-x86_64": appImage,
+      "linux-x86_64-appimage": appImage,
     },
   });
 });
 
-test("the updater manifest refuses to publish without a signed archive", () => {
+test("the updater manifest refuses to publish without every signed artifact", () => {
   const base = {
     version: "0.1.0-beta.1",
     notes: "",
@@ -135,20 +164,70 @@ test("the updater manifest refuses to publish without a signed archive", () => {
     repository: "a/b",
     tag: "t",
   };
+  const without = (pattern) =>
+    manifestAssets.filter((asset) => !pattern.test(asset.name));
   assert.throws(
-    () =>
-      updaterManifest({
-        ...base,
-        assets: [{ name: "L_aarch64.dmg" }],
-      }),
+    () => updaterManifest({ ...base, assets: without(/app\.tar\.gz/) }),
     /aarch64 updater archive/,
   );
   assert.throws(
+    () => updaterManifest({ ...base, assets: without(/app\.tar\.gz\.sig$/) }),
+    /signature for Librelog_0\.1\.0-beta\.1_aarch64/,
+  );
+  assert.throws(
+    () => updaterManifest({ ...base, assets: without(/AppImage/) }),
+    /x86_64 AppImage/,
+  );
+  assert.throws(
+    () => updaterManifest({ ...base, assets: without(/AppImage\.sig$/) }),
+    /signature for Librelog_0\.1\.0-beta\.1_amd64\.AppImage/,
+  );
+});
+
+test("Linux packages order a beta before its final release", () => {
+  assert.equal(linuxPackageVersion("0.8.1-beta.1"), "0.8.1~beta.1");
+  assert.equal(linuxPackageVersion("0.8.1"), "0.8.1");
+});
+
+test("a repacked AppImage must carry a signature the updater accepts", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const keyId = Buffer.from("0123456789abcdef", "hex");
+  const rawPublicKey = Buffer.from(
+    publicKey.export({ format: "jwk" }).x,
+    "base64url",
+  );
+  const minisign = (lines) =>
+    Buffer.from(`${lines.join("\n")}\n`).toString("base64");
+  const data = Buffer.from("AppImage bytes");
+  const fileSignature = sign(
+    null,
+    createHash("blake2b512").update(data).digest(),
+    privateKey,
+  );
+  const trustedComment = "timestamp:1\tfile:Librelog.AppImage";
+  const signature = minisign([
+    "untrusted comment: signature from tauri secret key",
+    Buffer.concat([Buffer.from("ED"), keyId, fileSignature]).toString("base64"),
+    `trusted comment: ${trustedComment}`,
+    sign(
+      null,
+      Buffer.concat([fileSignature, Buffer.from(trustedComment)]),
+      privateKey,
+    ).toString("base64"),
+  ]);
+  const key = minisign([
+    "untrusted comment: minisign public key",
+    Buffer.concat([Buffer.from("Ed"), keyId, rawPublicKey]).toString("base64"),
+  ]);
+
+  verifyUpdaterSignature({ data, signature, publicKey: key });
+  assert.throws(
     () =>
-      updaterManifest({
-        ...base,
-        assets: [{ name: "L_aarch64.app.tar.gz" }],
+      verifyUpdaterSignature({
+        data: Buffer.from("repacked without signing"),
+        signature,
+        publicKey: key,
       }),
-    /signature for L_aarch64/,
+    /does not match/,
   );
 });

@@ -153,8 +153,8 @@ jobs:
           tauriScript: pnpm tauri
           args: --target ${{ matrix.target }} --config src-tauri/tauri.conf.stable.json
           releaseId: ${{ needs.draft.outputs.release_id }}
-          # The publish job writes latest.json once both builds finish;
-          # per-job writes race and can drop an architecture.
+          # The publish job writes latest.json once every build finishes;
+          # per-job writes race and can drop a platform.
           uploadUpdaterJson: false
 
       - env:
@@ -168,9 +168,83 @@ jobs:
       - if: always()
         run: scripts/macos-signing-keychain.sh cleanup
 
+  # Builds the RPM, AppImage and deb on Ubuntu 24.04 (glibc 2.39 is their
+  # floor), installs and launches each in a clean Fedora or Ubuntu container,
+  # then uploads them with the AppImage's updater signature. RPM and deb
+  # installs do not update themselves, so their packages carry no signature.
+  build-linux:
+    name: Build Linux (x86_64-unknown-linux-gnu)
+    needs: draft
+    if: needs.draft.outputs.release_id != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: release
+    permissions:
+      contents: write # upload release assets
+    env:
+      # The workspace target directory is the one the Rust cache saves.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      # The bundled CLI reports this version.
+      - env:
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: $/.github/actions/install_desktop_deps
+        with:
+          target: linux
+      - uses: $/.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          cache-key: linux-bundle
+      - uses: $/.github/actions/pnpm_install
+      - run: pnpm -F @anlg/ui build
+
+      - env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set"; exit 1; }
+          scripts/linux-bundles.sh build
+      - env:
+          REQUIRE_SIGNATURE: "1"
+        run: scripts/linux-bundles.sh verify
+      - run: scripts/linux-bundles.sh smoke
+
+      # A rerun replaces the assets an earlier attempt uploaded.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.draft.outputs.release_id }}
+        run: |
+          mapfile -t files < <(scripts/linux-bundles.sh assets)
+          [[ ${#files[@]} -eq 4 ]] || { echo "::error::Expected 4 Linux assets, found ${#files[@]}"; exit 1; }
+          release="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          existing="$(gh api --paginate "$release/assets" --jq '.[] | "\(.id) \(.name)"')"
+          for file in "${files[@]}"; do
+            name="$(basename "$file")"
+            while read -r id asset; do
+              if [[ "$asset" == "$name" ]]; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id"
+              fi
+            done <<<"$existing"
+            gh api -X POST -H "Content-Type: application/octet-stream" \
+              "https://uploads.github.com/$release/assets?name=$name" \
+              --input "$file" > /dev/null
+          done
+
+  # Publishes only when every platform built: a failed build leaves the
+  # release a draft, and re-running the failed jobs finishes it.
   publish:
     name: Publish the release
-    needs: [draft, build-macos]
+    needs: [draft, build-macos, build-linux]
     if: needs.draft.outputs.release_id != ''
     runs-on: ubuntu-24.04
     permissions:
