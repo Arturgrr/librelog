@@ -104,18 +104,23 @@ env:
   # dependency whose macOS behaviour the tests reach (local transcription,
   # capture, the app's macOS plugins). macos_ci tests them; linux_ci skips them.
   MACOS_TESTS: >-
-    afconvert annotate-macos apple-todo audio-actual audio-norm detect
-    dictation-ui-macos listener-core listener2-core local-model local-stt-core
-    notification overlay-kit owhisper-client recording-environment shortcut-macos
-    tauri-plugin-anlg-tray tauri-plugin-dictation tauri-plugin-dock
-    tauri-plugin-shortcut tauri-plugin-todo tauri-plugin-transcription
-    transcribe-soniqo transcribe-speechanalyzer transcription-core
+    afconvert annotate-macos apple-todo audio-norm dictation-ui-macos
+    listener-core listener2-core local-model notification overlay-kit
+    owhisper-client shortcut-macos tauri-plugin-dock tauri-plugin-todo
+    tauri-plugin-transcription transcribe-soniqo transcribe-speechanalyzer
+    transcription-core
   # Tested by both macos_ci and linux_ci: transcribe-gguf builds transcribe.cpp
   # with Metal on macOS, and with Vulkan and a driver fingerprint on Linux.
   # macos_ci builds that Metal engine for the app anyway, so its tests add
   # little there. local-llm starts, stops and reaps server processes, which
-  # macOS and Linux handle differently.
-  MACOS_AND_LINUX_TESTS: transcribe-gguf local-llm
+  # macOS and Linux handle differently. The others have Linux code (PipeWire
+  # and PulseAudio capture, AT-SPI and PulseAudio detection, pactl and MPRIS,
+  # the shortcuts portal, Linux dictation insertion, the tray) whose tests use
+  # fakes, mocks or pure functions, so they need no audio device or display.
+  MACOS_AND_LINUX_TESTS: >-
+    transcribe-gguf local-llm audio-actual detect local-stt-core
+    recording-environment tauri-plugin-anlg-tray tauri-plugin-dictation
+    tauri-plugin-shortcut
   # Tested by cli_ci, whose paths cover them and their workspace dependencies.
   CLI_TESTS: agent-access db-app db-migrate librelog-cli tiptap
   # Built here but never tested here, as before.
@@ -382,10 +387,12 @@ jobs:
       - uses: $/.github/actions/install_desktop_deps
         with:
           target: linux
+      # desktop-v3: linux_ci also tests the crates moved to
+      # MACOS_AND_LINUX_TESTS.
       - uses: $/.github/actions/rust_install
         with:
           platform: linux-x86_64
-          cache-key: desktop-v2
+          cache-key: desktop-v3
       # The built-in model server's end-to-end tests
       # (crates/local-llm/tests/llama_server.rs) run in the next step against
       # llama.cpp's own Ubuntu build and a 1 MB model, both pinned by SHA-256.
