@@ -2,6 +2,7 @@ import { t } from "@lingui/core/macro";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
+import { commands as openerCommands } from "@anlg/plugin-opener2";
 import {
   commands as updaterCommands,
   events as updaterEvents,
@@ -10,6 +11,8 @@ import {
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { isAppStoreBuild } from "~/shared/app-store";
+import { releaseUrl } from "~/shared/links";
+import { canSelfUpdate } from "~/shared/self-update";
 import { useDevtoolsOtaPreview } from "~/store/zustand/devtools-ota-preview";
 
 type UpdateBannerStatus = "available" | "downloading" | "ready" | "failed";
@@ -273,6 +276,12 @@ export function useDesktopUpdateControl(): DesktopUpdateControl {
     },
   });
 
+  const { mutate: openReleasePage } = useMutation({
+    mutationFn: async (version: string) => {
+      unwrapResult(await openerCommands.openUrl(releaseUrl(version), null));
+    },
+  });
+
   const { mutate: installUpdate, isPending: installing } = useMutation({
     mutationFn: async (version: string) => {
       unwrapResult(await updaterCommands.installAndRelaunch(version));
@@ -307,8 +316,13 @@ export function useDesktopUpdateControl(): DesktopUpdateControl {
     if (!version) {
       return;
     }
+    // RPM and deb installs update through their package, from the release page.
+    if (!canSelfUpdate()) {
+      openReleasePage(version);
+      return;
+    }
     downloadUpdate(version);
-  }, [downloadUpdate, version]);
+  }, [downloadUpdate, openReleasePage, version]);
 
   const handleInstall = useCallback(() => {
     if (!version) {

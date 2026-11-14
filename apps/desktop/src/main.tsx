@@ -40,6 +40,7 @@ import { useConfigValue } from "./shared/config";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
 import { LongLoadGate } from "./shared/long-load-gate";
 import { startInteractionProfiler } from "./shared/perf/interaction-profiler";
+import { initializeSelfUpdate } from "./shared/self-update";
 import { bootstrapThemeFromSettings } from "./shared/theme/apply";
 import { AppThemeProvider } from "./shared/theme/provider";
 import type { ThemePreference } from "./shared/theme/resolve";
@@ -139,7 +140,11 @@ async function renderApp() {
     startInteractionProfiler();
   }
 
-  await Promise.all([bootstrapThemeFromSettings(), initializeAppStoreBuild()]);
+  await Promise.all([
+    bootstrapThemeFromSettings(),
+    initializeAppStoreBuild(),
+    initializeSelfUpdate(),
+  ]);
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>

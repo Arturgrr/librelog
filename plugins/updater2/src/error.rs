@@ -20,6 +20,8 @@ pub enum Error {
     VersionMismatch { expected: String, actual: String },
     #[error("cached update {version} is not newer than current {current}")]
     UpdateNotNewer { version: String, current: String },
+    #[error("this installation updates through its package, not in place")]
+    SelfUpdateUnsupported,
 }
 
 impl Serialize for Error {
