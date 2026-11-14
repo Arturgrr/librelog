@@ -351,6 +351,7 @@ function transformBatch(
   const allWords: WordLike[] = [];
   const allHints: RuntimeSpeakerHint[] = [];
   let wordOffset = 0;
+  const sharedMic = isSharedMicResponse(response);
 
   response.results.channels.forEach((channel, channelIndex) => {
     const alternative = channel.alternatives[0];
@@ -385,10 +386,16 @@ function transformBatch(
       channelIndex,
       { timingSource },
     );
-    const words = transformedWords.map((word, index) => ({
-      ...word,
-      metadata: wordEntries[index]?.metadata ?? word.metadata,
-    }));
+    const words = transformedWords.map((word, index) => {
+      const metadata = wordEntries[index]?.metadata ?? word.metadata;
+      return {
+        ...word,
+        metadata:
+          sharedMic && word.channel === SHARED_MIC_CHANNEL
+            ? { ...metadata, shared_mic: true }
+            : metadata,
+      };
+    });
 
     hints.forEach((hint) => {
       allHints.push({
@@ -796,6 +803,25 @@ function getBatchResponseTimingSource(response: {
   }
 
   return getValidTimingSource(record.timing_source);
+}
+
+const SHARED_MIC_CHANNEL = 2;
+
+// The diarizer moved the mic of an in-person meeting to the mixed channel.
+// Marking those words keeps a later save from restoring them to the mic,
+// where they would all render as the owner again.
+function isSharedMicResponse(response: BatchResponse) {
+  const metadata = response.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+  const { diarization, shared_mic } = metadata as Record<string, unknown>;
+  return (
+    shared_mic === true ||
+    (typeof diarization === "object" &&
+      diarization !== null &&
+      (diarization as Record<string, unknown>).shared_mic === true)
+  );
 }
 
 function getBatchDurationSeconds(response: BatchResponse): number | undefined {

@@ -495,6 +495,9 @@ fn restore_refined_cluster_channels(
     let mut cursor = 0;
 
     for word in targets {
+        if is_shared_mic_word(word) {
+            continue;
+        }
         let Some(speaker) = speakers
             .get(&word.id)
             .filter(|speaker| speaker.channel == 2.0)
@@ -557,6 +560,7 @@ fn restore_refined_cluster_channels(
     }
     for word in &mut words {
         if word.channel == Some(2.0)
+            && !is_shared_mic_word(word)
             && let Some(speaker) = speakers.get(&word.id)
             && let Some(Some(channel)) = channels.get(&speaker.key)
         {
@@ -585,7 +589,7 @@ fn restore_refined_source_channels(
     replacement
         .into_iter()
         .map(|mut word| {
-            if word.channel != Some(2.0) {
+            if word.channel != Some(2.0) || is_shared_mic_word(&word) {
                 return word;
             }
 
@@ -631,6 +635,16 @@ fn restore_refined_source_channels(
             word
         })
         .collect()
+}
+
+/// The mic of an in-person meeting, moved to the mixed channel because
+/// several people spoke into it. Its text matches the mic words it replaces,
+/// so restoring the source channel would fold everyone back into the owner.
+fn is_shared_mic_word(word: &StoredTranscriptWord) -> bool {
+    word.metadata
+        .as_ref()
+        .and_then(parse_hint_value_for_render)
+        .is_some_and(|metadata| metadata.get("shared_mic").and_then(Value::as_bool) == Some(true))
 }
 
 fn restore_refined_source_hints(
@@ -2107,6 +2121,55 @@ mod tests {
             result.iter().map(|word| word.channel).collect::<Vec<_>>(),
             [Some(0.0), Some(1.0)]
         );
+    }
+
+    #[test]
+    fn refinement_keeps_the_shared_mic_of_an_in_person_meeting_mixed() {
+        // The diarizer labelled the live mic words without changing their text
+        // or timing, so every one of them matches its source word.
+        let previous = vec![word("a", 0.0, 500.0, 0.0), word("b", 500.0, 1_000.0, 0.0)];
+        let replacement = previous
+            .iter()
+            .map(|word| StoredTranscriptWord {
+                id: format!("new-{}", word.id),
+                channel: Some(2.0),
+                metadata: Some(Value::String(r#"{"shared_mic":true}"#.to_string())),
+                ..word.clone()
+            })
+            .collect::<Vec<_>>();
+        let hints = replacement
+            .iter()
+            .zip([0, 1])
+            .map(|(word, speaker)| provider(word, speaker))
+            .collect::<Vec<_>>();
+
+        for promotion in [
+            BatchTranscriptPromotion::WholeSession,
+            BatchTranscriptPromotion::CurrentCapture {
+                audio_offset_ms: 0.0,
+                replace_transcript_id: Some("live-transcript".to_string()),
+                started_at: 0.0,
+            },
+        ] {
+            let (words, hints, _, _, _) = ready(refine_batch_transcript(BatchRefinementRequest {
+                words: replacement.clone(),
+                hints: hints.clone(),
+                promotion: promotion.clone(),
+                previous_transcripts: vec![source(previous.clone(), vec![])],
+            }));
+
+            assert!(
+                words.iter().all(|word| word.channel == Some(2.0)),
+                "{promotion:?}"
+            );
+            assert!(
+                hints
+                    .iter()
+                    .filter(|hint| hint.hint_type == "provider_speaker_index")
+                    .all(|hint| speaker_value(hint)["channel"] == 2.0),
+                "{promotion:?}"
+            );
+        }
     }
 
     #[test]
