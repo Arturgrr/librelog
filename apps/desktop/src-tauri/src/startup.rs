@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 const LAUNCH_LOCK_FILENAME: &str = "launch.lock";
 const SLOW_STARTUP_INDICATOR_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
 const WEBKIT_DISABLE_DMABUF_RENDERER: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+const GDK_BACKEND: &str = "GDK_BACKEND";
+const NATIVE_WAYLAND_OPT_IN: &str = "LIBRELOG_WAYLAND";
 
 // WebKitGTK's DMA-BUF renderer leaves a blank window on NVIDIA/Wayland and
 // some other GPU/compositor combinations. Set the fallback before Tokio or
@@ -26,6 +28,71 @@ pub(crate) fn apply_linux_webkit_workarounds() {
 
 fn linux_webkit_dmabuf_override(existing: Option<&std::ffi::OsStr>) -> Option<&'static str> {
     existing.is_none().then_some("1")
+}
+
+// GNOME's compositor ignores positioning and keep-above for native Wayland
+// windows, so the dictation HUD, the meeting bar and toasts would open
+// anywhere and sink behind other windows. Through XWayland they can be placed
+// and kept on top. WAYLAND_DISPLAY stays set: the session is still Wayland,
+// and shortcuts and pasting go through its portals. LIBRELOG_WAYLAND=1 keeps
+// the native backend. Must run before GTK initialises.
+pub(crate) fn apply_linux_display_backend() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+
+    let var = |name| std::env::var_os(name);
+    let change = linux_gdk_backend(LinuxDisplayEnv {
+        wayland_display: var("WAYLAND_DISPLAY").as_deref(),
+        x11_display: var("DISPLAY").as_deref(),
+        gdk_backend: var(GDK_BACKEND).as_deref(),
+        native_wayland: var(NATIVE_WAYLAND_OPT_IN).as_deref(),
+        appimage: var("APPIMAGE").as_deref(),
+    });
+    // SAFETY: called from the process entrypoint before other threads start.
+    unsafe {
+        match change {
+            GdkBackendChange::Keep => {}
+            GdkBackendChange::Set(backend) => std::env::set_var(GDK_BACKEND, backend),
+            GdkBackendChange::Remove => std::env::remove_var(GDK_BACKEND),
+        }
+    }
+}
+
+struct LinuxDisplayEnv<'a> {
+    wayland_display: Option<&'a std::ffi::OsStr>,
+    x11_display: Option<&'a std::ffi::OsStr>,
+    gdk_backend: Option<&'a std::ffi::OsStr>,
+    native_wayland: Option<&'a std::ffi::OsStr>,
+    appimage: Option<&'a std::ffi::OsStr>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GdkBackendChange {
+    Keep,
+    Set(&'static str),
+    Remove,
+}
+
+fn linux_gdk_backend(env: LinuxDisplayEnv<'_>) -> GdkBackendChange {
+    let set = |value: Option<&std::ffi::OsStr>| value.is_some_and(|value| !value.is_empty());
+    // Without XWayland's display GTK could not open a window at all.
+    if !set(env.wayland_display) || !set(env.x11_display) {
+        return GdkBackendChange::Keep;
+    }
+    if env.native_wayland == Some(std::ffi::OsStr::new("1")) {
+        // The AppImage's launcher exports GDK_BACKEND=x11 unless the user set
+        // one, so inside it that value is the launcher's, not the user's.
+        return if set(env.appimage) && env.gdk_backend == Some(std::ffi::OsStr::new("x11")) {
+            GdkBackendChange::Remove
+        } else {
+            GdkBackendChange::Keep
+        };
+    }
+    if set(env.gdk_backend) {
+        return GdkBackendChange::Keep;
+    }
+    GdkBackendChange::Set("x11")
 }
 
 // Startup migrations can hold the database for minutes before any window or
@@ -274,6 +341,57 @@ mod tests {
             linux_webkit_dmabuf_override(Some(std::ffi::OsStr::new("1"))),
             None
         );
+    }
+
+    #[test]
+    fn wayland_sessions_run_through_xwayland_unless_the_user_chose_a_backend() {
+        let os = |value: &'static str| Some(std::ffi::OsStr::new(value));
+        let env = |wayland, x11, gdk, native, appimage| LinuxDisplayEnv {
+            wayland_display: wayland,
+            x11_display: x11,
+            gdk_backend: gdk,
+            native_wayland: native,
+            appimage,
+        };
+        let wayland = os("wayland-0");
+        let x11 = os(":0");
+        for (session, expected) in [
+            (
+                env(wayland, x11, None, None, None),
+                GdkBackendChange::Set("x11"),
+            ),
+            (
+                env(wayland, x11, os(""), None, None),
+                GdkBackendChange::Set("x11"),
+            ),
+            (
+                env(wayland, x11, os("wayland"), None, None),
+                GdkBackendChange::Keep,
+            ),
+            (
+                env(wayland, x11, None, os("1"), None),
+                GdkBackendChange::Keep,
+            ),
+            // An X11 session, or a Wayland one without XWayland.
+            (env(None, x11, None, None, None), GdkBackendChange::Keep),
+            (env(wayland, None, None, None, None), GdkBackendChange::Keep),
+            // The AppImage launcher's own default yields to the opt-out, a
+            // backend the user picked does not.
+            (
+                env(wayland, x11, os("x11"), None, os("/a.AppImage")),
+                GdkBackendChange::Keep,
+            ),
+            (
+                env(wayland, x11, os("x11"), os("1"), os("/a.AppImage")),
+                GdkBackendChange::Remove,
+            ),
+            (
+                env(wayland, x11, os("x11"), os("1"), None),
+                GdkBackendChange::Keep,
+            ),
+        ] {
+            assert_eq!(linux_gdk_backend(session), expected);
+        }
     }
 
     #[test]

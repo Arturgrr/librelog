@@ -65,6 +65,7 @@ fn create_audio_provider(_bundle_id: &str) -> std::sync::Arc<dyn anlg_audio_actu
 
 pub fn main() {
     startup::apply_linux_webkit_workarounds();
+    startup::apply_linux_display_backend();
 
     // Keep a process-wide Tokio runtime for Tauri plugins, but leave it before
     // Builder::build(). tauri-plugin-single-instance's Linux setup uses zbus's
