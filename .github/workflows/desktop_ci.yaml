@@ -24,6 +24,12 @@
 # built-in model end-to-end tests against that build. That build is long, so
 # it runs on schedule and manual runs, and on pull requests and pushes only
 # when crates/xtask changes (`changes` decides that too).
+# linux_bundle builds the stable app's RPM, AppImage and deb with the release's
+# own scripts/linux-bundles.sh, checks their metadata and installs and launches
+# each in a clean Fedora or Ubuntu container. A release build takes long, so
+# pull requests and pushes get it only when what decides the packages changes
+# (bundle configuration, dependencies, the packaging scripts; `changes`
+# decides); schedule and manual runs always do.
 # Each job builds its tests in one cargo invocation where it can: a different
 # set of packages resolves different features and rebuilds the crates they
 # share. windows_ci says why it cannot.
@@ -50,6 +56,9 @@ on:
       - plugins/**
       - crates/**
       - scripts/bash-guard.sh
+      - scripts/linux-bundles.sh
+      - scripts/release.mjs
+      - scripts/repack-linux-appimage.mjs
       - scripts/setup-linux-others.sh
       - scripts/setup-linux-tauri.sh
       - skills/**
@@ -68,6 +77,9 @@ on:
       - plugins/**
       - crates/**
       - scripts/bash-guard.sh
+      - scripts/linux-bundles.sh
+      - scripts/release.mjs
+      - scripts/repack-linux-appimage.mjs
       - scripts/setup-linux-others.sh
       - scripts/setup-linux-tauri.sh
       - skills/**
@@ -129,6 +141,7 @@ jobs:
     outputs:
       native: ${{ steps.paths.outputs.native }}
       xtask: ${{ steps.paths.outputs.xtask }}
+      packaging: ${{ steps.paths.outputs.packaging }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -150,9 +163,18 @@ jobs:
           # The release's sidecar build, which macos_ci repeats; inside the
           # native inputs, so macos_ci runs whenever this matches.
           xtask_pattern='^crates/xtask/'
+          # What decides the Linux packages linux_bundle builds. The release
+          # scripts are not native inputs: they alone run only linux_bundle.
+          packaging_pattern='^apps/desktop/src-tauri/(tauri[^/]*\.json|linux/|icons/|Cargo\.toml|build\.rs|capabilities/)'
+          packaging_pattern+='|^apps/desktop/package\.json$'
+          packaging_pattern+='|^(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)$|^crates/xtask/'
+          packaging_pattern+='|^\.github/workflows/desktop_ci\.yaml$'
+          packaging_pattern+='|^\.github/actions/(install_desktop_deps|rust_install)/'
+          packaging_pattern+='|^scripts/(linux-bundles\.sh|release\.mjs|repack-linux-appimage\.mjs|setup-linux-others\.sh|setup-linux-tauri\.sh)$'
 
           native=true
           xtask=true
+          packaging=true
           if [[ "$EVENT_NAME" == pull_request || "$EVENT_NAME" == push ]] &&
             git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             # --no-renames lists both sides of a move.
@@ -166,9 +188,11 @@ jobs:
               head -n 20 <<<"$matched"
             fi
             grep -qE "$xtask_pattern" <<<"$changed" || xtask=false
+            grep -qE "$packaging_pattern" <<<"$changed" || packaging=false
           fi
           echo "native=$native" | tee -a "$GITHUB_OUTPUT"
           echo "xtask=$xtask" | tee -a "$GITHUB_OUTPUT"
+          echo "packaging=$packaging" | tee -a "$GITHUB_OUTPUT"
 
   js_ci:
     if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
@@ -427,6 +451,35 @@ jobs:
       # also covers `cargo check -p desktop`; only the library has these tests.
       - run: cargo test --locked --target aarch64-unknown-linux-gnu -p desktop --lib --bins embedded_cli
 
+  linux_bundle:
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      # The workspace target directory is the one the Rust cache saves.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: $/.github/actions/install_desktop_deps
+        with:
+          target: linux
+      # The release build's cache, which release.yaml saves on main too.
+      - uses: $/.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          cache-key: linux-bundle
+      - uses: $/.github/actions/pnpm_install
+      - run: pnpm -F @anlg/ui build
+      # No signing key here: the build makes no updater artifacts and leaves
+      # the AppImage unsigned; release.yaml checks the signature.
+      - run: scripts/linux-bundles.sh build
+      - run: scripts/linux-bundles.sh verify
+      - run: scripts/linux-bundles.sh smoke
+
   desktop_i18n:
     if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
     runs-on: ubuntu-latest
@@ -447,16 +500,19 @@ jobs:
       windows_ci,
       linux_ci,
       linux_arm_ci,
+      linux_bundle,
       desktop_i18n,
     ]
     runs-on: ubuntu-latest
     steps:
       # Every job must succeed, except that the JS jobs skip blog/ branches and
-      # the native jobs skip changes that do not touch what they build. A job
-      # that never got a runner fails this, whatever result GitHub reports.
+      # the native jobs and linux_bundle skip changes that do not touch what
+      # they build. A job that never got a runner fails this, whatever result
+      # GitHub reports.
       - env:
           NEEDS: ${{ toJSON(needs) }}
           NATIVE: ${{ needs.changes.outputs.native }}
+          PACKAGING: ${{ needs.changes.outputs.packaging }}
           BLOG: ${{ startsWith(github.head_ref || '', 'blog/') }}
         run: |
           status=0
@@ -466,6 +522,7 @@ jobs:
               *:success) continue ;;
               js_ci:skipped | desktop_i18n:skipped) [[ "$BLOG" == true ]] && continue ;;
               changes:skipped) ;;
+              linux_bundle:skipped) [[ "$PACKAGING" == true ]] || continue ;;
               *:skipped) [[ "$NATIVE" == true ]] || continue ;;
             esac
             echo "::error::$job finished with $result but had to succeed."
