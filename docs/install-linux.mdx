@@ -80,16 +80,25 @@ Every release lists SHA-256 checksums in `SHA256SUMS.txt`. Download it next to t
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
+## What works differently on Linux
+
+- **Shortcuts.** On Wayland your desktop asks you to approve Librelog's shortcuts and may let you choose other keys. See [Dictation](/dictation#linux).
+- **Dictation.** Text goes into the focused field through accessibility, or is pasted through the clipboard where a field does not take it. On Wayland your desktop asks once to let Librelog press the paste keys.
+- **Screenshots and recordings.** They use your desktop's screenshot tool and screen-sharing dialog. Recordings are MP4, or WebM when no H.264 encoder is installed, and have no sound, countdown or outline yet. On Fedora, `gstreamer1-plugin-openh264` provides the H.264 encoder; dnf installs it with the RPM when the Cisco OpenH264 repository is enabled. See [Screenshots and recordings](/capture#on-linux).
+- **Annotate.** The capsule and your red marks are part of the screen recording. With `LIBRELOG_WAYLAND=1` there is no drawing overlay. See [Annotate](/annotate#on-linux).
+- **Built-in models.** The model server ships inside the packages and needs a CPU with AVX2. It uses your GPU through Vulkan when it works.
+
 ## What is not available on Linux yet
 
-{/* TODO(linux-features): confirm this list against the 0.8.1-beta.1 Linux build before release. */}
-
-These features are macOS-only for now:
-
-- Annotate
-- Screenshots and recordings
-- The built-in local LLM
 - App Lock
 - Apple-only transcription models: Soniqo and Apple Speech
+- Apple Reminders and Contacts
+- The notch indicator and the Dock icon setting
+- Replacing the system's own screenshot shortcuts
+- Packages for ARM64
+
+<Warning>
+  The Linux app has been built and installed by automated checks, but it has not been used on a real desktop yet. Recording a meeting, dictating, screenshots, recordings and Annotate may fail in ways the checks cannot see. Please [report](https://github.com/Arturgrr/librelog/issues/new/choose) what breaks.
+</Warning>
 
 If something else does not work, see [Troubleshooting](/troubleshooting) or [report it](https://github.com/Arturgrr/librelog/issues/new/choose).
