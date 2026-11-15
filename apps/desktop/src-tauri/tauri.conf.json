@@ -51,12 +51,15 @@
           "libstdc++6",
           "gstreamer1.0-plugins-base",
           "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-tools",
           "gstreamer1.0-pipewire",
           "at-spi2-core",
           "ca-certificates",
           "desktop-file-utils",
           "xdg-utils"
-        ]
+        ],
+        "recommends": ["gstreamer1.0-libav", "wl-clipboard", "libglib2.0-bin"]
       },
       "rpm": {
         "desktopTemplate": "linux/librelog.desktop",
@@ -73,12 +76,15 @@
           "libstdc++",
           "gstreamer1-plugins-base",
           "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free",
+          "gstreamer1",
           "pipewire-gstreamer",
           "at-spi2-core",
           "ca-certificates",
           "desktop-file-utils",
           "xdg-utils"
-        ]
+        ],
+        "recommends": ["gstreamer1-plugin-openh264", "wl-clipboard", "glib2"]
       }
     },
     "externalBin": [],

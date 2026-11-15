@@ -62,9 +62,12 @@ build() {
 
   local sidecars=(binaries/librelog-chrome-native-host resources/cli/librelog-cli)
   # crates/xtask builds the built-in model server only for the targets it
-  # ships on; once it builds this one, the packages carry it too.
+  # ships on. A package for one of those without it would ship with built-in
+  # models silently missing.
   if [[ -f "$SRC_TAURI/binaries/librelog-llama-server-$TARGET" ]]; then
     sidecars+=(binaries/librelog-llama-server)
+  elif [[ "$TARGET" == x86_64-unknown-linux-gnu ]]; then
+    fail "cargo xtask prepare-binaries did not build binaries/librelog-llama-server-$TARGET"
   fi
   local config="$SRC_TAURI/tauri.conf.stable.json"
   local updater_artifacts=true
