@@ -8,6 +8,7 @@ import { X } from "@anlg/ui/components/icons";
 import { Button } from "@anlg/ui/components/ui/button";
 import { Switch } from "@anlg/ui/components/ui/switch";
 
+import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import {
   ShortcutCapture,
   ShortcutCaptureHint,
@@ -204,12 +205,14 @@ export function CaptureShortcutRows({
       {platform() === "linux" && (
         <p className="text-muted-foreground text-xs">
           <Trans>
-            On Wayland, your desktop asks you to approve these shortcuts and may
-            let you choose other keys. Change them later in its keyboard
-            settings.
+            On Wayland, your desktop asks you to approve each new shortcut and
+            may let you choose other keys; Librelog shows the keys it uses.
           </Trans>
         </p>
       )}
+      <DesktopShortcutsNote
+        shortcuts={actions.map((action) => current[action]).filter(Boolean)}
+      />
       {recorder.editing !== null && (
         <ShortcutCaptureHint id={hintId} doubleTap={false} />
       )}

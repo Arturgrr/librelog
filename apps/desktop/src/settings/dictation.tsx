@@ -8,6 +8,7 @@ import { commands as transcription } from "@anlg/plugin-transcription";
 import { Button } from "@anlg/ui/components/ui/button";
 import { Textarea } from "@anlg/ui/components/ui/textarea";
 
+import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import { DictationAudioSettings } from "./dictation-audio";
 import { DictationIndicatorSetting } from "./dictation-indicator";
 import { DictationPasteLastSettings } from "./dictation-paste-last";
@@ -82,6 +83,7 @@ export function SettingsDictation() {
           onChange={setEnabled}
         />
         <DictationShortcuts shortcuts={shortcuts} />
+        <DesktopShortcutsNote shortcuts={shortcuts} failure />
         <AudioDeviceRow
           title={<Trans>Microphone</Trans>}
           description={
@@ -191,13 +193,12 @@ export function SettingsDictation() {
         <p className="text-muted-foreground text-xs">
           {platform() === "linux" ? (
             <Trans>
-              On Wayland, your desktop asks you to approve the shortcuts and may
-              let you choose other keys; change them later in its keyboard
-              settings. Use Control + Alt + Escape to cancel. On X11, press
-              Escape to cancel. Where a field doesn't take text through
-              accessibility, Librelog pastes it through the clipboard; on
-              Wayland your desktop asks once to allow Librelog to control the
-              keyboard for that.
+              On Wayland, your desktop asks you to approve each new shortcut and
+              may let you choose other keys; Librelog shows the keys it uses.
+              Use Control + Alt + period to cancel. On X11, press Escape to
+              cancel. Where a field doesn't take text through accessibility,
+              Librelog pastes it through the clipboard; on Wayland your desktop
+              asks once to allow Librelog to control the keyboard for that.
             </Trans>
           ) : (
             <Trans>

@@ -1,9 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
+use ashpd::desktop::ResponseError;
 use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
 use futures_util::StreamExt;
 use tauri::Manager;
@@ -17,6 +19,18 @@ use crate::{
     ShortcutEvent, annotate, press,
 };
 
+const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the desktop's approval dialog may stay open. Giving up closes
+/// the session, and KDE then keeps every shortcut with no key and never asks
+/// again.
+const APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+pub enum Failure {
+    /// The user dismissed the desktop's dialog.
+    Dismissed,
+    Failed(String),
+}
+
 pub struct Registration {
     stop: tokio::sync::oneshot::Sender<()>,
     task: tauri::async_runtime::JoinHandle<()>,
@@ -24,8 +38,8 @@ pub struct Registration {
 }
 
 impl Registration {
-    /// Closes the session. A deliberate close cancels nothing: the next
-    /// session takes over the same shortcuts.
+    /// Closes the session. Every shortcut still down is released first, so
+    /// a hold in progress (dictation, Annotate's ink) ends as if let go.
     pub async fn close(self) {
         let _ = self.stop.send(());
         let _ = self.task.await;
@@ -37,10 +51,21 @@ impl Registration {
     }
 }
 
+/// The trigger the desktop reports for each id, when it says.
+pub type Triggers = HashMap<String, String>;
+
 /// Binds `bindings` in a new portal session and acts on each activation and
 /// deactivation until the registration closes or the desktop ends the
-/// session, which cancels a dictation in progress.
-pub async fn bind(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<Registration, String> {
+/// session, which calls `on_end`. `on_triggers` hears the keys the user
+/// later changes in the desktop's settings.
+pub async fn bind(
+    app: tauri::AppHandle,
+    bindings: Vec<Binding>,
+    on_triggers: impl Fn(Triggers) + Send + 'static,
+    on_end: impl FnOnce() + Send + 'static,
+) -> Result<(Registration, Triggers), Failure> {
+    let failed =
+        |what: &str, error: &dyn std::fmt::Display| Failure::Failed(format!("{what}: {error}"));
     let shortcuts: Vec<NewShortcut> = bindings
         .iter()
         .map(|binding| {
@@ -54,62 +79,82 @@ pub async fn bind(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<Regis
         .collect();
 
     let connection = anlg_desktop_portal::connection().await.map_err(|e| {
-        format!("Librelog could not reach the desktop portals for global shortcuts: {e}")
+        failed(
+            "Librelog could not reach the desktop portals for global shortcuts",
+            &e,
+        )
     })?;
     let portal = GlobalShortcuts::with_connection(connection)
         .await
         .map_err(|e| {
-            format!("This Wayland desktop does not provide the Global Shortcuts portal: {e}")
+            failed(
+                "This Wayland desktop does not provide the Global Shortcuts portal",
+                &e,
+            )
         })?;
-    let session = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        portal.create_session(Default::default()),
-    )
-    .await
-    .map_err(|_| "The desktop's Global Shortcuts portal did not answer.".to_string())?
-    .map_err(|e| e.to_string())?;
-    let setup = tokio::time::timeout(std::time::Duration::from_secs(45), async {
-        let pressed = portal
-            .receive_activated()
-            .await
-            .map_err(|e| e.to_string())?;
-        let released = portal
-            .receive_deactivated()
-            .await
-            .map_err(|e| e.to_string())?;
-        let bound = portal
-            .bind_shortcuts(&session, &shortcuts, None, Default::default())
-            .await
-            .and_then(|request| request.response())
-            .map_err(|e| e.to_string())?;
-        for shortcut in bound.shortcuts() {
-            tracing::info!(
-                id = shortcut.id(),
-                trigger = shortcut.trigger_description(),
-                "the desktop bound a Librelog shortcut"
-            );
-        }
-        Ok::<_, String>((pressed, released))
+    let session = tokio::time::timeout(CALL_TIMEOUT, portal.create_session(Default::default()))
+        .await
+        .map_err(|_| {
+            Failure::Failed("The desktop's Global Shortcuts portal did not answer.".into())
+        })?
+        .map_err(|e| failed("The desktop refused a shortcuts session", &e))?;
+    let streams = tokio::time::timeout(CALL_TIMEOUT, async {
+        Ok::<_, ashpd::Error>((
+            portal.receive_activated().await?,
+            portal.receive_deactivated().await?,
+            portal.receive_shortcuts_changed().await?,
+        ))
     })
     .await;
-    let (mut pressed, mut released) = match setup {
+    let (mut pressed, mut released, mut changed) = match streams {
         Ok(Ok(streams)) => streams,
-        error => {
+        Ok(Err(error)) => {
             let _ = session.close().await;
-            return Err(match error {
-                Ok(Err(error)) => error,
-                _ => "Shortcut setup timed out. Retry setup and approve your desktop's shortcut prompt.".into(),
-            });
+            return Err(failed(
+                "The desktop's Global Shortcuts portal failed",
+                &error,
+            ));
+        }
+        Err(_) => {
+            let _ = session.close().await;
+            return Err(Failure::Failed(
+                "The desktop's Global Shortcuts portal did not answer.".into(),
+            ));
         }
     };
+    let bound = tokio::time::timeout(APPROVAL_TIMEOUT, async {
+        portal
+            .bind_shortcuts(&session, &shortcuts, None, Default::default())
+            .await?
+            .response()
+    })
+    .await;
+    let bound = match bound {
+        Ok(Ok(bound)) => bound,
+        Ok(Err(error)) => {
+            let _ = session.close().await;
+            return Err(match error {
+                ashpd::Error::Response(ResponseError::Cancelled) => Failure::Dismissed,
+                error => failed("The desktop did not bind Librelog's shortcuts", &error),
+            });
+        }
+        Err(_) => {
+            let _ = session.close().await;
+            return Err(Failure::Failed(
+                "Your desktop's shortcut prompt stayed unanswered. Ask your desktop again.".into(),
+            ));
+        }
+    };
+    let bound_triggers = triggers(bound.shortcuts());
     let session_path: String =
-        serde_json::from_value(serde_json::to_value(&session).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        serde_json::from_value(serde_json::to_value(&session).map_err(|e| failed("session", &e))?)
+            .map_err(|e| failed("session", &e))?;
     let (stop, mut stopped) = tokio::sync::oneshot::channel();
     let ended = Arc::new(AtomicBool::new(false));
     let handler = Handler {
         does,
         gates: Default::default(),
+        down: Default::default(),
     };
 
     let task = tauri::async_runtime::spawn({
@@ -133,24 +178,51 @@ pub async fn bind(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<Regis
                                 handler.on(&app, event.shortcut_id(), false);
                             }
                         }
+                        event = changed.next() => {
+                            let Some(event) = event else { break false };
+                            if event.session_handle().as_str() == session_path {
+                                on_triggers(triggers(event.shortcuts()));
+                            }
+                        }
                     }
                 },
             };
-            let _ = session.close().await;
+            handler.release_all(&app);
+            let _ = tokio::time::timeout(CALL_TIMEOUT, session.close()).await;
             ended.store(true, Ordering::SeqCst);
             app.state::<annotate::AnnotateGesture>().release_key();
             if !deliberate {
                 tracing::warn!("the desktop closed Librelog's global shortcuts session");
                 press::cancel(&app);
+                on_end();
             }
         }
     });
-    Ok(Registration { stop, task, ended })
+    Ok((Registration { stop, task, ended }, bound_triggers))
+}
+
+fn triggers(shortcuts: &[ashpd::desktop::global_shortcuts::Shortcut]) -> Triggers {
+    shortcuts
+        .iter()
+        .map(|shortcut| {
+            tracing::info!(
+                id = shortcut.id(),
+                trigger = shortcut.trigger_description(),
+                "the desktop bound a Librelog shortcut"
+            );
+            (
+                shortcut.id().to_owned(),
+                shortcut.trigger_description().to_owned(),
+            )
+        })
+        .collect()
 }
 
 struct Handler {
     does: HashMap<String, Does>,
     gates: Arc<Mutex<HashMap<String, ReleaseGate>>>,
+    /// Shortcuts activated and not yet deactivated.
+    down: Mutex<HashSet<String>>,
 }
 
 impl Handler {
@@ -158,6 +230,15 @@ impl Handler {
         let Some(does) = self.does.get(id).copied() else {
             return;
         };
+        {
+            let mut down = self.down.lock().unwrap_or_else(|e| e.into_inner());
+            if pressed {
+                down.insert(id.to_owned());
+            } else {
+                down.remove(id);
+            }
+            anlg_desktop_portal::set_shortcuts_held(down.len());
+        }
         let action = match does {
             Does::Cancel => {
                 if pressed {
@@ -192,6 +273,22 @@ impl Handler {
             }
             Action::Capture(_) | Action::Cancel => {}
         }
+    }
+
+    /// The session is going: what is still down is let go, as the desktop
+    /// will not say so any more.
+    fn release_all(&self, app: &tauri::AppHandle) {
+        let down: Vec<String> = self
+            .down
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .cloned()
+            .collect();
+        for id in down {
+            self.on(app, &id, false);
+        }
+        anlg_desktop_portal::set_shortcuts_held(0);
     }
 
     fn paste_once_released(&self, app: &tauri::AppHandle, id: &str, pressed: bool, action: Action) {

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@anlg/ui/components/ui/select";
 
+import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import {
   ShortcutCapture,
   ShortcutCaptureHint,
@@ -293,13 +294,14 @@ function AnnotateShortcutSettings() {
       {platform() === "linux" && (
         <p className="text-muted-foreground text-xs">
           <Trans>
-            On Wayland, your desktop asks you to approve these shortcuts and may
-            let you choose other keys. Change them later in its keyboard
-            settings. Control + Alt + Escape turns drawing off, and holding the
-            shortcut draws only where the desktop reports when you let go.
+            On Wayland, your desktop asks you to approve each new shortcut and
+            may let you choose other keys; Librelog shows the keys it uses.
+            Control + Alt + period turns drawing off, and holding the shortcut
+            draws only where the desktop reports when you let go.
           </Trans>
         </p>
       )}
+      <DesktopShortcutsNote shortcuts={[shortcut, paste]} />
       {recorder.editing !== null && (
         <ShortcutCaptureHint id={hintId} doubleTap={false} />
       )}

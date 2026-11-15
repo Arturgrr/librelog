@@ -6,8 +6,10 @@
 //! binds whatever it holds.
 //!
 //! The portal only suggests each trigger: the desktop asks the user to
-//! approve or change it, and keeps what they chose for that id over a later
-//! suggestion (GNOME, KDE). So ids never change.
+//! approve or change it, and keeps what it stored for an id over a later
+//! suggestion (GNOME, KDE). So each id carries the trigger it asks for: a
+//! shortcut changed in Settings is a new id, which the desktop asks about,
+//! while an unchanged one keeps its id and any key the user gave it there.
 
 use std::cell::RefCell;
 
@@ -16,8 +18,8 @@ use tauri_plugin_global_shortcut::Shortcut;
 use super::{Action, Backend, trigger::portal_trigger};
 use crate::CaptureAction;
 
-pub(super) const CANCEL_ID: &str = "cancel-dictation";
-const CANCEL_TRIGGER: &str = "CTRL+ALT+Escape";
+/// Control+Alt+Escape is KWin's Kill Window.
+const CANCEL_TRIGGER: &str = "CTRL+ALT+period";
 
 /// The shortcuts held for the portal session, as the OS would hold them.
 #[derive(Default)]
@@ -45,6 +47,13 @@ pub(super) struct Binding {
     pub description: String,
     pub trigger: String,
     pub does: Does,
+    /// The Librelog shortcut it stands for; none for the cancel one.
+    pub key: Option<Shortcut>,
+}
+
+/// `{base}-{trigger}`, with the trigger's `+` as `-`.
+fn shortcut_id(base: &str, trigger: &str) -> String {
+    format!("{base}-{}", trigger.replace('+', "-"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +66,7 @@ pub(super) enum Does {
 impl Held {
     /// The session's shortcuts in a stable order. Escape is never bound
     /// (the portal cannot take it only while dictating or inking, and would
-    /// keep it from every app): a cancel shortcut, Control+Alt+Escape unless
+    /// keep it from every app): a cancel shortcut, Control+Alt+period unless
     /// the user picks another, stands in for it while dictation or Annotate
     /// has a shortcut.
     pub fn bindings(&self) -> Result<Vec<Binding>, String> {
@@ -72,15 +81,15 @@ impl Held {
         let mut bindings = Vec::new();
         let mut dictations = 0;
         for (key, action) in &held {
-            let (id, description) = match action {
-                Action::Dictate(source) => {
+            let (base, description) = match action {
+                Action::Dictate(_) => {
                     dictations += 1;
                     let description = if dictations == 1 {
                         "Dictate with Librelog".to_string()
                     } else {
                         format!("Dictate with Librelog ({dictations})")
                     };
-                    (format!("dictate-{source}"), description)
+                    ("dictate".to_string(), description)
                 }
                 Action::PasteLast => (
                     "paste-last-dictation".into(),
@@ -97,11 +106,13 @@ impl Held {
                 Action::Capture(capture) => capture_binding(*capture),
                 Action::Cancel => continue,
             };
+            let trigger = portal_trigger(*key)?;
             bindings.push(Binding {
-                id,
+                id: shortcut_id(&base, &trigger),
                 description,
-                trigger: portal_trigger(*key)?,
+                trigger,
                 does: Does::Act(*action),
+                key: Some(*key),
             });
         }
         if held
@@ -115,10 +126,11 @@ impl Held {
             bindings.insert(
                 at,
                 Binding {
-                    id: CANCEL_ID.into(),
+                    id: shortcut_id("cancel-dictation", CANCEL_TRIGGER),
                     description: "Cancel Librelog dictation".into(),
                     trigger: CANCEL_TRIGGER.into(),
                     does: Does::Cancel,
+                    key: None,
                 },
             );
         }
@@ -146,6 +158,29 @@ fn capture_binding(action: CaptureAction) -> (String, String) {
         CaptureAction::Gif => ("capture-gif", "Record a GIF with Librelog"),
     };
     (id.into(), description.into())
+}
+
+/// Whether the desktop's description of a trigger (`Ctrl+Alt+Space`,
+/// `Press <ctrl><alt>space`) names the keys Librelog asked for
+/// (`CTRL+ALT+space`).
+pub(super) fn same_trigger(asked: &str, described: &str) -> bool {
+    fn keys(trigger: &str) -> std::collections::BTreeSet<String> {
+        let trigger = trigger.trim();
+        let trigger = trigger.strip_prefix("Press ").unwrap_or(trigger);
+        trigger
+            .split(['+', '<', '>', ' '])
+            .filter(|key| !key.is_empty())
+            .map(|key| match key.to_lowercase().as_str() {
+                "control" | "primary" => "ctrl".to_string(),
+                "logo" | "meta" | "win" | "mod4" => "super".to_string(),
+                "." => "period".to_string(),
+                "pgup" | "prior" => "page_up".to_string(),
+                "pgdown" | "next" => "page_down".to_string(),
+                key => key.to_string(),
+            })
+            .collect()
+    }
+    keys(asked) == keys(described)
 }
 
 /// Paste shortcuts fire once the shortcut's keys are up: a Control+V sent
@@ -235,13 +270,13 @@ mod tests {
         assert_eq!(
             ids(&held),
             [
-                ("dictate-0", "CTRL+ALT+space"),
-                ("dictate-2", "ALT+SHIFT+6"),
-                ("cancel-dictation", "CTRL+ALT+Escape"),
-                ("paste-last-dictation", "ALT+SHIFT+V"),
-                ("annotate", "ALT+SHIFT+A"),
-                ("paste-last-annotation", "ALT+SHIFT+P"),
-                ("capture-area", "ALT+SHIFT+4"),
+                ("dictate-CTRL-ALT-space", "CTRL+ALT+space"),
+                ("dictate-ALT-SHIFT-6", "ALT+SHIFT+6"),
+                ("cancel-dictation-CTRL-ALT-period", "CTRL+ALT+period"),
+                ("paste-last-dictation-ALT-SHIFT-v", "ALT+SHIFT+v"),
+                ("annotate-ALT-SHIFT-a", "ALT+SHIFT+a"),
+                ("paste-last-annotation-ALT-SHIFT-p", "ALT+SHIFT+p"),
+                ("capture-area-ALT-SHIFT-4", "ALT+SHIFT+4"),
             ]
             .map(|(id, trigger)| (id.to_string(), trigger.to_string()))
         );
@@ -252,10 +287,54 @@ mod tests {
         keys.set_capture(&held, vec![]).unwrap();
         assert_eq!(
             ids(&held).into_iter().map(|(id, _)| id).collect::<Vec<_>>(),
-            ["cancel-dictation", "annotate", "paste-last-annotation"]
+            [
+                "cancel-dictation-CTRL-ALT-period",
+                "annotate-ALT-SHIFT-a",
+                "paste-last-annotation-ALT-SHIFT-p"
+            ]
         );
         keys.set_annotate(&held, None, None).unwrap();
         assert!(held.bindings().unwrap().is_empty());
+    }
+
+    /// Ids used to be positions: a desktop kept the key it stored for
+    /// `dictate-0`, so a shortcut changed in Settings never changed, and
+    /// removing the first of two shortcuts moved the second onto its id.
+    #[test]
+    fn a_changed_shortcut_is_a_new_id_and_an_unchanged_one_keeps_its_own() {
+        let held = Held::default();
+        let mut keys = Keys::default();
+        let dictation_ids = |held: &Held| -> Vec<String> {
+            ids(held)
+                .into_iter()
+                .map(|(id, _)| id)
+                .filter(|id| id.starts_with("dictate-"))
+                .collect()
+        };
+        keys.add_dictation(
+            &held,
+            vec![(0, key("Control+Alt+Space")), (1, key("Alt+KeyD"))],
+        )
+        .unwrap();
+        let second = dictation_ids(&held)[1].clone();
+        keys.remove_dictation(&held).unwrap();
+        keys.add_dictation(&held, vec![(0, key("Alt+KeyD"))])
+            .unwrap();
+        assert_eq!(dictation_ids(&held), [second]);
+        keys.remove_dictation(&held).unwrap();
+        keys.add_dictation(&held, vec![(0, key("Alt+KeyJ"))])
+            .unwrap();
+        assert_eq!(dictation_ids(&held), ["dictate-ALT-j"]);
+    }
+
+    #[test]
+    fn the_desktops_own_wording_of_a_trigger_matches_what_was_asked() {
+        assert!(same_trigger("CTRL+ALT+space", "Ctrl+Alt+Space"));
+        assert!(same_trigger("CTRL+ALT+space", "Press <ctrl><alt>space"));
+        assert!(same_trigger("LOGO+SHIFT+Page_Up", "Super+Shift+Page_Up"));
+        assert!(same_trigger("CTRL+ALT+period", "Ctrl+Alt+."));
+        assert!(!same_trigger("CTRL+ALT+space", "Ctrl+Alt+D"));
+        assert!(!same_trigger("CTRL+ALT+space", "Alt+Space"));
     }
 
     #[test]

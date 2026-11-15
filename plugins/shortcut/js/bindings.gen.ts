@@ -239,6 +239,20 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * What the desktop did with the shortcuts on Wayland. `unused` elsewhere,
+   * and while no shortcut is set.
+   */
+  async desktopShortcuts(): Promise<DesktopShortcutsEvent> {
+    return await TAURI_INVOKE("plugin:shortcut|desktop_shortcuts");
+  },
+  /**
+   * Shows the desktop's shortcut dialog again after it was dismissed or
+   * failed. Nothing happens outside Wayland.
+   */
+  async askDesktopAgain(): Promise<void> {
+    await TAURI_INVOKE("plugin:shortcut|ask_desktop_again");
+  },
 };
 
 /** user-defined events **/
@@ -246,12 +260,14 @@ export const commands = {
 export const events = __makeEvents__<{
   annotateShortcutEvent: AnnotateShortcutEvent;
   captureShortcutEvent: CaptureShortcutEvent;
+  desktopShortcutsEvent: DesktopShortcutsEvent;
   pasteLastAnnotationEvent: PasteLastAnnotationEvent;
   pasteLastEvent: PasteLastEvent;
   shortcutEvent: ShortcutEvent;
 }>({
   annotateShortcutEvent: "plugin:shortcut:annotate-shortcut-event",
   captureShortcutEvent: "plugin:shortcut:capture-shortcut-event",
+  desktopShortcutsEvent: "plugin:shortcut:desktop-shortcuts-event",
   pasteLastAnnotationEvent: "plugin:shortcut:paste-last-annotation-event",
   pasteLastEvent: "plugin:shortcut:paste-last-event",
   shortcutEvent: "plugin:shortcut:shortcut-event",
@@ -294,6 +310,49 @@ export type CaptureShortcuts = {
   record: string | null;
   gif: string | null;
 };
+/**
+ * One shortcut the desktop was asked for.
+ */
+export type DesktopShortcut = {
+  id: string;
+  /**
+   * The shortcut as Settings stores it; none for the cancel shortcut.
+   */
+  shortcut: string | null;
+  /**
+   * The keys the desktop says it bound, in its own words.
+   */
+  trigger: string | null;
+  /**
+   * The desktop bound other keys than Librelog asked for.
+   */
+  differs: boolean;
+};
+/**
+ * What the desktop did with Librelog's shortcuts on Wayland.
+ */
+export type DesktopShortcutsEvent = {
+  state: DesktopShortcutsState;
+  shortcuts: DesktopShortcut[];
+};
+/**
+ * Where the Wayland desktop's shortcut dialog stands.
+ */
+export type DesktopShortcutsState =
+  /**
+   * Not Wayland, or no shortcut is set.
+   */
+  | { type: "unused" }
+  /**
+   * The desktop is asking the user.
+   */
+  | { type: "waiting" }
+  | { type: "bound" }
+  /**
+   * The user dismissed the dialog; it is not shown again until they ask.
+   */
+  | { type: "dismissed" }
+  | { type: "failed"; message: string };
 export type HotKey = { key: number | null; modifiers: Modifier[] };
 export type Modifier =
   | "command"

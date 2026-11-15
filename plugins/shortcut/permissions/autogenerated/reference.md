@@ -14,6 +14,8 @@ Default permissions for the plugin
 - `allow-set-annotate-recording`
 - `allow-configure-capture`
 - `allow-validate-capture`
+- `allow-desktop-shortcuts`
+- `allow-ask-desktop-again`
 - `allow-register-hotkey`
 - `allow-unregister-hotkey`
 
@@ -25,6 +27,32 @@ Default permissions for the plugin
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`shortcut:allow-ask-desktop-again`
+
+</td>
+<td>
+
+Enables the ask_desktop_again command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:deny-ask-desktop-again`
+
+</td>
+<td>
+
+Denies the ask_desktop_again command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -126,6 +154,32 @@ Enables the configure_paste_last command without any pre-configured scope.
 <td>
 
 Denies the configure_paste_last command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:allow-desktop-shortcuts`
+
+</td>
+<td>
+
+Enables the desktop_shortcuts command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:deny-desktop-shortcuts`
+
+</td>
+<td>
+
+Denies the desktop_shortcuts command without any pre-configured scope.
 
 </td>
 </tr>
