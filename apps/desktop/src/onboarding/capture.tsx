@@ -4,6 +4,7 @@ import { Switch } from "@anlg/ui/components/ui/switch";
 
 import { OnboardingButton } from "./shared";
 
+import { captureOnLinux } from "~/capture/system";
 import { useSystemShortcuts } from "~/capture/system-shortcuts";
 import {
   CaptureShortcutRows,
@@ -56,10 +57,16 @@ export function CaptureStep({ onContinue }: { onContinue: () => void }) {
           <CaptureShortcutRows actions={MAIN_ACTIONS} />
           <ReplaceSystemShortcuts />
           <p className="text-muted-foreground text-xs">
-            <Trans>
-              macOS asks you to allow Screen Recording the first time you
-              capture.
-            </Trans>
+            {captureOnLinux() ? (
+              <Trans>
+                Your desktop asks before each capture, in its own dialog.
+              </Trans>
+            ) : (
+              <Trans>
+                macOS asks you to allow Screen Recording the first time you
+                capture.
+              </Trans>
+            )}
           </p>
         </>
       )}

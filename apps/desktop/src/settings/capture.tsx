@@ -26,7 +26,11 @@ import { displayPath } from "./general/storage/path-utils";
 import { openScreenRecordingSettings } from "~/annotate/system";
 import { unwrap } from "~/capture/lifecycle";
 import { useCaptureStatus } from "~/capture/state";
-import { CAPTURE_ACTIONS, captureAvailable } from "~/capture/system";
+import {
+  CAPTURE_ACTIONS,
+  captureAvailable,
+  captureOnLinux,
+} from "~/capture/system";
 import { useSystemShortcuts } from "~/capture/system-shortcuts";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { SettingsPageTitle } from "~/settings/page-title";
@@ -46,8 +50,8 @@ export function SettingsCapture() {
         <SettingsPageTitle title={<Trans>Screenshots</Trans>} />
         <p className="text-muted-foreground text-sm">
           <Trans>
-            Screenshots and screen recordings are available in the macOS app
-            downloaded from the website.
+            Screenshots and screen recordings are available in the macOS and
+            Linux apps downloaded from the website.
           </Trans>
         </p>
       </div>
@@ -110,7 +114,16 @@ function CapturePage() {
             {registrationError}
           </p>
         )}
-        <ScreenRecordingPermission />
+        {captureOnLinux() ? (
+          <p className="text-muted-foreground text-sm">
+            <Trans>
+              Your desktop asks before Librelog takes a screenshot or records
+              the screen, in its own dialog.
+            </Trans>
+          </p>
+        ) : (
+          <ScreenRecordingPermission />
+        )}
       </div>
       {enabled && (
         <>
@@ -131,11 +144,19 @@ function CapturePage() {
         <RecentCapturesWithFolder />
       </Section>
       <p className="text-muted-foreground text-xs">
-        <Trans>
-          Captures stay on this Mac, in the folder you choose or in Librelog's
-          data folder. Nothing leaves it until you paste or share a capture:
-          then it goes wherever you paste it.
-        </Trans>
+        {captureOnLinux() ? (
+          <Trans>
+            Captures stay on your computer, in the folder you choose or in
+            Librelog's data folder. Nothing leaves it until you paste or share a
+            capture: then it goes wherever you paste it.
+          </Trans>
+        ) : (
+          <Trans>
+            Captures stay on this Mac, in the folder you choose or in Librelog's
+            data folder. Nothing leaves it until you paste or share a capture:
+            then it goes wherever you paste it.
+          </Trans>
+        )}
       </p>
     </div>
   );
@@ -280,10 +301,17 @@ function AfterCapturing() {
         setting="capture_show_card"
         title={<Trans>Show a card</Trans>}
         description={
-          <Trans>
-            A preview in the corner of the screen to copy, save or edit the
-            capture, or drag it into another app.
-          </Trans>
+          captureOnLinux() ? (
+            <Trans>
+              A preview in the corner of the screen to copy, save or edit the
+              capture.
+            </Trans>
+          ) : (
+            <Trans>
+              A preview in the corner of the screen to copy, save or edit the
+              capture, or drag it into another app.
+            </Trans>
+          )
         }
       />
       <Switch
@@ -379,10 +407,12 @@ function ScreenshotSettings() {
           { value: "jpeg", label: "JPEG" },
         ]}
       />
-      <Switch
-        setting="capture_show_cursor"
-        title={<Trans>Include the pointer</Trans>}
-      />
+      {!captureOnLinux() && (
+        <Switch
+          setting="capture_show_cursor"
+          title={<Trans>Include the pointer</Trans>}
+        />
+      )}
     </>
   );
 }
@@ -403,29 +433,41 @@ function RecordingSettings() {
         setting="capture_record_cursor"
         title={<Trans>Show the pointer</Trans>}
       />
-      <Choice
-        setting="capture_record_countdown"
-        title={<Trans>Countdown</Trans>}
-        description={<Trans>Before the recording starts.</Trans>}
-        options={[
-          { value: "0", label: t`Off` },
-          { value: "3", label: t`3 seconds` },
-        ]}
-      />
-      <Switch
-        setting="capture_record_microphone"
-        title={<Trans>Record the microphone</Trans>}
-      />
-      <Switch
-        setting="capture_record_system_audio"
-        title={<Trans>Record system audio</Trans>}
-      />
-      <p className="text-muted-foreground -mt-2 text-xs">
-        <Trans>
-          Audio in recordings is experimental. A movie with both has two audio
-          tracks. GIFs have no sound.
-        </Trans>
-      </p>
+      {captureOnLinux() ? (
+        <p className="text-muted-foreground -mt-2 text-xs">
+          <Trans>
+            To stop a recording, press its shortcut again, choose Record Screen
+            in Librelog's menu in the top bar, or stop sharing from your
+            desktop's screen-sharing indicator. Recordings have no sound yet.
+          </Trans>
+        </p>
+      ) : (
+        <>
+          <Choice
+            setting="capture_record_countdown"
+            title={<Trans>Countdown</Trans>}
+            description={<Trans>Before the recording starts.</Trans>}
+            options={[
+              { value: "0", label: t`Off` },
+              { value: "3", label: t`3 seconds` },
+            ]}
+          />
+          <Switch
+            setting="capture_record_microphone"
+            title={<Trans>Record the microphone</Trans>}
+          />
+          <Switch
+            setting="capture_record_system_audio"
+            title={<Trans>Record system audio</Trans>}
+          />
+          <p className="text-muted-foreground -mt-2 text-xs">
+            <Trans>
+              Audio in recordings is experimental. A movie with both has two
+              audio tracks. GIFs have no sound.
+            </Trans>
+          </p>
+        </>
+      )}
       <Choice
         setting="capture_gif_fps"
         title={<Trans>GIF frame rate</Trans>}

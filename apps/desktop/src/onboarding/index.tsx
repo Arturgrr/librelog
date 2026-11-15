@@ -30,6 +30,7 @@ import {
 import { PermissionsSection } from "./permissions";
 import { OnboardingSection } from "./shared";
 
+import { captureOnLinux } from "~/capture/system";
 import { NotificationProvider } from "~/contexts/notifications";
 import { useSettingsReady } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
@@ -286,11 +287,19 @@ function OnboardingScreenContent({
             title={<Trans>Screenshots and recordings</Trans>}
             completedTitle={<Trans>Screenshots and recordings</Trans>}
             description={
-              <Trans>
-                Capture an area, a window or the whole screen, record it as a
-                movie or a GIF, and mark it up, with shortcuts that work in any
-                app. Everything stays on this Mac.
-              </Trans>
+              captureOnLinux() ? (
+                <Trans>
+                  Capture an area, a window or the whole screen, record it as a
+                  movie or a GIF, and mark it up, with shortcuts that work in
+                  any app. Everything stays on your computer.
+                </Trans>
+              ) : (
+                <Trans>
+                  Capture an area, a window or the whole screen, record it as a
+                  movie or a GIF, and mark it up, with shortcuts that work in
+                  any app. Everything stays on this Mac.
+                </Trans>
+              )
             }
             status={getStepStatus("capture", currentStep)}
             onBack={goBack}

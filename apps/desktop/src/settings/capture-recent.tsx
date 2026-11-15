@@ -23,6 +23,7 @@ import { cn } from "@anlg/utils";
 
 import { CAPTURE_EDITED_EVENT } from "~/capture/editor-window";
 import { openCaptureEditor, revealCapture, unwrap } from "~/capture/lifecycle";
+import { captureOnLinux } from "~/capture/system";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 
 const RECENT = 12;
@@ -99,6 +100,7 @@ function CaptureItem({
   version: number;
 }) {
   const { t, i18n } = useLingui();
+  const showLabel = captureOnLinux() ? t`Show in Files` : t`Show in Finder`;
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const action = useMutation({
@@ -190,8 +192,8 @@ function CaptureItem({
             size="icon"
             variant="ghost"
             className={iconButton}
-            aria-label={t`Show in Finder`}
-            title={t`Show in Finder`}
+            aria-label={showLabel}
+            title={showLabel}
             onClick={() => action.mutate("show")}
           >
             <FolderOpen className="size-3.5" />
