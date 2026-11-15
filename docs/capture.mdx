@@ -5,7 +5,7 @@ description: "Capture an area, a window or the whole screen, record it as a movi
 
 Librelog can take screenshots and record the screen with shortcuts that work in any app. A recording becomes a movie (MP4) or an animated GIF. After a capture, Librelog can copy it to the clipboard, save it to a folder, show a card in the corner of the screen and open the editor, where you can draw arrows, boxes and text, blur what should stay private and crop.
 
-Screenshots and recordings are available only in the macOS app downloaded from the website, not in the App Store version or on Windows and Linux.
+Screenshots and recordings are available in the macOS and Linux apps downloaded from the website, not in the App Store version or on Windows. Linux works differently in places: see [On Linux](#on-linux).
 
 ## Turn it on
 
@@ -121,13 +121,58 @@ The page shows whether macOS's shortcuts are on or replaced by Librelog. If macO
 
 Turning the option off gives macOS its shortcuts back and restores your own. Turning off **Enable screenshots and recordings** does the same, so the Mac is never left without a screenshot shortcut. Turn it off before uninstalling Librelog: otherwise macOS's screenshot shortcuts stay off, and you would turn them back on in **System Settings → Keyboard → Keyboard Shortcuts → Screenshots**.
 
+## On Linux
+
+On Linux, Librelog uses your desktop's own tools: its screenshot picker and its screen-sharing dialog (through the desktop portals, on GNOME, KDE and other desktops with xdg-desktop-portal). Shortcuts, the menu items, the editor, **After capturing**, **Recent captures** and file names work as on a Mac. The defaults use Alt where a Mac uses Option.
+
+### Screenshots
+
+- **Capture area** and **Capture window** open your desktop's screenshot tool, where you pick an area, a window or the whole screen (on GNOME, with its own switch for the pointer). Cancelling it cancels the capture.
+- **Capture full screen** takes the whole screen at once, every monitor included.
+- Librelog saves the picture as PNG or JPEG, as on a Mac. When the desktop saved its own copy for this screenshot (GNOME puts one in **Pictures → Screenshots**), Librelog removes that copy, so you don't get the same screenshot twice.
+
+### Recordings
+
+- **Record screen** and **Record GIF** first freeze the screen: drag the area to record (the size shows below it), press **Return** or click without dragging for the whole screen, **Space** to record a window instead, or **Esc** to cancel. Then your desktop's screen-sharing dialog asks what to share: pick the screen (or the window). GNOME remembers the screen you picked, so it may not ask again.
+- If the area can't be matched to the screen being shared (for example, you picked another monitor in the dialog), the whole screen is recorded.
+- To stop, press the record shortcut again, pick **Record Screen** in Librelog's menu in the top bar, or stop sharing from your desktop's screen-sharing indicator. A recording stops by itself after 30 minutes.
+- Movies are H.264 MP4 when an H.264 encoder is installed for GStreamer, and otherwise WebM (VP9 or VP8), named `Librelog Recording … .webm`.
+- Nothing of Librelog's shows during a recording: there is no countdown, outline or capsule on Linux, and cards close when a capture starts.
+
+Recordings and GIFs need GStreamer with its PipeWire plugin. On Fedora:
+
+```sh
+sudo dnf install gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good pipewire-gstreamer gstreamer1-plugins-bad-free gstreamer1-plugin-openh264
+```
+
+On Debian or Ubuntu:
+
+```sh
+sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-pipewire gstreamer1.0-plugins-bad
+```
+
+Without an H.264 encoder (`gstreamer1-plugin-openh264` on Fedora), movies are WebM. If something is missing, Librelog says what to install when you start a recording.
+
+### Copying and cards
+
+A screenshot is copied as an image, a GIF or a movie as a file that file managers and chat apps paste. Librelog serves the clipboard through X11, which GNOME passes on to Wayland apps; without X11 it uses `wl-copy` from the wl-clipboard package. Cards show in the bottom-right corner of the main screen, with **Copy**, **Save** (or **Show in Files**), **Edit** for screenshots and **Close**.
+
+### Not on Linux yet
+
+- A frozen-screen selector of Librelog's own for screenshots (your desktop's picker is used instead) and **Include the pointer**.
+- A countdown, the recording outline and capsule, and **Discard** while recording.
+- Sound in recordings (**Record the microphone** and **Record system audio**).
+- Dragging a card into another app.
+- Replacing your desktop's own screenshot shortcuts.
+- Deleting a capture saved in your folder moves it to the Trash only when `gio` is installed (it is on GNOME); otherwise it stays in place and leaves the list.
+
 ## During a meeting
 
 You can take screenshots and record the screen while Librelog records a meeting; neither stops the other. Turn off **Record the microphone** and **Record system audio** if the screen recording shouldn't hear the call.
 
 ## Limits
 
-- Only in the macOS app downloaded from the website.
+- Only in the macOS and Linux apps downloaded from the website.
 - One capture at a time: a shortcut pressed while a selector is up or a recording runs is ignored, except a record shortcut, which stops the recording.
 - A window recording records the window's area, not the window itself.
 - Long GIFs get a lower frame rate.
@@ -135,4 +180,4 @@ You can take screenshots and record the screen while Librelog records a meeting;
 
 ## Privacy
 
-Captures stay on your Mac, in the folder you chose or in Librelog's data folder. Nothing is uploaded. When you paste or drop a capture somewhere, it goes to that app and wherever that app sends it.
+Captures stay on your computer, in the folder you chose or in Librelog's data folder. Nothing is uploaded. When you paste or drop a capture somewhere, it goes to that app and wherever that app sends it.
