@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 
 import { commands as listenerCommands } from "@anlg/plugin-transcription";
+import { commands as trayCommands } from "@anlg/plugin-tray";
 import { CircleNotch } from "@anlg/ui/components/icons";
 
 import { AboutSettingsView } from "./about";
@@ -171,6 +172,15 @@ function SettingsSectionContent({
     "microphone_device",
     storedSettings,
   );
+  const trayIcons = useQuery({
+    queryKey: ["tray-icon-shown-by-desktop"],
+    queryFn: async () => {
+      const result = await trayCommands.trayIconShownByDesktop();
+      if (result.status === "error") throw new Error(result.error);
+      return result.data;
+    },
+    staleTime: Infinity,
+  });
   const microphoneDevicesQuery = useQuery({
     queryKey: ["microphone-devices"],
     queryFn: async () => {
@@ -216,6 +226,7 @@ function SettingsSectionContent({
                   onChange: (value) =>
                     submitFieldValue("show_tray_icon", value),
                 }}
+                trayIconsHidden={trayIcons.data === false}
               />
             )}
           </form.Subscribe>

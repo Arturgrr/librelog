@@ -66,3 +66,11 @@ pub async fn set_tray_recording_title(
 pub async fn take_pending_tray_start() -> Result<bool, String> {
     Ok(crate::menu_items::TrayStart::take_pending_start())
 }
+
+/// Whether the desktop shows tray icons at all: GNOME shows none without
+/// the AppIndicator extension. True elsewhere, and when it cannot tell.
+#[tauri::command]
+#[specta::specta]
+pub async fn tray_icon_shown_by_desktop() -> Result<bool, String> {
+    Ok(crate::ext::desktop_shows_tray_icons_async().await)
+}

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-tray-icon-shown-by-desktop"
+description = "Enables the tray_icon_shown_by_desktop command without any pre-configured scope."
+commands.allow = ["tray_icon_shown_by_desktop"]
+
+[[permission]]
+identifier = "deny-tray-icon-shown-by-desktop"
+description = "Denies the tray_icon_shown_by_desktop command without any pre-configured scope."
+commands.deny = ["tray_icon_shown_by_desktop"]

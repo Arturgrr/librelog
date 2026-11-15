@@ -98,6 +98,21 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * Whether the desktop shows tray icons at all: GNOME shows none without
+   * the AppIndicator extension. True elsewhere, and when it cannot tell.
+   */
+  async trayIconShownByDesktop(): Promise<Result<boolean, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:anlg-tray|tray_icon_shown_by_desktop"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/

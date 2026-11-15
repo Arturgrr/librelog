@@ -37,6 +37,7 @@ tracing = { workspace = true }
 unicode-width = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+anlg-desktop-portal = { workspace = true }
 libloading = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

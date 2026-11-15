@@ -14,7 +14,7 @@
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub use linux::{connection, set_app_id};
+pub use linux::{connection, set_app_id, status_notifier_host};
 
 use std::path::{Path, PathBuf};
 

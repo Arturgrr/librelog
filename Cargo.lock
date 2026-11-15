@@ -12619,6 +12619,7 @@ dependencies = [
 name = "tauri-plugin-anlg-tray"
 version = "0.1.0"
 dependencies = [
+ "desktop-portal",
  "intercept",
  "libloading 0.8.9",
  "objc2",

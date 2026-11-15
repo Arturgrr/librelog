@@ -137,6 +137,31 @@ impl DockVisibilityState {
         self.show_app_in_dock()
             && (regular_window_open || !self.menu_bar_icon_visible.load(Ordering::SeqCst))
     }
+
+    /// What closing the main window does. On Linux it hides only while the
+    /// tray icon can bring it back: GNOME shows no tray icons without the
+    /// AppIndicator extension, and a hidden window would leave no way back
+    /// but launching again. Elsewhere the Dock or taskbar reopens it.
+    pub fn main_window_close(&self) -> MainWindowClose {
+        main_window_close(
+            cfg!(target_os = "linux"),
+            self.menu_bar_icon_visible.load(Ordering::SeqCst),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MainWindowClose {
+    Hide,
+    Minimize,
+}
+
+fn main_window_close(linux: bool, tray_icon_visible: bool) -> MainWindowClose {
+    if linux && !tray_icon_visible {
+        MainWindowClose::Minimize
+    } else {
+        MainWindowClose::Hide
+    }
 }
 
 use tauri::Manager;
@@ -520,6 +545,15 @@ mod test {
                 "dock={show_app_in_dock} menu_bar={menu_bar_icon_visible} window={regular_window_open}"
             );
         }
+    }
+
+    /// GNOME without the AppIndicator extension shows no tray icon, and
+    /// closing the window used to hide Librelog with no way back.
+    #[test]
+    fn closing_the_main_window_on_linux_hides_it_only_into_a_visible_tray_icon() {
+        assert_eq!(main_window_close(true, false), MainWindowClose::Minimize);
+        assert_eq!(main_window_close(true, true), MainWindowClose::Hide);
+        assert_eq!(main_window_close(false, false), MainWindowClose::Hide);
     }
 
     #[cfg(target_os = "macos")]

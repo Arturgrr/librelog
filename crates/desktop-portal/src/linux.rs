@@ -91,3 +91,47 @@ fn missing_fdo(error: &zbus::fdo::Error) -> bool {
             | zbus::fdo::Error::ServiceUnknown(_)
     )
 }
+
+/// Whether a StatusNotifier host shows tray icons: KDE, or GNOME with the
+/// AppIndicator extension. GNOME alone has none, so a tray icon there is
+/// invisible. `None` when the session bus did not answer.
+pub async fn status_notifier_host() -> Option<bool> {
+    let connection = connection().await.ok()?;
+    let watcher = "org.kde.StatusNotifierWatcher";
+    let owned = tokio::time::timeout(
+        CALL_TIMEOUT,
+        connection.call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "NameHasOwner",
+            &watcher,
+        ),
+    )
+    .await
+    .ok()?
+    .ok()?
+    .body()
+    .deserialize::<bool>()
+    .ok()?;
+    if !owned {
+        return Some(false);
+    }
+    let registered = tokio::time::timeout(
+        CALL_TIMEOUT,
+        connection.call_method(
+            Some(watcher),
+            "/StatusNotifierWatcher",
+            Some("org.freedesktop.DBus.Properties"),
+            "Get",
+            &(watcher, "IsStatusNotifierHostRegistered"),
+        ),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .and_then(|reply| reply.body().deserialize::<zvariant::OwnedValue>().ok())
+    .and_then(|value| bool::try_from(value).ok());
+    // A watcher that cannot say is taken at its word that it exists.
+    Some(registered.unwrap_or(true))
+}

@@ -7,4 +7,5 @@ permissions = [
     "allow-set-tray-capture-visible",
     "allow-set-tray-recording-title",
     "allow-take-pending-tray-start",
+    "allow-tray-icon-shown-by-desktop",
 ]
