@@ -106,8 +106,27 @@ pub fn key_paths() -> Vec<KeyPath> {
 /// Sends the chord through each path in turn until one works.
 pub struct Keys(pub Vec<KeyPath>);
 
+/// How long a paste waits for a Librelog shortcut still held, then for the
+/// desktop to see its keys come up.
+const SHORTCUT_RELEASE_WAIT: Duration = Duration::from_secs(2);
+const SHORTCUT_RELEASE_SETTLE: Duration = Duration::from_millis(100);
+
 impl Keyboard for Keys {
     fn send(&mut self, chord: Chord) -> Result<(), String> {
+        // The portal and wtype press their keys on top of whatever is held:
+        // Control+V with the shortcut's Alt still down is another chord.
+        // XTest waits for the modifiers itself.
+        if self
+            .0
+            .iter()
+            .any(|path| matches!(path, KeyPath::Portal | KeyPath::Wtype))
+            && !anlg_desktop_portal::wait_until_no_shortcut_is_held(Duration::ZERO)
+        {
+            if !anlg_desktop_portal::wait_until_no_shortcut_is_held(SHORTCUT_RELEASE_WAIT) {
+                tracing::info!("a Librelog shortcut is still held; pasting anyway");
+            }
+            std::thread::sleep(SHORTCUT_RELEASE_SETTLE);
+        }
         let mut errors = Vec::new();
         for path in &self.0 {
             let sent = match path {
@@ -313,6 +332,7 @@ pub fn x11_active_app() -> Option<App> {
         name: class,
         pid,
         executable: pid.and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok()),
+        toolkit: None,
     })
 }
 

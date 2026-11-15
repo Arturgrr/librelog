@@ -13,6 +13,8 @@ pub struct App {
     pub name: String,
     pub pid: Option<u32>,
     pub executable: Option<PathBuf>,
+    /// The toolkit the app reports to AT-SPI.
+    pub toolkit: Option<String>,
 }
 
 /// Where a dictation goes, read when it starts and again right before it is
@@ -94,6 +96,9 @@ const TERMINALS: &[&str] = &[
     "yakuake",
 ];
 
+/// What Chromium (Electron, CEF) and Gecko report as their AT-SPI toolkit.
+const WEB_TOOLKITS: &[&str] = &["chromium", "chrome", "gecko", "mozilla", "firefox"];
+
 /// Chromium and Electron ship these next to their executable, Gecko
 /// `libxul.so`.
 const WEB_ENGINE_FILES: &[&str] = &[
@@ -118,6 +123,12 @@ fn kind(app: &App, own_pid: u32, exists: &impl Fn(&Path) -> bool) -> Kind {
     }
     // Librelog's own editor is web content too.
     if app.pid == Some(own_pid) {
+        return Kind::Web;
+    }
+    if app.toolkit.as_deref().is_some_and(|toolkit| {
+        let toolkit = toolkit.to_lowercase();
+        WEB_TOOLKITS.iter().any(|web| toolkit.contains(web))
+    }) {
         return Kind::Web;
     }
     let folder = app.executable.as_deref().and_then(Path::parent);
@@ -210,6 +221,7 @@ mod tests {
             name: name.into(),
             pid: Some(10),
             executable: Some(executable.into()),
+            toolkit: None,
         }
     }
 
@@ -281,6 +293,18 @@ mod tests {
                 true,
             ),
             (Focus::Unknown { app: None }, false),
+            // A Flatpak browser: its executable is a launcher, its toolkit
+            // says Chromium.
+            (
+                Focus::Editable {
+                    object: object(),
+                    app: App {
+                        toolkit: Some("Chromium".into()),
+                        ..app("Chromium", "/app/chromium/chrome-wrapper")
+                    },
+                },
+                false,
+            ),
         ] {
             assert_eq!(route(focus), Ok(Target::Paste { terminal }));
         }

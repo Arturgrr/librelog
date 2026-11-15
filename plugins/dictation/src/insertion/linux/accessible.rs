@@ -3,6 +3,7 @@
 
 use atspi::proxy::{
     accessible::{AccessibleProxy, ObjectRefExt},
+    application::ApplicationProxy,
     editable_text::EditableTextProxy,
     text::TextProxy,
 };
@@ -67,6 +68,7 @@ async fn find_focus() -> Result<Focus, String> {
             name,
             executable: pid.and_then(executable),
             pid,
+            toolkit: toolkit(&connection, &application).await,
         });
         pending.push((application, apps.len() - 1));
     }
@@ -108,6 +110,22 @@ async fn find_focus() -> Result<Focus, String> {
     })
 }
 
+/// The toolkit the app reports (`Chromium`, `Gecko`, `GTK`, `Qt`), which
+/// names Flatpak browsers and Electron apps their executable does not.
+async fn toolkit(connection: &AccessibilityConnection, application: &ObjectRef) -> Option<String> {
+    ApplicationProxy::builder(connection.connection())
+        .destination(application.name.clone())
+        .ok()?
+        .path(application.path.clone())
+        .ok()?
+        .build()
+        .await
+        .ok()?
+        .toolkit_name()
+        .await
+        .ok()
+}
+
 async fn process(connection: &AccessibilityConnection, owner: &str) -> Option<u32> {
     connection
         .connection()
@@ -128,6 +146,9 @@ async fn process(connection: &AccessibilityConnection, owner: &str) -> Option<u3
 fn executable(process: u32) -> Option<std::path::PathBuf> {
     std::fs::read_link(format!("/proc/{process}/exe")).ok()
 }
+
+/// How long an edit the field accepted gets to show in its text.
+const LANDING_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
 
 pub enum Inserted {
     Yes,
@@ -191,11 +212,18 @@ async fn insert_into(object: ObjectRef, text: &str) -> Result<Inserted, String> 
     {
         return Ok(Inserted::Refused("the field refused the text".into()));
     }
-    // Some apps report success and ignore the edit.
-    if count.is_some() && text_proxy.character_count().await.ok() == count {
-        return Ok(Inserted::Refused(
-            "the field reported an edit it ignored".into(),
-        ));
+    // Some apps report success and ignore the edit; others apply it a
+    // moment later, and pasting then would insert the text twice.
+    if count.is_some() {
+        let deadline = tokio::time::Instant::now() + LANDING_WAIT;
+        while text_proxy.character_count().await.ok() == count {
+            if tokio::time::Instant::now() >= deadline {
+                return Ok(Inserted::Refused(
+                    "the field reported an edit it ignored".into(),
+                ));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
     }
     let _ = text_proxy
         .set_caret_offset(caret + text.chars().count() as i32)
