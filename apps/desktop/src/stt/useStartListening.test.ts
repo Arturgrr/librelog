@@ -1645,7 +1645,7 @@ describe("useStartListening", () => {
       expected: parakeetBatch,
     },
     {
-      name: "separates an in-person meeting with one listed participant and silent system audio",
+      name: "plans an in-person meeting with one listed participant and silent system audio, the count only capping the voices",
       model: "soniqo-parakeet-streaming",
       participants: ["user-1", "lex"],
       wordChannels: [0, 0],
@@ -1717,6 +1717,39 @@ describe("useStartListening", () => {
       consoleWarn.mockRestore();
     },
   );
+
+  test("finishes with the live transcript when refinement finds only one voice", async () => {
+    runBatchMock.mockResolvedValueOnce({ separated: false });
+
+    await stopChunkedLiveCapture({
+      model: "soniqo-parakeet-streaming",
+      parakeetBatchDownloaded: false,
+      wordChannels: [0, 0],
+    });
+
+    expect(runBatchMock).toHaveBeenCalledOnce();
+    expect(requestAutoEnhanceMock.mock.calls).toEqual([
+      ["session-1", "if_empty"],
+    ]);
+    expect(toastWarningMock).not.toHaveBeenCalled();
+    expect(markSessionAudioTranscriptionCompleteMock).toHaveBeenCalledWith(
+      "session-1",
+    );
+    expect(clearCaptureLifecycleMarkerMock).toHaveBeenCalled();
+  });
+
+  test("does not hold a 1:1 call's note pending while it decides there is nothing to separate", async () => {
+    await stopChunkedLiveCapture({
+      model: "soniqo-parakeet-streaming",
+      participants: ["user-1", "lex"],
+    });
+
+    expect(runBatchMock).not.toHaveBeenCalled();
+    expect(setBatchTranscriptionPendingMock).not.toHaveBeenCalledWith(
+      "session-1",
+      true,
+    );
+  });
 
   test("stops speaker refinement when another recording starts", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});

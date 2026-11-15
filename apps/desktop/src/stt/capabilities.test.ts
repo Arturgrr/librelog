@@ -253,6 +253,12 @@ describe("shouldRefineSpeakers", () => {
       refine: true,
     },
     { name: "1:1 call", words: call, remotes: 1, refine: false },
+    {
+      name: "1:1 call with untimed remote words",
+      words: [...mic, ...Array.from({ length: 20 }, () => ({ channel: 1 }))],
+      remotes: 1,
+      refine: false,
+    },
     { name: "call, nobody listed", words: call, remotes: 0, refine: true },
     { name: "group call", words: call, remotes: 2, refine: true },
     { name: "nothing said", words: [], remotes: 0, refine: false },

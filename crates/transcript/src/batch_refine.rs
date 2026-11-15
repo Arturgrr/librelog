@@ -2173,6 +2173,38 @@ mod tests {
     }
 
     #[test]
+    fn a_resumed_capture_keeps_every_word_including_an_untimed_first_one() {
+        // The diarize-only pass sends a resumed capture's words on the
+        // recording's clock, an untimed first word as 1 ms at the offset.
+        let offset_ms = 60_000.0;
+        let replacement = vec![
+            word("untimed", offset_ms, offset_ms + 1.0, 2.0),
+            word("timed", offset_ms + 400.0, offset_ms + 900.0, 2.0),
+        ];
+        let (words, _, _, _, _) = ready(refine_batch_transcript(BatchRefinementRequest {
+            words: replacement,
+            hints: vec![],
+            promotion: BatchTranscriptPromotion::CurrentCapture {
+                audio_offset_ms: offset_ms,
+                replace_transcript_id: None,
+                started_at: 0.0,
+            },
+            previous_transcripts: vec![],
+        }));
+
+        assert_eq!(
+            words
+                .iter()
+                .map(|word| (word.id.as_str(), word.start_ms, word.end_ms))
+                .collect::<Vec<_>>(),
+            [
+                ("untimed", Some(0.0), Some(1.0)),
+                ("timed", Some(400.0), Some(900.0)),
+            ]
+        );
+    }
+
+    #[test]
     fn keeps_overlapping_or_rewritten_speech_mixed() {
         let local = word("a", 0.0, 500.0, 0.0);
         let remote = word("b", 0.0, 500.0, 1.0);

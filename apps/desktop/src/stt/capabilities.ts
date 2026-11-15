@@ -259,6 +259,8 @@ export function getSpeakerRefinementTarget(
 // Mirrors REMOTE_SILENCE_MAX_SECONDS in listener2-core: a system-audio
 // channel with no more speech than this carried no call.
 const REMOTE_SILENCE_MAX_MS = 3_000;
+// An untimed system-audio word still shows someone spoke on the far end.
+const UNTIMED_WORD_MS = 300;
 
 // Whether the voices of a live on-device transcript are worth separating once
 // the recording stops. A mic that heard speech while system audio stayed
@@ -273,7 +275,10 @@ export function shouldRefineSpeakers(
     .filter((word) => word.channel === 1)
     .reduce(
       (total, word) =>
-        total + Math.max(0, (word.end_ms ?? 0) - (word.start_ms ?? 0)),
+        total +
+        (word.start_ms === undefined || word.end_ms === undefined
+          ? UNTIMED_WORD_MS
+          : Math.max(0, word.end_ms - word.start_ms)),
       0,
     );
   if (

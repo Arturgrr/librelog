@@ -891,7 +891,7 @@ export function useCaptureLifecycle(sessionId: string) {
               finalAudioDurationMs + 1_000 >= existingAudioDurationMs
                 ? Math.min(existingAudioDurationMs, finalAudioDurationMs)
                 : 0;
-            await runBatchRef.current(details.audioPath!, {
+            const refined = await runBatchRef.current(details.audioPath!, {
               deferAudioFinalization: true,
               ...(stoppedAtMs !== null
                 ? { captureInterval: { startedAtMs: startedAt, stoppedAtMs } }
@@ -917,11 +917,18 @@ export function useCaptureLifecycle(sessionId: string) {
                     }
                   : { scope: "whole_session" },
             });
-            batchCompleted = true;
-            console.info("[listener] completed post-stop transcript repair", {
-              sessionId,
-              reasons: repairReasons,
-            });
+            if (refined?.separated === false) {
+              // Only one voice was heard, so the live transcript stands as if
+              // no pass had been planned.
+              listenerStore.getState().clearBatchSession(sessionId);
+              postCaptureAction = "enhance_only";
+            } else {
+              batchCompleted = true;
+              console.info("[listener] completed post-stop transcript repair", {
+                sessionId,
+                reasons: repairReasons,
+              });
+            }
           } catch (error) {
             if (refineSpeakerDiarization) {
               // The live transcript is complete and was not replaced, so a
@@ -1256,6 +1263,10 @@ export function useCaptureLifecycle(sessionId: string) {
         const mayRefineSpeakers =
           details.liveTranscriptionActive &&
           !details.needsBatchRepair &&
+          // A 1:1 meeting is only refined when it turns out to be in person,
+          // which the words decide later; marking every 1:1 call pending
+          // would block the note while nothing runs.
+          remoteParticipantCount(participantHumanIds) !== 1 &&
           speakerRefinementTarget() !== null;
         if (
           (!usesChunkedAudio || batchFromRetainedAudio || mayRefineSpeakers) &&
