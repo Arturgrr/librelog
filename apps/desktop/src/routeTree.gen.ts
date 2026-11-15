@@ -17,6 +17,8 @@ import { Route as AppFloatingBarRouteImport } from './routes/app/floating-bar'
 import { Route as AppComposerRouteImport } from './routes/app/composer'
 import { Route as AppCaptureCardsRouteImport } from './routes/app/capture-cards'
 import { Route as AppCaptureAreaRouteImport } from './routes/app/capture-area'
+import { Route as AppAnnotateInkRouteImport } from './routes/app/annotate-ink'
+import { Route as AppAnnotateCapsuleRouteImport } from './routes/app/annotate-capsule'
 import { Route as AppNoteSessionIdRouteImport } from './routes/app/note.$sessionId'
 import { Route as AppMainLayoutRouteImport } from './routes/app/main/_layout'
 import { Route as AppCaptureEditorIdRouteImport } from './routes/app/capture-editor.$id'
@@ -62,6 +64,16 @@ const AppCaptureAreaRoute = AppCaptureAreaRouteImport.update({
   path: '/capture-area',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppAnnotateInkRoute = AppAnnotateInkRouteImport.update({
+  id: '/annotate-ink',
+  path: '/annotate-ink',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAnnotateCapsuleRoute = AppAnnotateCapsuleRouteImport.update({
+  id: '/annotate-capsule',
+  path: '/annotate-capsule',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppNoteSessionIdRoute = AppNoteSessionIdRouteImport.update({
   id: '/note/$sessionId',
   path: '/note/$sessionId',
@@ -85,6 +97,8 @@ const AppMainLayoutIndexRoute = AppMainLayoutIndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/app': typeof AppRouteRouteWithChildren
+  '/app/annotate-capsule': typeof AppAnnotateCapsuleRoute
+  '/app/annotate-ink': typeof AppAnnotateInkRoute
   '/app/capture-area': typeof AppCaptureAreaRoute
   '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
@@ -98,6 +112,8 @@ export interface FileRoutesByFullPath {
   '/app/main/': typeof AppMainLayoutIndexRoute
 }
 export interface FileRoutesByTo {
+  '/app/annotate-capsule': typeof AppAnnotateCapsuleRoute
+  '/app/annotate-ink': typeof AppAnnotateInkRoute
   '/app/capture-area': typeof AppCaptureAreaRoute
   '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
@@ -112,6 +128,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/app': typeof AppRouteRouteWithChildren
+  '/app/annotate-capsule': typeof AppAnnotateCapsuleRoute
+  '/app/annotate-ink': typeof AppAnnotateInkRoute
   '/app/capture-area': typeof AppCaptureAreaRoute
   '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
@@ -128,6 +146,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/app'
+    | '/app/annotate-capsule'
+    | '/app/annotate-ink'
     | '/app/capture-area'
     | '/app/capture-cards'
     | '/app/composer'
@@ -141,6 +161,8 @@ export interface FileRouteTypes {
     | '/app/main/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/app/annotate-capsule'
+    | '/app/annotate-ink'
     | '/app/capture-area'
     | '/app/capture-cards'
     | '/app/composer'
@@ -154,6 +176,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/app'
+    | '/app/annotate-capsule'
+    | '/app/annotate-ink'
     | '/app/capture-area'
     | '/app/capture-cards'
     | '/app/composer'
@@ -229,6 +253,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCaptureAreaRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/annotate-ink': {
+      id: '/app/annotate-ink'
+      path: '/annotate-ink'
+      fullPath: '/app/annotate-ink'
+      preLoaderRoute: typeof AppAnnotateInkRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/annotate-capsule': {
+      id: '/app/annotate-capsule'
+      path: '/annotate-capsule'
+      fullPath: '/app/annotate-capsule'
+      preLoaderRoute: typeof AppAnnotateCapsuleRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/note/$sessionId': {
       id: '/app/note/$sessionId'
       path: '/note/$sessionId'
@@ -273,6 +311,8 @@ const AppMainLayoutRouteWithChildren = AppMainLayoutRoute._addFileChildren(
 )
 
 interface AppRouteRouteChildren {
+  AppAnnotateCapsuleRoute: typeof AppAnnotateCapsuleRoute
+  AppAnnotateInkRoute: typeof AppAnnotateInkRoute
   AppCaptureAreaRoute: typeof AppCaptureAreaRoute
   AppCaptureCardsRoute: typeof AppCaptureCardsRoute
   AppComposerRoute: typeof AppComposerRoute
@@ -286,6 +326,8 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAnnotateCapsuleRoute: AppAnnotateCapsuleRoute,
+  AppAnnotateInkRoute: AppAnnotateInkRoute,
   AppCaptureAreaRoute: AppCaptureAreaRoute,
   AppCaptureCardsRoute: AppCaptureCardsRoute,
   AppComposerRoute: AppComposerRoute,

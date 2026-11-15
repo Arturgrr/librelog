@@ -5,9 +5,18 @@ import { commands as annotate } from "@anlg/plugin-annotate";
 import { isAppStoreBuild } from "~/shared/app-store";
 import { useConfigValue } from "~/shared/config";
 
-/** Annotate records on macOS only, and not in the App Store build. */
+/** Annotate records on macOS and Linux, and not in the App Store build. */
 export function annotateAvailable() {
-  return platform() === "macos" && !isAppStoreBuild();
+  const os = platform();
+  return (os === "macos" || os === "linux") && !isAppStoreBuild();
+}
+
+/**
+ * Annotate on Linux: the desktop's sharing dialog picks the screen, there is
+ * no permission to allow ahead, and the capsule and ink are in the video.
+ */
+export function annotateOnLinux() {
+  return platform() === "linux";
 }
 
 export async function openScreenRecordingSettings() {

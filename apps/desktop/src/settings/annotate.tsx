@@ -28,6 +28,7 @@ import {
 import { useAnnotateStatus } from "~/annotate/state";
 import {
   annotateAvailable,
+  annotateOnLinux,
   openScreenRecordingSettings,
 } from "~/annotate/system";
 import { useCaptureShortcuts } from "~/capture/system";
@@ -60,6 +61,7 @@ export function SettingsAnnotate() {
   const phase = useAnnotateStatus((state) => state.phase);
   const registrationError = useAnnotateStatus((state) => state.error);
   const available = annotateAvailable();
+  const linux = annotateOnLinux();
   const reveal = useMutation({
     mutationFn: async () => {
       const dir = unwrap(await annotate.annotationsDir());
@@ -73,7 +75,8 @@ export function SettingsAnnotate() {
         <SettingsPageTitle title={<Trans>Annotate</Trans>} />
         <p className="text-muted-foreground text-sm">
           <Trans>
-            Annotate is available in the macOS app downloaded from the website.
+            Annotate is available in the macOS and Linux apps downloaded from
+            the website.
           </Trans>
         </p>
       </div>
@@ -122,7 +125,17 @@ export function SettingsAnnotate() {
                 : t`Finishing the annotation…`}
           </p>
         )}
-        <ScreenRecordingPermission />
+        {linux ? (
+          <p className="text-muted-foreground text-sm">
+            <Trans>
+              Your desktop asks which screen to share when you start an
+              annotation, and remembers it where it can. The capsule and your
+              red marks are part of the recording.
+            </Trans>
+          </p>
+        ) : (
+          <ScreenRecordingPermission />
+        )}
         <SettingRow
           title={<Trans>Keep annotations for</Trans>}
           description={
@@ -174,16 +187,28 @@ export function SettingsAnnotate() {
           </p>
         )}
         <p className="text-muted-foreground text-xs">
-          <Trans>
-            A recording holds everything shown on the display under the pointer,
-            what your microphone hears, your red marks, and the name and title
-            of the app in front. Each one is a folder on this computer, in
-            Librelog's data folder under annotations, with the video, the audio,
-            the key frames, a contact sheet and a summary. Your narration is
-            transcribed by your transcription provider. Nothing else leaves this
-            computer until you paste it somewhere: then it goes to that app and
-            its provider.
-          </Trans>
+          {linux ? (
+            <Trans>
+              A recording holds everything shown on the screen you share, what
+              your microphone hears and your red marks. Each one is a folder on
+              this computer, in Librelog's data folder under annotations, with
+              the video, the audio, the key frames, a contact sheet and a
+              summary. Your narration is transcribed by your transcription
+              provider. Nothing else leaves this computer until you paste it
+              somewhere: then it goes to that app and its provider.
+            </Trans>
+          ) : (
+            <Trans>
+              A recording holds everything shown on the display under the
+              pointer, what your microphone hears, your red marks, and the name
+              and title of the app in front. Each one is a folder on this
+              computer, in Librelog's data folder under annotations, with the
+              video, the audio, the key frames, a contact sheet and a summary.
+              Your narration is transcribed by your transcription provider.
+              Nothing else leaves this computer until you paste it somewhere:
+              then it goes to that app and its provider.
+            </Trans>
+          )}
         </p>
       </div>
     </div>
@@ -229,7 +254,13 @@ function AnnotateShortcutSettings() {
       slot: "annotate",
       value: shortcut,
       title: <Trans>Annotate shortcut</Trans>,
-      description: (
+      description: annotateOnLinux() ? (
+        <Trans>
+          Press to start recording the screen you share, and again to finish.
+          While recording, hold it to draw in red where the pointer goes; let go
+          to stop drawing. A right click turns drawing off.
+        </Trans>
+      ) : (
         <Trans>
           Press to start recording the display under the pointer, and again to
           finish. While recording, hold it to draw in red where the pointer
