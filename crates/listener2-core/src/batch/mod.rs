@@ -283,7 +283,17 @@ async fn run_batch_inner(
     }?;
 
     let (runtime, params, listen_params) = post_process;
-    apply_local_diarization(runtime.clone(), &params, &listen_params, &mut output).await;
+    let diarized =
+        apply_local_diarization(runtime.clone(), &params, &listen_params, &mut output).await;
+    // Separating speakers is the whole point of a diarize-only run, so its
+    // failure must reach the caller instead of returning the words unchanged.
+    if let (BatchProvider::LocalDiarization, Err(message)) = (&params.provider, diarized) {
+        return Err(crate::BatchFailure::DirectRequestFailed {
+            provider: batch_provider_label(BatchProvider::LocalDiarization),
+            message,
+        }
+        .into());
+    }
     consolidate_hosted_speakers(runtime, &params, &listen_params, &mut output).await;
     Ok(output)
 }
@@ -512,6 +522,37 @@ mod tests {
             let message = format_user_friendly_error(error);
             assert!(message.starts_with("This recording is too large"));
         }
+    }
+
+    struct Cancelled;
+
+    impl BatchRuntime for Cancelled {
+        fn emit(&self, _event: BatchEvent) {}
+
+        fn is_cancelled(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn a_diarize_only_run_that_cannot_separate_fails_instead_of_returning_the_words() {
+        let file = test_fixtures::in_person_fixture();
+        let mut params = test_fixtures::params(
+            BatchProvider::LocalDiarization,
+            "",
+            file.path().to_str().unwrap(),
+        );
+        params.diarize_words = vec![owhisper_interface::batch::Word {
+            word: " hi".to_string(),
+            start: 0.0,
+            end: 0.5,
+            confidence: 1.0,
+            channel: 0,
+            speaker: None,
+            punctuated_word: None,
+        }];
+
+        assert!(run_batch_inner(Arc::new(Cancelled), params).await.is_err());
     }
 
     #[test]

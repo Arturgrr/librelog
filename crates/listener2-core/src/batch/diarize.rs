@@ -137,7 +137,23 @@ pub(super) fn plan_channel(
         channel_index,
         in_person,
     )?;
-    channel_speaker_bounds(listen_params, shift).map(|bounds| (audio, bounds))
+    let bounds = channel_speaker_bounds(listen_params, shift)?;
+    let shared_mic = in_person && transcript_channels == 2 && channel_index == 0;
+    Some((audio, if shared_mic { at_most(bounds) } else { bounds }))
+}
+
+/// A room mic holds at most the people invited, never all of them for sure:
+/// the far end of a call may have stayed muted or system audio may have
+/// captured nothing, leaving the owner alone on the mic. Forcing the count
+/// would split that one voice in two.
+fn at_most(bounds: SpeakerBounds) -> SpeakerBounds {
+    SpeakerBounds {
+        max_speakers: [bounds.num_speakers, bounds.max_speakers]
+            .into_iter()
+            .flatten()
+            .min(),
+        ..SpeakerBounds::default()
+    }
 }
 
 /// Which recorded audio a transcript channel was heard from, and how many of the
@@ -278,14 +294,16 @@ pub(super) fn channel_needs_diarization(channel: &batch::Channel) -> bool {
     words.peek().is_some() && words.all(|word| word.speaker.is_none())
 }
 
+/// Labels the unlabeled channels of a local transcript in place. An error
+/// leaves the transcript untouched; callers that transcribed keep it anyway.
 pub(super) async fn apply_local_diarization(
     runtime: Arc<dyn BatchRuntime>,
     params: &BatchParams,
     listen_params: &owhisper_interface::ListenParams,
     output: &mut BatchRunOutput,
-) {
+) -> Result<(), String> {
     if !is_local_batch(params) {
-        return;
+        return Ok(());
     }
     let transcript_channels = output.response.results.channels.len();
     let in_person = in_person_capture(&output.response);
@@ -319,7 +337,7 @@ pub(super) async fn apply_local_diarization(
         })
         .collect();
     if unlabeled.is_empty() {
-        return;
+        return Ok(());
     }
 
     let session_id = params.session_id.clone();
@@ -373,20 +391,23 @@ pub(super) async fn apply_local_diarization(
                 diarization.shared_mic = summary.shared_mic,
                 "local_diarization_completed"
             );
+            Ok(())
         }
-        Ok(Err(_error)) => {
+        Ok(Err(error)) => {
             tracing::warn!(
                 anarlog.stt.provider.name = LOCAL_DIARIZATION_PROVIDER,
                 elapsed_ms = started_at.elapsed().as_millis() as u64,
                 error.type = "local_diarization_failed",
                 "local_diarization_failed"
             );
+            Err(error)
         }
         Err(_error) => {
             tracing::error!(
                 error.type = "local_task_join_failed",
                 "local_diarization_task_join_failed"
             );
+            Err("speaker separation stopped unexpectedly".to_string())
         }
     }
 }
@@ -795,18 +816,21 @@ mod tests {
     }
 
     #[test]
-    fn in_person_meeting_opens_the_direct_mic_with_the_full_count() {
-        // Everyone was in the room, so the mic carried all three people and
-        // the system-audio channel has nothing to plan.
+    fn in_person_meeting_caps_the_direct_mic_at_the_participant_count() {
+        // The mic may carry everyone invited, or only the owner when the far
+        // end of a call stayed silent: the count is a ceiling, not a target.
+        let at_most = |count| SpeakerBounds {
+            max_speakers: Some(count),
+            ..SpeakerBounds::default()
+        };
         let params = listen_params(Some(3), None, None);
         assert_eq!(
             plan_channel(&params, 2, 2, 0, true).unwrap(),
-            (ChannelAudio::File(0), SpeakerBounds::exact(3))
+            (ChannelAudio::File(0), at_most(3))
         );
-        // An in-person 1:1 still has two voices on the mic.
         assert_eq!(
-            plan_channel(&listen_params(Some(2), None, None), 2, 2, 0, true).unwrap(),
-            (ChannelAudio::File(0), SpeakerBounds::exact(2))
+            plan_channel(&listen_params(None, Some(2), Some(4)), 2, 2, 0, true).unwrap(),
+            (ChannelAudio::File(0), at_most(4))
         );
         // The remote channel keeps its call-shaped budget either way.
         assert_eq!(
@@ -1044,7 +1068,8 @@ mod tests {
             &owhisper_interface::ListenParams::default(),
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         let progress = runtime.progress.lock().unwrap();
         // One forced beat before the resample and one before the models load,
@@ -1103,7 +1128,8 @@ mod tests {
             &listen_params,
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         let words = &output.response.results.channels[0].alternatives[0].words;
         assert!(words.iter().all(|word| word.speaker.is_some()));
@@ -1141,7 +1167,8 @@ mod tests {
             &listen_params,
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         // Labelling from the mic channel alone would only ever hear speaker0.
         let speakers = output.response.results.channels[0].alternatives[0]
@@ -1185,7 +1212,8 @@ mod tests {
             &listen_params,
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         let words = &output.response.results.channels[0].alternatives[0].words;
         assert!(words.iter().all(|word| word.speaker.is_some()));
@@ -1223,6 +1251,7 @@ mod tests {
     async fn diarize_live_words(
         file: &tempfile::NamedTempFile,
         words: Vec<batch::Word>,
+        num_speakers: Option<u32>,
     ) -> batch::Response {
         let mut params = params(
             BatchProvider::LocalDiarization,
@@ -1232,6 +1261,7 @@ mod tests {
         params.diarize_words = words;
         let listen_params = owhisper_interface::ListenParams {
             channels: 2,
+            num_speakers,
             ..Default::default()
         };
         let mut output = BatchRunOutput {
@@ -1245,14 +1275,15 @@ mod tests {
             &listen_params,
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
         output.response
     }
 
     #[tokio::test]
     async fn diarize_only_labels_the_existing_words_of_an_in_person_meeting() {
         let words = live_mic_words(300, 153.0);
-        let response = diarize_live_words(&in_person_fixture(), words.clone()).await;
+        let response = diarize_live_words(&in_person_fixture(), words.clone(), None).await;
 
         let labelled = &response.results.channels[0].alternatives[0].words;
         assert_eq!(labelled.len(), words.len());
@@ -1277,15 +1308,21 @@ mod tests {
 
     #[tokio::test]
     async fn diarize_only_leaves_a_solo_recording_as_the_owner() {
-        // One person talking, with the other fixture voice muted out.
-        let words = live_mic_words(300, 153.0);
-        let response = diarize_live_words(&solo_in_person_fixture(), words).await;
+        // One person talking, with the other fixture voice muted out. A
+        // listed participant whose call audio never arrived does not make the
+        // owner's voice two people.
+        let file = solo_in_person_fixture();
+        for num_speakers in [None, Some(2)] {
+            let words = live_mic_words(300, 153.0);
+            let response = diarize_live_words(&file, words, num_speakers).await;
 
-        let mic = &response.results.channels[0].alternatives[0].words;
-        assert!(
-            mic.iter()
-                .all(|word| word.channel == 0 && word.speaker.is_none())
-        );
+            let mic = &response.results.channels[0].alternatives[0].words;
+            assert!(
+                mic.iter()
+                    .all(|word| word.channel == 0 && word.speaker.is_none()),
+                "{num_speakers:?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1319,7 +1356,8 @@ mod tests {
             &listen_params,
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         assert_eq!(output.response, before);
     }
@@ -1340,7 +1378,8 @@ mod tests {
             &owhisper_interface::ListenParams::default(),
             &mut output,
         )
-        .await;
+        .await
+        .unwrap_err();
 
         assert_eq!(output.response, before);
     }
@@ -1361,7 +1400,8 @@ mod tests {
             &owhisper_interface::ListenParams::default(),
             &mut output,
         )
-        .await;
+        .await
+        .unwrap();
 
         assert_eq!(output.response, before);
     }
