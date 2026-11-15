@@ -127,7 +127,7 @@ pub fn finalize(
         marks,
         keyframes,
         contact_sheet: CONTACT_SHEET_FILE.into(),
-        video: present(VIDEO_FILE),
+        video: present(VIDEO_FILE).or_else(|| present(WEBM_VIDEO_FILE)),
         video_offset_ms,
         audio: present(AUDIO_FILE),
     };
@@ -295,6 +295,17 @@ mod tests {
             candidates: (0..=24).map(|i| solid(i * 250, 200, 100, 200)).collect(),
             video_offset_ms: 120,
         }
+    }
+
+    #[test]
+    fn a_webm_movie_is_the_bundles_video() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(new_bundle_id());
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join(WEBM_VIDEO_FILE), b"movie").unwrap();
+        let mut source = |times: &[u64]| times.iter().map(|&t| solid(t, 800, 400, 200)).collect();
+        let done = finalize(&dir, recording(), &mut source).unwrap();
+        assert_eq!(done.annotation.video.as_deref(), Some(WEBM_VIDEO_FILE));
     }
 
     #[test]

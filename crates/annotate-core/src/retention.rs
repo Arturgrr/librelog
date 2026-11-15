@@ -22,7 +22,7 @@ use crate::model::*;
 /// Marks a bundle to keep forever.
 pub const PINNED: &str = ".pinned";
 /// The heavy files media cleanup removes.
-pub const MEDIA: [&str; 2] = [VIDEO_FILE, AUDIO_FILE];
+pub const MEDIA: [&str; 3] = [VIDEO_FILE, WEBM_VIDEO_FILE, AUDIO_FILE];
 
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 
