@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/react/macro";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 
@@ -8,6 +9,7 @@ import {
   commands as capture,
 } from "@anlg/plugin-capture";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
+import { cn } from "@anlg/utils";
 
 import {
   dragRect,
@@ -35,6 +37,7 @@ function viewSize() {
  * picked in the desktop's dialog, Escape cancels.
  */
 export function CaptureAreaScreen() {
+  const { t } = useLingui();
   const [frame, setFrame] = useState<AreaFrame | null>(null);
   const [from, setFrom] = useState<Point | null>(null);
   const [rect, setRect] = useState<AreaRect | null>(null);
@@ -123,9 +126,37 @@ export function CaptureAreaScreen() {
       ) : (
         <div className="pointer-events-none absolute inset-0 bg-black/45" />
       )}
-      <p className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-sm text-white">
-        {frame.hint}
-      </p>
+      <div
+        className="absolute top-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2"
+        // Its buttons work without starting a drag.
+        onPointerDown={(event) => event.stopPropagation()}
+        onPointerUp={(event) => event.stopPropagation()}
+      >
+        <p className="pointer-events-none rounded-full bg-black/75 px-4 py-2 text-sm text-white">
+          {frame.hint}
+        </p>
+        <div className="flex gap-2">
+          {(
+            [
+              ["whole", t`Record whole screen`],
+              ["window", t`Pick a window`],
+              ["cancel", t`Cancel`],
+            ] as const
+          ).map(([type, label]) => (
+            <button
+              key={type}
+              type="button"
+              className={cn([
+                "cursor-pointer rounded-full px-4 py-1.5 text-sm text-white",
+                "bg-black/75 hover:bg-black/90",
+              ])}
+              onClick={() => answer({ type })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

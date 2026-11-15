@@ -155,6 +155,11 @@ mod x11 {
     use x11rb::wrapper::ConnectionExt as _;
     use x11rb::{COPY_DEPTH_FROM_PARENT, COPY_FROM_PARENT, CURRENT_TIME, NONE};
 
+    use std::time::{Duration, Instant};
+
+    /// A chunked transfer whose reader has not taken a chunk for this long.
+    const INCR_ABANDONED: Duration = Duration::from_secs(10);
+
     x11rb::atom_manager! {
         Atoms: AtomsCookie {
             CLIPBOARD,
@@ -262,8 +267,11 @@ mod x11 {
     ) {
         // Large formats go in INCR chunks, well inside the request limit.
         let chunk = (connection.maximum_request_bytes() / 2).min(256 * 1024) & !3;
-        let mut transfers = HashMap::<(Window, u32), (usize, usize)>::new();
+        // By requestor and property: format, offset, and when it last moved.
+        let mut transfers = HashMap::<(Window, u32), (usize, usize, Instant)>::new();
         while let Ok(event) = connection.wait_for_event() {
+            // A reader that stopped taking its chunks is forgotten.
+            transfers.retain(|_, (_, _, moved)| moved.elapsed() < INCR_ABANDONED);
             match event {
                 Event::SelectionRequest(request) => {
                     let property = if request.property == NONE {
@@ -303,7 +311,8 @@ mod x11 {
                                 &ChangeWindowAttributesAux::new()
                                     .event_mask(EventMask::PROPERTY_CHANGE),
                             );
-                            transfers.insert((request.requestor, property), (index, 0));
+                            transfers
+                                .insert((request.requestor, property), (index, 0, Instant::now()));
                             connection
                                 .change_property32(
                                     PropMode::REPLACE,
@@ -334,7 +343,8 @@ mod x11 {
                 }
                 Event::PropertyNotify(event) if event.state == Property::DELETE => {
                     let key = (event.window, event.atom);
-                    if let Some((index, offset)) = transfers.get_mut(&key) {
+                    if let Some((index, offset, moved)) = transfers.get_mut(&key) {
+                        *moved = Instant::now();
                         let format = &formats[*index];
                         let end = (*offset + chunk).min(format.data.len());
                         put(

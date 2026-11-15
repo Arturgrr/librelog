@@ -110,6 +110,19 @@ impl Encoder {
             ),
         };
         let mut chain = vec![format!("video/x-raw,format={format}"), "!".to_owned()];
+        // The encoder runs in its own thread; a slow one drops frames here
+        // instead of stalling the capture.
+        chain.extend(
+            [
+                "queue",
+                "max-size-buffers=0",
+                "max-size-bytes=0",
+                "max-size-time=2000000000",
+                "leaky=downstream",
+                "!",
+            ]
+            .map(String::from),
+        );
         chain.extend(encoder.iter().map(|part| (*part).to_owned()));
         if self.is_h264() {
             chain.extend(
@@ -154,7 +167,8 @@ pub struct Rect {
 /// What a recording keeps of the stream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shape {
-    /// All of it, scaled to even sizes for H.264.
+    /// All of it, scaled (with borders, keeping its shape) to the
+    /// recording's fixed size.
     Whole,
     /// Frames scaled to `frame` (the size the selection was made on), then
     /// cropped to `rect`.
@@ -172,7 +186,20 @@ pub struct Recording {
     pub encoder: Encoder,
     /// The movie file, opened for writing.
     pub out: RawFd,
+    /// The movie's size for [`Shape::Whole`]: fixed, so a window resized
+    /// while it is recorded is scaled into it instead of renegotiating.
+    pub size: (u32, u32),
 }
+
+/// `size` rounded down to even numbers, at least 16 each way: what H.264
+/// and the fixed caps take.
+pub fn even_size(size: (u32, u32)) -> (u32, u32) {
+    ((size.0 & !1).max(16), (size.1 & !1).max(16))
+}
+
+/// The size a recording falls back to when neither the portal nor a probe
+/// tells the stream's own.
+pub const FALLBACK_SIZE: (u32, u32) = (1920, 1080);
 
 /// `gst-launch-1.0` arguments for a recording. `-e` turns SIGINT into an
 /// end of stream, which finishes the file.
@@ -191,20 +218,19 @@ pub fn record_args(recording: &Recording) -> Vec<String> {
         format!("video/x-raw,framerate={}/1", recording.fps.clamp(1, 60)),
         "!".to_owned(),
         "videoconvert".to_owned(),
+        "n-threads=0".to_owned(),
         "!".to_owned(),
         "videoscale".to_owned(),
+        "add-borders=true".to_owned(),
         "!".to_owned(),
     ]
     .into();
     match recording.shape {
         Shape::Whole => {
-            // H.264 takes even sizes only: the nearest even size.
-            args.push(if recording.encoder.is_h264() {
-                "video/x-raw,width=(int)[16,16384,2],height=(int)[16,16384,2],pixel-aspect-ratio=1/1"
-                    .into()
-            } else {
-                "video/x-raw,pixel-aspect-ratio=1/1".into()
-            });
+            let (width, height) = even_size(recording.size);
+            args.push(format!(
+                "video/x-raw,width={width},height={height},pixel-aspect-ratio=1/1"
+            ));
         }
         Shape::Crop { frame, rect } => {
             let (width, height) = frame;
@@ -227,6 +253,7 @@ pub fn record_args(recording: &Recording) -> Vec<String> {
     }
     args.push("!".into());
     args.push("videoconvert".into());
+    args.push("n-threads=0".into());
     args.push("!".into());
     args.extend(recording.encoder.chain());
     args.push("!".into());
@@ -266,6 +293,34 @@ pub fn frames_args(
         format!("fd={output}"),
     ]
     .into()
+}
+
+/// One frame of the stream as a PNG on `output`, to learn its size.
+pub fn probe_args(remote: RawFd, node: u32, output: RawFd) -> Vec<String> {
+    [
+        "-q".to_owned(),
+        "pipewiresrc".to_owned(),
+        format!("fd={remote}"),
+        format!("path={node}"),
+        "num-buffers=1".to_owned(),
+        "!".to_owned(),
+        "videoconvert".to_owned(),
+        "!".to_owned(),
+        "pngenc".to_owned(),
+        "!".to_owned(),
+        "fdsink".to_owned(),
+        format!("fd={output}"),
+    ]
+    .into()
+}
+
+/// A PNG's size from its header.
+pub fn png_size(png: &[u8]) -> Option<(u32, u32)> {
+    if png.len() < 24 || !png.starts_with(b"\x89PNG\r\n\x1a\n") || &png[12..16] != b"IHDR" {
+        return None;
+    }
+    let word = |at: usize| u32::from_be_bytes([png[at], png[at + 1], png[at + 2], png[at + 3]]);
+    Some((word(16), word(20))).filter(|(width, height)| *width > 0 && *height > 0)
 }
 
 /// The movie on `input`'s first frame as a PNG on `output`.
@@ -418,6 +473,46 @@ impl Gst for Tools {
     }
 }
 
+/// Every pipeline still running, so a quitting app stops them all.
+static LIVE: Mutex<Vec<libc::pid_t>> = Mutex::new(Vec::new());
+
+fn live() -> std::sync::MutexGuard<'static, Vec<libc::pid_t>> {
+    LIVE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Whether `pid` has exited (or is gone), without reaping it: its owner
+/// does that.
+fn exited(pid: libc::pid_t) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        // `pid (comm) S …`: the state follows the last parenthesis.
+        Ok(stat) => stat
+            .rsplit_once(')')
+            .is_some_and(|(_, rest)| rest.trim_start().starts_with(['Z', 'X'])),
+        Err(_) => true,
+    }
+}
+
+/// For a quitting app: asks every pipeline to finish (SIGINT: a recording
+/// then finalizes its file), waits up to `within`, then kills the rest, so
+/// no `gst-launch-1.0` outlives Librelog.
+pub fn stop_all(within: Duration) {
+    let pids = live().clone();
+    if pids.is_empty() {
+        return;
+    }
+    for pid in &pids {
+        unsafe { libc::kill(*pid, libc::SIGINT) };
+    }
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline && !pids.iter().all(|pid| exited(*pid)) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    for pid in pids.iter().filter(|pid| !exited(**pid)) {
+        tracing::warn!(pid, "capture pipeline killed on quit");
+        unsafe { libc::kill(*pid, libc::SIGKILL) };
+    }
+}
+
 struct Child {
     child: std::process::Child,
     stderr: Arc<Mutex<Vec<u8>>>,
@@ -474,6 +569,9 @@ impl Child {
             command.pre_exec(move || keep_only(&keep));
         }
         let mut child = command.spawn()?;
+        if let Ok(pid) = libc::pid_t::try_from(child.id()) {
+            live().push(pid);
+        }
         let stderr = Arc::new(Mutex::new(Vec::new()));
         if let Some(mut pipe) = child.stderr.take() {
             let tail = stderr.clone();
@@ -498,13 +596,22 @@ impl Child {
     }
 }
 
+impl Child {
+    fn reaped(&mut self, success: bool) {
+        self.exited = Some(success);
+        if let Ok(pid) = libc::pid_t::try_from(self.child.id()) {
+            live().retain(|live| *live != pid);
+        }
+    }
+}
+
 impl Process for Child {
     fn try_wait(&mut self) -> Option<bool> {
         if self.exited.is_none() {
             match self.child.try_wait() {
-                Ok(Some(status)) => self.exited = Some(status.success()),
+                Ok(Some(status)) => self.reaped(status.success()),
                 Ok(None) => {}
-                Err(_) => self.exited = Some(false),
+                Err(_) => self.reaped(false),
             }
         }
         self.exited
@@ -523,7 +630,7 @@ impl Process for Child {
         if self.try_wait().is_none() {
             let _ = self.child.kill();
             let _ = self.child.wait();
-            self.exited = Some(false);
+            self.reaped(false);
         }
     }
 
@@ -600,7 +707,9 @@ mod tests {
     }
 
     #[test]
-    fn a_recording_pipeline_reads_the_portals_node_and_writes_only_to_its_descriptor() {
+    fn a_recording_pipeline_pins_an_even_size_and_writes_only_to_its_descriptor() {
+        // An odd-sized window: H.264 needs even sizes, and a fixed size
+        // keeps a resize from renegotiating the muxer.
         let whole = Recording {
             remote: 41,
             node: 77,
@@ -608,16 +717,18 @@ mod tests {
             shape: Shape::Whole,
             encoder: Encoder::OpenH264,
             out: 42,
+            size: (1279, 721),
         };
         let args = record_args(&whole).join(" ");
         assert!(
-            args.starts_with("-q -e pipewiresrc fd=41 path=77 do-timestamp=true keepalive-time=1000 ! videorate ! video/x-raw,framerate=30/1 ! videoconvert ! videoscale ! video/x-raw,width=(int)[16,16384,2],height=(int)[16,16384,2]"),
+            args.starts_with("-q -e pipewiresrc fd=41 path=77 do-timestamp=true keepalive-time=1000 ! videorate ! video/x-raw,framerate=30/1 ! videoconvert n-threads=0 ! videoscale add-borders=true ! video/x-raw,width=1278,height=720,pixel-aspect-ratio=1/1 ! videoconvert n-threads=0 !"),
             "{args}"
         );
         assert!(
-            args.ends_with("! video/x-raw,format=I420 ! openh264enc bitrate=8000000 complexity=low ! h264parse ! mp4mux fragment-duration=1000 ! fdsink fd=42"),
+            args.ends_with("! video/x-raw,format=I420 ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=2000000000 leaky=downstream ! openh264enc bitrate=8000000 complexity=low ! h264parse ! mp4mux fragment-duration=1000 ! fdsink fd=42"),
             "{args}"
         );
+        assert_eq!(even_size((7, 9)), (16, 16));
 
         let cropped = Recording {
             fps: 60,
@@ -636,11 +747,28 @@ mod tests {
         let args = record_args(&cropped).join(" ");
         assert!(args.contains("framerate=60/1"), "{args}");
         assert!(
-            args.contains("! video/x-raw,width=2880,height=1800,pixel-aspect-ratio=1/1 ! videocrop left=100 top=50 right=2140 bottom=1270 ! videoconvert ! video/x-raw,format=I420 ! vp9enc deadline=1"),
+            args.contains("! video/x-raw,width=2880,height=1800,pixel-aspect-ratio=1/1 ! videocrop left=100 top=50 right=2140 bottom=1270 ! videoconvert n-threads=0 ! video/x-raw,format=I420 ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=2000000000 leaky=downstream ! vp9enc deadline=1"),
             "{args}"
         );
         assert!(args.ends_with("! webmmux ! fdsink fd=42"), "{args}");
         assert_eq!(Encoder::Vp9.extension(), "webm");
         assert_eq!(Encoder::X264.extension(), "mp4");
+    }
+
+    #[test]
+    fn quitting_stops_every_pipeline_and_kills_one_that_ignores_sigint() {
+        let spawn = |script: &str| {
+            let child = Command::new("sh").args(["-c", script]).spawn().unwrap();
+            live().push(child.id() as libc::pid_t);
+            child
+        };
+        let mut polite = spawn("trap 'exit 0' INT; while :; do sleep 0.05; done");
+        let mut stubborn = spawn("trap '' INT; while :; do sleep 0.05; done");
+        std::thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        stop_all(Duration::from_millis(800));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(polite.wait().unwrap().success());
+        assert!(!stubborn.wait().unwrap().success());
     }
 }

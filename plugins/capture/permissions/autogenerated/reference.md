@@ -25,6 +25,7 @@ Default permissions for the plugin
 - `allow-card-hovered`
 - `allow-area-frame`
 - `allow-area-chosen`
+- `allow-forget-screen-choice`
 
 ## Permission Table
 
@@ -291,6 +292,32 @@ Enables the export_png command without any pre-configured scope.
 <td>
 
 Denies the export_png command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-forget-screen-choice`
+
+</td>
+<td>
+
+Enables the forget_screen_choice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-forget-screen-choice`
+
+</td>
+<td>
+
+Denies the forget_screen_choice command without any pre-configured scope.
 
 </td>
 </tr>

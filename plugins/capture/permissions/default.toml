@@ -22,4 +22,5 @@ permissions = [
   "allow-card-hovered",
   "allow-area-frame",
   "allow-area-chosen",
+  "allow-forget-screen-choice",
 ]

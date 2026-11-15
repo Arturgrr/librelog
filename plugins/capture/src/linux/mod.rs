@@ -16,6 +16,17 @@ mod record;
 mod screenshot;
 mod windows;
 
+/// The screen recorder and GStreamer runner, which Annotate records with
+/// on Linux.
+pub mod recorder {
+    pub use super::Events;
+    pub use super::area::Stream;
+    pub use super::gst::{Gst, LAUNCH, Process, Tools, finish, first_frame_args, pipe, wait};
+    pub use super::portal::Desktop;
+    pub use super::record::{AreaPicker, Cancel, Parts, Picked, Recorder};
+    pub use super::screenshot::{Leftovers, Shots};
+}
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -35,6 +46,11 @@ pub(crate) fn fail(code: &str, message: impl std::fmt::Display) -> AnnotateError
 
 fn parse<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, AnnotateError> {
     serde_json::from_str(json).map_err(|error| fail(codes::INVALID_ARGUMENT, error))
+}
+
+/// See [`crate::stop_pipelines`].
+pub fn stop_pipelines(within: Duration) {
+    gst::stop_all(within);
 }
 
 /// What `poll_events` hands the plugin next.
@@ -65,6 +81,7 @@ pub struct Linux {
 pub struct Overlays {
     cards: Arc<cards::Cards>,
     area: Arc<windows::AreaWindow>,
+    token_file: PathBuf,
 }
 
 impl Overlays {
@@ -86,6 +103,12 @@ impl Overlays {
 
     pub fn choose_area(&self, choice: AreaChoice) {
         self.area.choose(choice);
+    }
+
+    /// Forgets the screen the sharing dialog remembers, so the next
+    /// recording asks which one again.
+    pub fn forget_screen(&self) -> std::io::Result<()> {
+        record::forget_screen(&self.token_file)
     }
 }
 
@@ -129,7 +152,14 @@ impl Linux {
             cards: cards.clone(),
             events,
         });
-        Ok((linux, Overlays { cards, area }))
+        Ok((
+            linux,
+            Overlays {
+                cards,
+                area,
+                token_file: root.join("screencast-token"),
+            },
+        ))
     }
 }
 
@@ -168,13 +198,14 @@ impl Native for Linux {
 
     fn screenshot(&self, request: &str) -> Result<String, AnnotateError> {
         // Our own cards are not in the picture.
-        self.cards.close(None);
+        self.cards.clear_screen();
         screenshot::take(self.shots.as_ref(), &self.leftovers, request)
     }
 
     fn record_start(&self, request: &str) -> Result<String, AnnotateError> {
-        // Nor in the movie: nothing of ours can be left out of it.
-        self.cards.close(None);
+        // Nor in the movie (or the still an area is drawn on): nothing of
+        // ours can be left out of it.
+        self.cards.clear_screen();
         self.recorder.start(request)
     }
 
@@ -232,8 +263,12 @@ impl Native for Linux {
     fn card_close(&self, request: &str) -> Result<(), AnnotateError> {
         let request: CloseRequest = parse(request)?;
         match (request.all, request.id) {
-            (true, _) => self.cards.close(None),
-            (false, Some(id)) => self.cards.close(Some(&id)),
+            (true, _) => {
+                self.cards.close(None);
+            }
+            (false, Some(id)) => {
+                self.cards.close(Some(&id));
+            }
             (false, None) => {}
         }
         Ok(())

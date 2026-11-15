@@ -3,7 +3,7 @@
 //! call has a deadline; a cancelled dialog is `None`, a missing portal or a
 //! refusal an error that says which.
 
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -79,6 +79,7 @@ impl Shots for Desktop {
         };
         let taken = self.runtime.block_on(tokio::time::timeout(within, async {
             Screenshot::request()
+                .connection(Some(connection().await?))
                 .interactive(interactive)
                 .modal(false)
                 .send()
@@ -104,19 +105,39 @@ impl Shots for Desktop {
     }
 }
 
+/// The bus connection registered with the portal under Librelog's app id,
+/// so the desktop knows who asks (and keeps its choices for it).
+async fn connection() -> Result<ashpd::zbus::Connection, ashpd::Error> {
+    anlg_desktop_portal::connection()
+        .await
+        .map_err(ashpd::Error::Zbus)
+}
+
 struct Live {
     handle: tokio::runtime::Handle,
+    proxy: Screencast,
     session: Option<Arc<Session<Screencast>>>,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
-    remote: OwnedFd,
     stream: Stream,
     token: Option<String>,
     closed: Arc<AtomicBool>,
 }
 
 impl CastSession for Live {
-    fn remote(&self) -> RawFd {
-        self.remote.as_raw_fd()
+    fn open_remote(&mut self) -> Result<OwnedFd, AnnotateError> {
+        let what = "screen sharing";
+        let session = self
+            .session
+            .clone()
+            .ok_or_else(|| fail(codes::INTERNAL, "the screen-sharing session is closed"))?;
+        self.handle
+            .block_on(tokio::time::timeout(
+                CALL_WITHIN,
+                self.proxy
+                    .open_pipe_wire_remote(&session, Default::default()),
+            ))
+            .map_err(|_| timed_out(what))?
+            .map_err(|error| portal_error(what, error))
     }
 
     fn stream(&self) -> Stream {
@@ -159,7 +180,9 @@ impl Cast for Desktop {
         let what = "screen sharing";
         let proxy = self
             .runtime
-            .block_on(tokio::time::timeout(CALL_WITHIN, Screencast::new()))
+            .block_on(tokio::time::timeout(CALL_WITHIN, async {
+                Screencast::with_connection(connection().await?).await
+            }))
             .map_err(|_| timed_out(what))?
             .map_err(|error| portal_error(what, error))?;
         let session = self
@@ -258,21 +281,6 @@ impl Cast for Desktop {
             position: first.position(),
         };
         let token = streams.restore_token().map(str::to_owned);
-        let remote = self.runtime.block_on(tokio::time::timeout(
-            CALL_WITHIN,
-            proxy.open_pipe_wire_remote(&session, Default::default()),
-        ));
-        let remote = match remote {
-            Ok(Ok(remote)) => remote,
-            Ok(Err(error)) => {
-                close(session);
-                return Err(portal_error(what, error));
-            }
-            Err(_) => {
-                close(session);
-                return Err(timed_out(what));
-            }
-        };
         let closed = Arc::new(AtomicBool::new(false));
         let session = Arc::new(session);
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
@@ -295,9 +303,9 @@ impl Cast for Desktop {
         }
         Ok(Some(Box::new(Live {
             handle,
+            proxy,
             session: Some(session),
             stop: Some(stop),
-            remote,
             stream,
             token,
             closed,

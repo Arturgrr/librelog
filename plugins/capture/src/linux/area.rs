@@ -28,8 +28,11 @@ pub struct Region {
 
 /// The part of a `shot`-sized screenshot of all `monitors` that `this`
 /// monitor shows. One monitor is the whole picture. With several, the
-/// picture must be exactly their bounding box, in physical or logical
-/// pixels; else the whole picture is shown and nothing about it is trusted.
+/// picture must be exactly their bounding box, with the geometry taken as
+/// physical pixels, as logical ones (divided by the scale), or (XWayland
+/// with scaling reports logical geometry for a physical still) multiplied
+/// by the scale; else the whole picture is shown and nothing about it is
+/// trusted.
 pub fn region(shot: (u32, u32), monitors: &[Monitor], this: Monitor) -> Region {
     let whole = Rect {
         x: 0,
@@ -43,16 +46,13 @@ pub fn region(shot: (u32, u32), monitors: &[Monitor], this: Monitor) -> Region {
             trusted: true,
         };
     }
-    let bounds = |logical: bool| {
+    let bounds = |factor: fn(f64) -> f64| {
         let edge = |monitor: &Monitor, value: i32, size: u32| {
-            if logical {
-                (
-                    (f64::from(value) / monitor.scale).round() as i64,
-                    (f64::from(size) / monitor.scale).round() as i64,
-                )
-            } else {
-                (i64::from(value), i64::from(size))
-            }
+            let scale = factor(monitor.scale);
+            (
+                (f64::from(value) * scale).round() as i64,
+                (f64::from(size) * scale).round() as i64,
+            )
         };
         let mut left = i64::MAX;
         let mut top = i64::MAX;
@@ -73,8 +73,9 @@ pub fn region(shot: (u32, u32), monitors: &[Monitor], this: Monitor) -> Region {
             (x - left, y - top, width, height),
         )
     };
-    for logical in [false, true] {
-        let ((width, height), (x, y, w, h)) = bounds(logical);
+    let factors: [fn(f64) -> f64; 3] = [|_| 1.0, |scale| 1.0 / scale, |scale| scale];
+    for factor in factors {
+        let ((width, height), (x, y, w, h)) = bounds(factor);
         if (width, height) == (i64::from(shot.0), i64::from(shot.1))
             && x >= 0
             && y >= 0
@@ -122,6 +123,20 @@ pub const UNTRUSTED: &str =
     "The area could not be matched to the screen being recorded, so the whole screen was recorded.";
 const TOLERANCE: i32 = 2;
 
+/// Whether a stream at `position` (the portal's logical pixels) is the
+/// monitor `selection` was drawn on, whose geometry may be physical,
+/// logical or scaled the other way (XWayland).
+pub fn on_monitor(selection: &Selection, position: Option<(i32, i32)>) -> bool {
+    let monitor = selection.monitor;
+    let scaled = |value: i32, factor: f64| (f64::from(value) * factor).round() as i32;
+    position.is_some_and(|(px, py)| {
+        [1.0, 1.0 / monitor.scale, monitor.scale]
+            .iter()
+            .map(|factor| (scaled(monitor.x, *factor), scaled(monitor.y, *factor)))
+            .any(|(mx, my)| (px - mx).abs() <= TOLERANCE && (py - my).abs() <= TOLERANCE)
+    })
+}
+
 /// How to cut `selection` out of `stream`: a crop in the selection's own
 /// pixels (frames are scaled to the monitor region first), the whole
 /// stream when the area is the whole monitor, or the whole stream with a
@@ -135,7 +150,6 @@ pub fn crop(selection: &Selection, stream: &Stream) -> (Shape, Option<&'static s
     if width < 16 || height < 16 || (width + 2 >= region.width && height + 2 >= region.height) {
         return (Shape::Whole, None);
     }
-    let close = |a: i32, b: i32| (a - b).abs() <= TOLERANCE;
     let aspect_matches = stream.size.is_none_or(|(w, h)| {
         w > 0
             && h > 0
@@ -144,17 +158,7 @@ pub fn crop(selection: &Selection, stream: &Stream) -> (Shape, Option<&'static s
             .abs()
                 < 0.01
     });
-    let monitor = selection.monitor;
-    let logical = |value: i32| (f64::from(value) / monitor.scale).round() as i32;
-    let same_monitor = selection.monitors <= 1
-        || stream.position.is_some_and(|(px, py)| {
-            [
-                (monitor.x, monitor.y),
-                (logical(monitor.x), logical(monitor.y)),
-            ]
-            .iter()
-            .any(|(mx, my)| close(px, *mx) && close(py, *my))
-        });
+    let same_monitor = selection.monitors <= 1 || on_monitor(selection, stream.position);
     if !selection.region.trusted || !aspect_matches || !same_monitor {
         return (Shape::Whole, Some(UNTRUSTED));
     }
@@ -282,6 +286,40 @@ mod tests {
                 &on_right
             ),
             (Shape::Whole, Some(UNTRUSTED))
+        );
+
+        // XWayland with scaling: the monitors' geometry is logical, the
+        // still physical; times the scale, it is their bounding box.
+        let small = monitor(0, 0, 1440, 900, 2.0);
+        let big = monitor(1440, 0, 1920, 1080, 2.0);
+        let scaled = region((6720, 2160), &[small, big], big);
+        assert_eq!(
+            scaled,
+            Region {
+                rect: rect(2880, 0, 3840, 2160),
+                trusted: true
+            }
+        );
+        let drawn = Selection {
+            region: scaled,
+            rect: rect(3000, 100, 1000, 800),
+            monitor: big,
+            monitors: 2,
+        };
+        let big_stream = Stream {
+            node: 7,
+            size: Some((1920, 1080)),
+            position: Some((1440, 0)),
+        };
+        assert_eq!(
+            crop(&drawn, &big_stream),
+            (
+                Shape::Crop {
+                    frame: (3840, 2160),
+                    rect: rect(120, 100, 1000, 800)
+                },
+                None
+            )
         );
 
         // Drawn over the whole monitor: no crop at all.

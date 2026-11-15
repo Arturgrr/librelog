@@ -32,6 +32,11 @@ const PICK_WITHIN: Duration = Duration::from_secs(5 * 60);
 /// A selector window that never appeared counts as cancelled.
 const SHOW_WITHIN: Duration = Duration::from_secs(20);
 const FRAME_PREFIX: &str = "area-frame-";
+/// How long the main thread may take to build a window.
+const BUILD_WITHIN: Duration = Duration::from_secs(10);
+/// After the cards window is hidden, for the compositor to take it off the
+/// screen before a screenshot.
+const UNMAP_DELAY: Duration = Duration::from_millis(150);
 
 type App = tauri::AppHandle<tauri::Wry>;
 
@@ -109,6 +114,22 @@ impl CardView for CardWindow {
             tracing::warn!(%error, "capture card window");
         }
     }
+
+    fn settle(&self) {
+        let app = self.app.clone();
+        let (sender, receiver) = std::sync::mpsc::channel::<()>();
+        // Runs after the hide `show` queued, then gives the compositor a
+        // moment to take the window off the screen.
+        let queued = self.app.run_on_main_thread(move || {
+            if let Some(window) = app.get_webview_window(CARDS_LABEL) {
+                let _ = window.hide();
+            }
+            let _ = sender.send(());
+        });
+        if queued.is_ok() && receiver.recv_timeout(BUILD_WITHIN).is_ok() {
+            std::thread::sleep(UNMAP_DELAY);
+        }
+    }
 }
 
 struct Pending {
@@ -159,6 +180,11 @@ impl AreaWindow {
             (pending.frame.clone(), pending.size, pending.hint.clone())
         };
         let window = self.app.get_webview_window(AREA_LABEL);
+        if let Some(window) = &window
+            && let Err(error) = window.set_focus()
+        {
+            tracing::debug!(%error, "capture area focus");
+        }
         let monitors: Vec<Monitor> = self
             .app
             .available_monitors()
@@ -256,8 +282,10 @@ impl AreaPicker for AreaWindow {
             choice: None,
         });
         let app = self.app.clone();
-        let built = self.app.run_on_main_thread(move || {
+        let (sender, receiver) = std::sync::mpsc::channel::<Result<(), String>>();
+        let queued = self.app.run_on_main_thread(move || {
             if app.get_webview_window(AREA_LABEL).is_some() {
+                let _ = sender.send(Ok(()));
                 return;
             }
             let built = WebviewWindowBuilder::new(
@@ -275,10 +303,23 @@ impl AreaPicker for AreaWindow {
             .focused(true)
             .disable_drag_drop_handler()
             .build();
-            if let Err(error) = built {
-                tracing::warn!(%error, "capture area window");
-            }
+            let _ = sender.send(built.map(drop).map_err(|error| error.to_string()));
         });
+        let built = match queued {
+            Err(error) => Err(error.to_string()),
+            Ok(()) => receiver
+                .recv_timeout(BUILD_WITHIN)
+                .unwrap_or_else(|_| Err("the window did not open in time".into())),
+        };
+        if let Err(error) = built {
+            *self.lock() = None;
+            self.close_window();
+            let _ = std::fs::remove_file(&path);
+            return Err(fail(
+                codes::INTERNAL,
+                format!("could not open the area selector: {error}"),
+            ));
+        }
         let asked = Instant::now();
         let mut seen = false;
         let choice = loop {
@@ -293,8 +334,7 @@ impl AreaPicker for AreaWindow {
             let up = self.app.get_webview_window(AREA_LABEL).is_some();
             seen |= up;
             // Closed some other way, never shown, cancelled or forgotten.
-            if built.is_err()
-                || (seen && !up)
+            if (seen && !up)
                 || (!seen && asked.elapsed() >= SHOW_WITHIN)
                 || cancel.cancelled()
                 || asked.elapsed() >= PICK_WITHIN

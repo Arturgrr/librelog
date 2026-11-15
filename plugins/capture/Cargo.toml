@@ -40,6 +40,7 @@ system-shortcuts = []
 [target.'cfg(target_os = "linux")'.dependencies]
 # The card and area windows load files from the captures folder.
 tauri = { workspace = true, features = ["protocol-asset"] }
+anlg-desktop-portal = { workspace = true }
 ashpd = { workspace = true, features = ["screencast", "screenshot", "tokio"] }
 futures-util = { workspace = true }
 gif = "0.14"

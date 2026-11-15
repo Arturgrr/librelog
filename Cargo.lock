@@ -12710,6 +12710,7 @@ dependencies = [
  "ashpd",
  "base64 0.22.1",
  "capture-core",
+ "desktop-portal",
  "futures-util",
  "gif 0.14.2",
  "image",

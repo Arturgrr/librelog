@@ -7,7 +7,7 @@
 //! limit, and posts `record_stopped` so the plugin finishes the movie.
 
 use std::collections::HashMap;
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,6 +25,8 @@ use super::{Events, fail};
 /// Asked to stop, a pipeline finishes its file within this, or is killed.
 const STOP_WITHIN: Duration = Duration::from_secs(10);
 const CANCEL_WITHIN: Duration = Duration::from_secs(3);
+/// How long reading one frame to learn the stream's size may take.
+const PROBE_WITHIN: Duration = Duration::from_secs(5);
 
 /// Set to stop a selector or a portal dialog that is up.
 #[derive(Clone, Default)]
@@ -56,8 +58,9 @@ pub struct CastRequest {
 
 /// A started screen cast.
 pub trait CastSession: Send {
-    /// The PipeWire remote.
-    fn remote(&self) -> RawFd;
+    /// A fresh PipeWire remote for the session's stream: each pipeline
+    /// gets its own.
+    fn open_remote(&mut self) -> Result<OwnedFd, AnnotateError>;
     fn stream(&self) -> Stream;
     fn restore_token(&self) -> Option<String>;
     /// Whether the desktop ended it (its own "stop sharing").
@@ -104,7 +107,8 @@ pub struct Parts {
     pub events: Arc<Events>,
     /// Where the monitor's restore token is kept.
     pub token_file: PathBuf,
-    /// How long a new pipeline must survive to count as recording.
+    /// How long a new pipeline may take to write its first bytes before
+    /// the next encoder is tried.
     pub probe: Duration,
     /// How often the watcher looks.
     pub tick: Duration,
@@ -194,7 +198,118 @@ impl Active {
     }
 }
 
+/// The ScreenCast portal's token for the screen picked last, with where
+/// that screen was, so an area drawn on another one asks again.
+#[derive(Debug, PartialEq, serde::Serialize, Deserialize)]
+struct Remembered {
+    token: String,
+    #[serde(default)]
+    position: Option<(i32, i32)>,
+    #[serde(default)]
+    size: Option<(i32, i32)>,
+}
+
+impl Remembered {
+    fn read(file: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(file).ok()?;
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        // A plain token from before its screen was kept with it.
+        Some(serde_json::from_str(text).unwrap_or_else(|_| Self {
+            token: text.to_owned(),
+            position: None,
+            size: None,
+        }))
+    }
+
+    fn write(&self, file: &Path) {
+        let written = serde_json::to_vec(self)
+            .map_err(std::io::Error::other)
+            .and_then(|json| anlg_capture_core::fs::write_atomic(file, &json, true));
+        if let Err(error) = written {
+            tracing::warn!(%error, "capture screencast token");
+        }
+    }
+
+    /// Whether the remembered screen is the one `selection` was drawn on;
+    /// unknown is no.
+    fn matches(&self, selection: &Selection) -> bool {
+        selection.monitors <= 1 || area::on_monitor(selection, self.position)
+    }
+}
+
+/// Forgets the screen the portal remembers, so the next recording asks.
+pub fn forget_screen(token_file: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(token_file) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
+/// Waits for a new pipeline to write its first bytes to `out`: `Err` when
+/// it exits, reports an error, `cancel` is set, or `within` passes first.
+fn first_bytes(
+    process: &mut dyn Process,
+    out: &Path,
+    within: Duration,
+    cancel: &Cancel,
+) -> Result<(), String> {
+    let deadline = Instant::now() + within;
+    loop {
+        if process.try_wait().is_some() {
+            return Err(process.errors());
+        }
+        let errors = process.errors();
+        if errors.contains("ERROR") {
+            return Err(errors);
+        }
+        if std::fs::metadata(out).is_ok_and(|metadata| metadata.len() > 0) {
+            return Ok(());
+        }
+        if cancel.cancelled() {
+            return Err("cancelled".into());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "nothing was written within {} s",
+                within.as_secs_f32()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 impl Recorder {
+    /// The stream's size from one frame of it, when the portal gave none.
+    fn probe_size(&self, session: &mut dyn CastSession, node: u32) -> Option<(u32, u32)> {
+        let remote = session.open_remote().ok()?;
+        let (read, write) = gst::pipe().ok()?;
+        let args = gst::probe_args(remote.as_raw_fd(), node, write.as_raw_fd());
+        let reader = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut png = Vec::new();
+            let _ = std::fs::File::from(read)
+                .take(64 * 1024 * 1024)
+                .read_to_end(&mut png);
+            png
+        });
+        let ran = gst::run(
+            self.parts.gst.as_ref(),
+            &args,
+            &[remote.as_raw_fd(), write.as_raw_fd()],
+            PROBE_WITHIN,
+        );
+        drop(write);
+        drop(remote);
+        let png = reader.join().ok()?;
+        if let Err(error) = ran {
+            tracing::warn!(%error, "capture stream size probe");
+        }
+        gst::png_size(&png)
+    }
+
     pub fn new(parts: Parts) -> Self {
         Self {
             parts: Arc::new(parts),
@@ -270,6 +385,15 @@ impl Recorder {
         }
         let encoders = gst::encoders(|element| parts.gst.has(element))
             .map_err(|error| fail(codes::INTERNAL, error))?;
+        if request.mode == "area" && !parts.gst.has("videocrop") {
+            return Err(fail(
+                codes::INTERNAL,
+                format!(
+                    "Recording an area needs the GStreamer element videocrop. {}",
+                    gst::INSTALL_BASE
+                ),
+            ));
+        }
         let mut warnings = Vec::new();
         if request.microphone || request.system_audio {
             warnings.push("Recordings on Linux have no sound yet: the microphone and system audio were not recorded.".to_owned());
@@ -308,11 +432,17 @@ impl Recorder {
         if cancel.cancelled() {
             return Ok(Begun::Cancelled);
         }
-        let restore = (source == Source::Monitor)
-            .then(|| std::fs::read_to_string(&parts.token_file).ok())
-            .flatten()
-            .map(|token| token.trim().to_owned())
-            .filter(|token| !token.is_empty());
+        let remembered = (source == Source::Monitor)
+            .then(|| Remembered::read(&parts.token_file))
+            .flatten();
+        // A screen drawn on that is not the one remembered: ask again.
+        let restore = remembered
+            .filter(|remembered| {
+                selection
+                    .as_ref()
+                    .is_none_or(|selection| remembered.matches(selection))
+            })
+            .map(|remembered| remembered.token);
         let cast = CastRequest {
             source,
             cursor: request.show_cursor,
@@ -321,14 +451,17 @@ impl Recorder {
         let Some(mut session) = parts.cast.start(&cast, cancel)? else {
             return Ok(Begun::Cancelled);
         };
+        let stream = session.stream();
         if source == Source::Monitor
             && let Some(token) = session.restore_token()
-            && let Err(error) =
-                anlg_capture_core::fs::write_atomic(&parts.token_file, token.as_bytes(), true)
         {
-            tracing::warn!(%error, "capture screencast token");
+            Remembered {
+                token,
+                position: stream.position,
+                size: stream.size,
+            }
+            .write(&parts.token_file);
         }
-        let stream = session.stream();
         let shape = match &selection {
             Some(selection) => {
                 let (shape, warning) = area::crop(selection, &stream);
@@ -339,9 +472,20 @@ impl Recorder {
         };
         let size = match shape {
             Shape::Crop { rect, .. } => (rect.width, rect.height),
-            Shape::Whole => stream
-                .size
-                .map_or((0, 0), |(w, h)| (w.max(0) as u32, h.max(0) as u32)),
+            Shape::Whole => match stream.size.filter(|(w, h)| *w > 0 && *h > 0) {
+                Some((w, h)) => gst::even_size((w as u32, h as u32)),
+                None => match self.probe_size(session.as_mut(), stream.node) {
+                    Some(size) => gst::even_size(size),
+                    None => {
+                        warnings.push(format!(
+                            "The screen's size could not be read, so the recording is {} × {}.",
+                            gst::FALLBACK_SIZE.0,
+                            gst::FALLBACK_SIZE.1
+                        ));
+                        gst::FALLBACK_SIZE
+                    }
+                },
+            },
         };
         let mut failures = Vec::new();
         for encoder in encoders {
@@ -356,19 +500,31 @@ impl Recorder {
                     return Err(fail(codes::IO, error));
                 }
             };
+            let remote = match session.open_remote() {
+                Ok(remote) => remote,
+                Err(error) => {
+                    session.close();
+                    let _ = std::fs::remove_file(&out);
+                    return Err(error);
+                }
+            };
             let recording = Recording {
-                remote: session.remote(),
+                remote: remote.as_raw_fd(),
                 node: stream.node,
                 fps: request.fps.clamp(1, 60),
                 shape,
                 encoder,
                 out: file.as_raw_fd(),
+                size,
             };
             let args = gst::record_args(&recording);
+            // The movie's time starts with the pipeline that records it.
+            let started = Instant::now();
             let launched = parts
                 .gst
-                .launch(&args, &[session.remote(), file.as_raw_fd()]);
+                .launch(&args, &[remote.as_raw_fd(), file.as_raw_fd()]);
             drop(file);
+            drop(remote);
             let mut process = match launched {
                 Ok(process) => process,
                 Err(error) => {
@@ -377,9 +533,11 @@ impl Recorder {
                     continue;
                 }
             };
-            // A pipeline this encoder cannot run fails at once.
-            if gst::wait(process.as_mut(), parts.probe).is_some() {
-                failures.push(format!("{encoder:?}: {}", process.errors()));
+            // Caps are negotiated on the first frame: recording once the
+            // muxer wrote something, else the next encoder.
+            if let Err(why) = first_bytes(process.as_mut(), &out, parts.probe, cancel) {
+                process.kill();
+                failures.push(format!("{encoder:?}: {why}"));
                 let _ = std::fs::remove_file(&out);
                 continue;
             }
@@ -387,7 +545,7 @@ impl Recorder {
                 process,
                 session,
                 out,
-                started: Instant::now(),
+                started,
                 max: Duration::from_secs(u64::from(request.max_duration_s.max(1))),
                 ended: None,
                 size,
@@ -523,10 +681,20 @@ impl Recorder {
         };
         serde_json::json!({ "phase": phase, "elapsed_ms": elapsed }).to_string()
     }
+
+    /// The stream of the recording that runs, as the portal reported it.
+    pub fn stream(&self) -> Option<Stream> {
+        match &*lock(&self.phase) {
+            Phase::Recording(active) => Some(active.session.stream()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::os::fd::RawFd;
+
     use super::*;
     use crate::linux::area::{Monitor, Region};
     use crate::linux::gst::Rect;
@@ -613,6 +781,8 @@ pub(crate) mod tests {
         pub requests: Vec<CastRequest>,
         pub closed_by_desktop: bool,
         pub closes: u32,
+        /// PipeWire remotes opened.
+        pub remotes: u32,
     }
 
     pub struct FakeCast {
@@ -625,13 +795,13 @@ pub(crate) mod tests {
 
     struct FakeSession {
         state: Arc<Mutex<CastState>>,
-        remote: std::fs::File,
         stream: Stream,
     }
 
     impl CastSession for FakeSession {
-        fn remote(&self) -> RawFd {
-            self.remote.as_raw_fd()
+        fn open_remote(&mut self) -> Result<OwnedFd, AnnotateError> {
+            self.state.lock().unwrap().remotes += 1;
+            Ok(std::fs::File::open("/dev/null").unwrap().into())
         }
         fn stream(&self) -> Stream {
             self.stream
@@ -665,7 +835,6 @@ pub(crate) mod tests {
             }
             Ok(Some(Box::new(FakeSession {
                 state: self.state.clone(),
-                remote: std::fs::File::open("/dev/null").unwrap(),
                 stream: self.stream,
             })))
         }
@@ -847,9 +1016,15 @@ pub(crate) mod tests {
                 restore: None
             }
         );
+        // Each encoder tried got its own PipeWire remote.
+        assert_eq!(rig.cast.lock().unwrap().remotes, 2);
         assert_eq!(
-            std::fs::read_to_string(rig.dir.path().join("screencast-token")).unwrap(),
-            "token-1"
+            Remembered::read(&rig.dir.path().join("screencast-token")).unwrap(),
+            Remembered {
+                token: "token-1".into(),
+                position: None,
+                size: Some((64, 32)),
+            }
         );
         assert_eq!(value(&rig.recorder.status())["phase"], "recording");
         // Busy while recording.
@@ -963,9 +1138,11 @@ pub(crate) mod tests {
             let rig = rig.clone();
             std::thread::spawn(move || rig.recorder.start(&start_json(&rig, "fullscreen")))
         };
+        let deadline = Instant::now() + Duration::from_secs(5);
         while value(&rig.recorder.status())["phase"] != "selecting"
             || rig.cast.lock().unwrap().requests.is_empty()
         {
+            assert!(Instant::now() < deadline, "the dialog never came up");
             std::thread::sleep(Duration::from_millis(5));
         }
         rig.recorder.cancel().unwrap();
@@ -999,5 +1176,76 @@ pub(crate) mod tests {
         assert!(error.message.contains("gstreamer1"), "{error}");
         assert!(rig.cast.lock().unwrap().requests.is_empty());
         assert_eq!(value(&rig.recorder.status())["phase"], "idle");
+    }
+
+    #[test]
+    fn the_remembered_screen_is_reused_only_for_an_area_drawn_on_it_and_can_be_forgotten() {
+        let left = Monitor {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale: 1.0,
+        };
+        let right = Monitor { x: 1920, ..left };
+        let on = |monitor: Monitor| Selection {
+            region: Region {
+                rect: Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                trusted: true,
+            },
+            rect: Rect {
+                x: 10,
+                y: 10,
+                width: 100,
+                height: 100,
+            },
+            monitor,
+            monitors: 2,
+        };
+        let remembered = Remembered {
+            token: "t".into(),
+            position: Some((1920, 0)),
+            size: Some((1920, 1080)),
+        };
+        assert!(remembered.matches(&on(right)));
+        assert!(!remembered.matches(&on(left)));
+        let unknown = Remembered {
+            position: None,
+            ..remembered
+        };
+        assert!(!unknown.matches(&on(right)));
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("screencast-token");
+        // A token kept before its screen was.
+        std::fs::write(&file, "old-token\n").unwrap();
+        assert_eq!(Remembered::read(&file).unwrap().token, "old-token");
+        forget_screen(&file).unwrap();
+        assert!(Remembered::read(&file).is_none());
+        forget_screen(&file).unwrap();
+    }
+
+    #[test]
+    fn an_area_recording_without_videocrop_says_what_to_install_before_the_portal() {
+        let rig = rig(
+            FakeGst {
+                elements: h264()
+                    .elements
+                    .into_iter()
+                    .filter(|e| *e != "videocrop")
+                    .collect(),
+                ..FakeGst::default()
+            },
+            cast(),
+            None,
+        );
+        let error = rig.recorder.start(&start_json(&rig, "area")).unwrap_err();
+        assert!(error.message.contains("videocrop"), "{error}");
+        assert!(rig.cast.lock().unwrap().requests.is_empty());
     }
 }

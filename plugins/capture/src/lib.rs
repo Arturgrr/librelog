@@ -25,6 +25,8 @@ use std::time::Duration;
 
 pub use error::*;
 pub use events::*;
+#[cfg(target_os = "linux")]
+pub use linux::recorder;
 pub use types::*;
 
 use anlg_capture_core::Layout;
@@ -48,6 +50,17 @@ pub async fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     };
     let session = session.inner().clone();
     session.shutdown(SHUTDOWN_WITHIN).await;
+}
+
+/// Stops every GStreamer pipeline Capture started (on Linux), for an app
+/// that is exiting: each is asked to finish, which finalizes a recording's
+/// file, and killed when it has not after `within`. Blocks for at most
+/// about `within`; nothing to do elsewhere.
+pub fn stop_pipelines(within: Duration) {
+    #[cfg(target_os = "linux")]
+    linux::stop_pipelines(within);
+    #[cfg(not(target_os = "linux"))]
+    let _ = within;
 }
 
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
@@ -75,6 +88,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::card_hovered::<tauri::Wry>,
             commands::area_frame::<tauri::Wry>,
             commands::area_chosen::<tauri::Wry>,
+            commands::forget_screen_choice::<tauri::Wry>,
         ])
         .events(tauri_specta::collect_events![CaptureEvent, CaptureCards])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)

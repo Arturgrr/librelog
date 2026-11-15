@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "card_hovered",
     "area_frame",
     "area_chosen",
+    "forget_screen_choice",
 ];
 
 fn main() {

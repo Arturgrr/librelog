@@ -81,6 +81,7 @@ it("hides what only macOS has on Linux and says how the desktop asks and how to 
     screen.getByText(/asks before Librelog takes a screenshot/),
   ).toBeTruthy();
   expect(screen.getByText(/To stop a recording/)).toBeTruthy();
+  expect(screen.getByText("Ask which screen to record again")).toBeTruthy();
   expect(screen.queryByText(/this Mac/)).toBeNull();
   expect(mocks.screenRecording).not.toHaveBeenCalled();
 });
@@ -92,4 +93,5 @@ it("keeps them on macOS", async () => {
   for (const title of MAC_ONLY) {
     expect(await screen.findByText(title)).toBeTruthy();
   }
+  expect(screen.queryByText("Ask which screen to record again")).toBeNull();
 });

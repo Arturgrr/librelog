@@ -5,6 +5,7 @@ import { open as selectFolder } from "@tauri-apps/plugin-dialog";
 import type { ReactNode } from "react";
 
 import { commands as annotate } from "@anlg/plugin-annotate";
+import { commands as capture } from "@anlg/plugin-capture";
 import { commands as opener } from "@anlg/plugin-opener2";
 import { FolderSimple } from "@anlg/ui/components/icons";
 import { Button } from "@anlg/ui/components/ui/button";
@@ -434,13 +435,17 @@ function RecordingSettings() {
         title={<Trans>Show the pointer</Trans>}
       />
       {captureOnLinux() ? (
-        <p className="text-muted-foreground -mt-2 text-xs">
-          <Trans>
-            To stop a recording, press its shortcut again, choose Record Screen
-            in Librelog's menu in the top bar, or stop sharing from your
-            desktop's screen-sharing indicator. Recordings have no sound yet.
-          </Trans>
-        </p>
+        <>
+          <p className="text-muted-foreground -mt-2 text-xs">
+            <Trans>
+              To stop a recording, press its shortcut again, choose Record
+              Screen in Librelog's menu in the top bar, or stop sharing from
+              your desktop's screen-sharing indicator. Recordings have no sound
+              yet.
+            </Trans>
+          </p>
+          <ForgetScreenChoice />
+        </>
       ) : (
         <>
           <Choice
@@ -491,6 +496,38 @@ function RecordingSettings() {
         ]}
       />
     </>
+  );
+}
+
+/** Linux: the sharing dialog remembers the screen; this asks again. */
+function ForgetScreenChoice() {
+  const forget = useMutation({
+    mutationFn: async () => unwrap(await capture.forgetScreenChoice()),
+  });
+  return (
+    <SettingRow
+      title={<Trans>Screen to record</Trans>}
+      description={
+        forget.isError ? (
+          localizeExternalMessage(forget.error.message)
+        ) : forget.isSuccess ? (
+          <Trans>The next recording asks which screen to record.</Trans>
+        ) : (
+          <Trans>Your desktop remembers the screen you picked last.</Trans>
+        )
+      }
+      controlWidth="content"
+    >
+      {() => (
+        <Button
+          variant="outline"
+          disabled={forget.isPending}
+          onClick={() => forget.mutate()}
+        >
+          <Trans>Ask which screen to record again</Trans>
+        </Button>
+      )}
+    </SettingRow>
   );
 }
 

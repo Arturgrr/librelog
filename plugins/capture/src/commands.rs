@@ -259,6 +259,21 @@ pub(crate) async fn area_frame<R: tauri::Runtime>(
     Ok(None)
 }
 
+/// Forgets the screen the Linux sharing dialog remembers, so the next
+/// recording asks which screen to record again. Nothing to do elsewhere.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn forget_screen_choice<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        return overlays.forget_screen().map_err(|error| error.to_string());
+    }
+    let _ = app;
+    Ok(())
+}
+
 /// The Linux area selector's answer.
 #[tauri::command]
 #[specta::specta]

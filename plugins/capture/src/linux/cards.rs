@@ -17,6 +17,9 @@ const ACTIONS: [&str; 5] = ["copy", "save", "edit", "open", "close"];
 /// Shows the stack; an empty one hides the window.
 pub trait CardView: Send + Sync {
     fn show(&self, cards: &CaptureCards);
+    /// Returns once no card is on the screen any more (bounded), for a
+    /// screenshot that must not show one.
+    fn settle(&self) {}
 }
 
 struct Up {
@@ -93,8 +96,9 @@ impl Cards {
         self.render();
     }
 
-    /// Closes one card, or all of them when `id` is `None`.
-    pub fn close(&self, id: Option<&str>) {
+    /// Closes one card, or all of them when `id` is `None`; whether any was
+    /// up.
+    pub fn close(&self, id: Option<&str>) -> bool {
         let gone: Vec<String> = {
             let mut stack = self.lock();
             let (gone, kept) = std::mem::take(&mut stack.up)
@@ -104,12 +108,20 @@ impl Cards {
             gone.into_iter().map(|up| up.card.id).collect()
         };
         if gone.is_empty() {
-            return;
+            return false;
         }
         for id in &gone {
             self.events.push(closed(id));
         }
         self.render();
+        true
+    }
+
+    /// Closes every card and waits (briefly) until none is on the screen.
+    pub fn clear_screen(&self) {
+        if self.close(None) {
+            self.view.settle();
+        }
     }
 
     /// Lets the cards whose time is up leave.
@@ -124,7 +136,7 @@ impl Cards {
                 .collect()
         };
         for id in gone {
-            self.close(Some(&id));
+            let _ = self.close(Some(&id));
         }
     }
 
@@ -227,7 +239,7 @@ mod tests {
         assert_eq!(shown.lock().unwrap().last().unwrap(), &Vec::<String>::new());
 
         cards.show(card("f"), CardLabels::default(), start);
-        cards.close(None);
+        assert!(cards.close(None));
         assert_eq!(drain(&events), ["card_closed f"]);
     }
 }

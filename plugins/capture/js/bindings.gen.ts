@@ -331,6 +331,21 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * Forgets the screen the Linux sharing dialog remembers, so the next
+   * recording asks which screen to record again. Nothing to do elsewhere.
+   */
+  async forgetScreenChoice(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|forget_screen_choice"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/
