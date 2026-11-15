@@ -10,16 +10,23 @@
     theme === "dark" ? true : theme === "light" ? false : prefersDark;
   document.documentElement.classList.toggle("dark", isDark);
 
-  // The undecorated Linux main window is transparent; `useRoundedWindowFrame`
-  // takes over `data-rounded-window` once React mounts.
-  var ua = navigator.userAgent;
-  var isLinuxDesktop = /\bLinux\b/.test(ua) && !/Android/.test(ua);
   var internals = window.__TAURI_INTERNALS__;
   var label =
     internals &&
     internals.metadata &&
     internals.metadata.currentWindow &&
     internals.metadata.currentWindow.label;
+
+  // Annotate's overlay and capsule on Linux: transparent from the first
+  // paint, never the app's loading screen (`main.tsx` renders them bare).
+  if (label === "annotate-ink" || label === "annotate-capsule") {
+    document.documentElement.dataset.overlayWindow = "";
+  }
+
+  // The undecorated Linux main window is transparent; `useRoundedWindowFrame`
+  // takes over `data-rounded-window` once React mounts.
+  var ua = navigator.userAgent;
+  var isLinuxDesktop = /\bLinux\b/.test(ua) && !/Android/.test(ua);
   if (isLinuxDesktop && label === "main") {
     document.documentElement.dataset.roundedWindow = "";
     var windowState = function (command) {

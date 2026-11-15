@@ -86,11 +86,19 @@ async function stopDrawing() {
   }
 }
 
+async function ready() {
+  try {
+    await annotate.surfaceReady();
+  } catch (error) {
+    console.error("[annotate] ink", error);
+  }
+}
+
 /**
  * The ink overlay over the recorded screen on Linux. The plugin owns the
- * ink mode and the strokes it records; this window draws what the pointer
- * does while ink is on, and ignores the pointer otherwise. Escape or a
- * right click turns ink off.
+ * ink mode, the strokes it records and where the window takes the pointer;
+ * this window draws what the pointer does while ink is on. A right click
+ * turns ink off, and so does a click while the held shortcut inks.
  */
 export function AnnotateInkScreen() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -145,6 +153,7 @@ export function AnnotateInkScreen() {
       const point = { x: event.clientX, y: event.clientY };
       void report(kind, point);
       if (ink === "hover") {
+        if (kind === "down" || kind === "up") return;
         if (kind === "leave") lift();
         else if (live) live.points.push(point);
         else begin(point);
@@ -176,20 +185,12 @@ export function AnnotateInkScreen() {
           void stopDrawing();
         },
       ],
-      [
-        window,
-        "keydown",
-        (event) => {
-          if ((event as KeyboardEvent).key !== "Escape") return;
-          event.preventDefault();
-          void stopDrawing();
-        },
-      ],
     ];
     for (const [target, type, listener] of listeners) {
       target.addEventListener(type, listener);
     }
     resize();
+    void ready();
     void annotateEvents.annotateSurface
       .listen(({ payload }) => follow(payload))
       .then((stop) => (disposed ? stop() : (unlisten = stop)));

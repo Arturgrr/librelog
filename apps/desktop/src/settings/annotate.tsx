@@ -126,13 +126,16 @@ export function SettingsAnnotate() {
           </p>
         )}
         {linux ? (
-          <p className="text-muted-foreground text-sm">
-            <Trans>
-              Your desktop asks which screen to share when you start an
-              annotation, and remembers it where it can. The capsule and your
-              red marks are part of the recording.
-            </Trans>
-          </p>
+          <>
+            <p className="text-muted-foreground text-sm">
+              <Trans>
+                Your desktop asks which screen to share when you start an
+                annotation, and remembers it where it can. The capsule and your
+                red marks are part of the recording.
+              </Trans>
+            </p>
+            <ForgetScreenChoice />
+          </>
         ) : (
           <ScreenRecordingPermission />
         )}
@@ -257,8 +260,8 @@ function AnnotateShortcutSettings() {
       description: annotateOnLinux() ? (
         <Trans>
           Press to start recording the screen you share, and again to finish.
-          While recording, hold it to draw in red where the pointer goes; let go
-          to stop drawing. A right click turns drawing off.
+          While recording, hold it to draw in red where the pointer goes, for up
+          to 8 seconds at a time; let go, click or right click to stop drawing.
         </Trans>
       ) : (
         <Trans>
@@ -342,6 +345,38 @@ function AnnotateShortcutSettings() {
         </p>
       )}
     </div>
+  );
+}
+
+/** Linux: the sharing dialog remembers the screen; this asks again. */
+function ForgetScreenChoice() {
+  const forget = useMutation({
+    mutationFn: async () => unwrap(await annotate.forgetScreenChoice()),
+  });
+  return (
+    <SettingRow
+      title={<Trans>Screen to record</Trans>}
+      description={
+        forget.isError ? (
+          localizeExternalMessage(forget.error.message)
+        ) : forget.isSuccess ? (
+          <Trans>The next recording asks which screen to record.</Trans>
+        ) : (
+          <Trans>Your desktop remembers the screen you picked last.</Trans>
+        )
+      }
+      controlWidth="content"
+    >
+      {() => (
+        <Button
+          variant="outline"
+          disabled={forget.isPending}
+          onClick={() => forget.mutate()}
+        >
+          <Trans>Ask which screen to record again</Trans>
+        </Button>
+      )}
+    </SettingRow>
   );
 }
 

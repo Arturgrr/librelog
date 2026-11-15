@@ -1,4 +1,3 @@
-import { useLingui } from "@lingui/react/macro";
 import { useState } from "react";
 
 import {
@@ -42,7 +41,6 @@ const BUTTON = cn([
  * reports presses.
  */
 export function AnnotateCapsuleScreen() {
-  const { t } = useLingui();
   const [surface, setSurface] = useState<AnnotateSurface | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -58,6 +56,13 @@ export function AnnotateCapsuleScreen() {
         setSurface((current) => current ?? result.data);
       }
     })();
+    void (async () => {
+      try {
+        await annotate.surfaceReady();
+      } catch (error) {
+        console.error("[annotate] capsule", error);
+      }
+    })();
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => {
       disposed = true;
@@ -67,7 +72,10 @@ export function AnnotateCapsuleScreen() {
   });
 
   const labels = surface?.labels;
-  const discard = labels?.discard ?? t`Discard`;
+  // The app's words come with the state; English until then.
+  const discard = labels?.discard ?? "Discard";
+  const draw = labels?.draw ?? "Draw";
+  const stop = labels?.stop ?? "Stop";
 
   return (
     <div
@@ -80,7 +88,7 @@ export function AnnotateCapsuleScreen() {
       {surface?.asking ? (
         <>
           <span className="min-w-0 flex-1 truncate font-medium">
-            {labels?.discardQuestion ?? t`Discard?`}
+            {labels?.discardQuestion ?? "Discard?"}
           </span>
           <button
             type="button"
@@ -94,7 +102,7 @@ export function AnnotateCapsuleScreen() {
             className="h-7 rounded-[7px] bg-white/15 px-2 font-semibold"
             onClick={() => void press("keep")}
           >
-            {labels?.keep ?? t`Keep`}
+            {labels?.keep ?? "Keep"}
           </button>
         </>
       ) : (
@@ -103,21 +111,23 @@ export function AnnotateCapsuleScreen() {
           <span className="min-w-0 flex-1 pl-1.5 font-medium">
             {clock(surface ? now - surface.startedWallMs : 0)}
           </span>
-          <button
-            type="button"
-            title={t`Draw`}
-            aria-label={t`Draw`}
-            aria-pressed={surface?.penOn ?? false}
-            className={cn([BUTTON, surface?.penOn && "bg-[#ff3b30]"])}
-            onClick={() => void press("pen")}
-          >
-            <PencilSimple className="size-4" />
-          </button>
+          {surface?.drawable && (
+            <button
+              type="button"
+              title={draw}
+              aria-label={draw}
+              aria-pressed={surface?.penOn ?? false}
+              className={cn([BUTTON, surface?.penOn && "bg-[#ff3b30]"])}
+              onClick={() => void press("pen")}
+            >
+              <PencilSimple className="size-4" />
+            </button>
+          )}
           <span className="mx-1 h-4 w-px bg-white/20" />
           <button
             type="button"
-            title={t`Stop`}
-            aria-label={t`Stop`}
+            title={stop}
+            aria-label={stop}
             className={BUTTON}
             onClick={() => void press("stop")}
           >

@@ -113,6 +113,8 @@ function ActiveAnnotate() {
               discardQuestion: t`Discard?`,
               discard: t`Discard`,
               keep: t`Keep`,
+              draw: t`Draw`,
+              stop: t`Stop`,
             }),
           );
         },

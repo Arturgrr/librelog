@@ -257,7 +257,8 @@ pub fn main() {
         ));
 
     // Annotate posts keystrokes to paste and is experimental: left out of the
-    // sandboxed App Store build. Off macOS every command says it is unavailable.
+    // sandboxed App Store build. It records on macOS and Linux; elsewhere every
+    // command says it is unavailable.
     #[cfg(not(feature = "app-store"))]
     {
         builder = builder.plugin(tauri_plugin_annotate::init(
