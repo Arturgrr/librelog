@@ -87,7 +87,8 @@ export function AppSettingsView({
                 <Trans>
                   GNOME shows tray icons only with the AppIndicator extension.
                   Until it's on, closing the window minimizes Librelog instead
-                  of hiding it.
+                  of hiding it. To quit Librelog, choose File › Quit Librelog or
+                  press Control + Q.
                 </Trans>
               ) : undefined
             }

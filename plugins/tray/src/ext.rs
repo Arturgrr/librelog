@@ -184,38 +184,54 @@ fn linux_tray_backend_available() -> bool {
     .any(|name| unsafe { libloading::Library::new(name) }.is_ok())
 }
 
-/// Whether the desktop shows tray icons: on Linux, only while a
+/// Whether the desktop shows tray icons: on Linux only while a
 /// StatusNotifier host runs (KDE, GNOME with the AppIndicator extension).
-/// Read once; a bus that does not answer in time counts as showing them.
-/// Blocks, so never call it from an async task: see
-/// [`desktop_shows_tray_icons_async`].
-pub fn desktop_shows_tray_icons() -> bool {
+/// `None` until the session bus answered. Never blocks: see
+/// [`watch_tray_host`].
+pub fn desktop_shows_tray_icons() -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
-        *TRAY_HOST.get_or_init(|| tauri::async_runtime::block_on(read_tray_host()))
-    }
-    #[cfg(not(target_os = "linux"))]
-    true
-}
-
-pub async fn desktop_shows_tray_icons_async() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(shown) = TRAY_HOST.get() {
-            return *shown;
+        match TRAY_HOST.load(Ordering::SeqCst) {
+            HOST_SHOWN => Some(true),
+            HOST_MISSING => Some(false),
+            _ => None,
         }
-        let shown = read_tray_host().await;
-        *TRAY_HOST.get_or_init(|| shown)
     }
     #[cfg(not(target_os = "linux"))]
-    true
+    Some(true)
+}
+
+/// Asks the bus now when the answer is not known yet.
+pub async fn desktop_shows_tray_icons_async() -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    if desktop_shows_tray_icons().is_none() {
+        store_tray_host(read_tray_host().await);
+    }
+    desktop_shows_tray_icons()
 }
 
 #[cfg(target_os = "linux")]
-static TRAY_HOST: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+const HOST_UNKNOWN: u8 = 0;
+#[cfg(target_os = "linux")]
+const HOST_SHOWN: u8 = 1;
+#[cfg(target_os = "linux")]
+const HOST_MISSING: u8 = 2;
+#[cfg(target_os = "linux")]
+static TRAY_HOST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(HOST_UNKNOWN);
+
+/// An unknown answer is never kept, so the next question asks again.
+#[cfg(target_os = "linux")]
+fn store_tray_host(host: Option<bool>) {
+    let value = match host {
+        Some(true) => HOST_SHOWN,
+        Some(false) => HOST_MISSING,
+        None => return,
+    };
+    TRAY_HOST.store(value, Ordering::SeqCst);
+}
 
 #[cfg(target_os = "linux")]
-async fn read_tray_host() -> bool {
+async fn read_tray_host() -> Option<bool> {
     let host = tokio::time::timeout(
         std::time::Duration::from_millis(1_500),
         anlg_desktop_portal::status_notifier_host(),
@@ -226,13 +242,41 @@ async fn read_tray_host() -> bool {
     if host == Some(false) {
         tracing::warn!("no StatusNotifier host: the desktop shows no tray icons");
     }
-    host.unwrap_or(true)
+    host
+}
+
+/// Reads whether the desktop shows tray icons off the main thread, then
+/// follows the AppIndicator extension being turned on or off, telling the
+/// windows whether closing may hide the main window.
+#[cfg(target_os = "linux")]
+pub fn watch_tray_host(app: &AppHandle<tauri::Wry>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        store_tray_host(read_tray_host().await);
+        refresh_reachable(&app);
+        let watched = app.clone();
+        anlg_desktop_portal::watch_status_notifier_host(move |host| {
+            store_tray_host(host);
+            refresh_reachable(&watched);
+        })
+        .await;
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn refresh_reachable(app: &AppHandle<tauri::Wry>) {
+    app.windows().set_menu_bar_icon_visible(icon_reachable(
+        crate::macos_position::wanted_visible(),
+        app.tray_by_id(TRAY_ID).is_some(),
+        desktop_shows_tray_icons(),
+    ));
 }
 
 /// Whether the tray icon can bring the app back: wanted, created and shown
-/// by the desktop. Without it, closing the main window must not hide it.
-fn icon_reachable(wanted: bool, created: bool, desktop_shows: impl FnOnce() -> bool) -> bool {
-    wanted && created && desktop_shows()
+/// by the desktop. Without it, closing the main window must not hide it, so
+/// a desktop that has not answered yet counts as showing none.
+fn icon_reachable(wanted: bool, created: bool, desktop_shows: Option<bool>) -> bool {
+    wanted && created && desktop_shows == Some(true)
 }
 
 impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
@@ -282,7 +326,7 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         app.windows().set_menu_bar_icon_visible(icon_reachable(
             true,
             true,
-            desktop_shows_tray_icons,
+            desktop_shows_tray_icons(),
         ));
         #[cfg(target_os = "macos")]
         crate::macos_position::apply_autosave_name(app, TRAY_ID);
@@ -325,7 +369,7 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         app.windows().set_menu_bar_icon_visible(icon_reachable(
             visible,
             app.tray_by_id(TRAY_ID).is_some(),
-            desktop_shows_tray_icons,
+            desktop_shows_tray_icons(),
         ));
 
         Ok(())
@@ -582,6 +626,26 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> TrayPluginExt<R> for T {
         Tray {
             manager: self,
             _runtime: std::marker::PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+mod reachable_tests {
+    use super::icon_reachable;
+
+    /// An unknown answer counted as a tray icon, so a slow bus on GNOME
+    /// still hid the window into nothing.
+    #[test]
+    fn only_an_icon_the_desktop_shows_lets_closing_hide_the_window() {
+        assert!(icon_reachable(true, true, Some(true)));
+        for (wanted, created, shows) in [
+            (true, true, None),
+            (true, true, Some(false)),
+            (false, true, Some(true)),
+            (true, false, Some(true)),
+        ] {
+            assert!(!icon_reachable(wanted, created, shows));
         }
     }
 }

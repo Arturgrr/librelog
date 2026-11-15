@@ -22,6 +22,8 @@ pub fn init(enable_updates: bool) -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::<tauri::Wry>::new(PLUGIN_NAME)
         .invoke_handler(specta_builder.invoke_handler())
         .setup(|app, _api| {
+            #[cfg(target_os = "linux")]
+            ext::watch_tray_host(app);
             if updates_enabled() {
                 setup_update_listeners(app);
             }

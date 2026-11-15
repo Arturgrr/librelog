@@ -100,7 +100,7 @@ export const commands = {
   },
   /**
    * Whether the desktop shows tray icons at all: GNOME shows none without
-   * the AppIndicator extension. True elsewhere, and when it cannot tell.
+   * the AppIndicator extension. True elsewhere; false while it cannot tell.
    */
   async trayIconShownByDesktop(): Promise<Result<boolean, string>> {
     try {
