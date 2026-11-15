@@ -391,12 +391,20 @@ msgstr ""
 msgid "A preview in the corner of the screen to copy, save or edit the capture, or drag it into another app."
 msgstr ""
 
+#: src/settings/capture.tsx
+msgid "A preview in the corner of the screen to copy, save or edit the capture."
+msgstr ""
+
 #: src/onboarding/welcome-note.ts
 msgid "A quick introduction to Librelog."
 msgstr ""
 
 #: src/settings/annotate.tsx
 msgid "A recording holds everything shown on the display under the pointer, what your microphone hears, your red marks, and the name and title of the app in front. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
+msgstr ""
+
+#: src/settings/annotate.tsx
+msgid "A recording holds everything shown on the screen you share, what your microphone hears and your red marks. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
 msgstr ""
 
 #: src/i18n/external-messages.ts
@@ -744,7 +752,7 @@ msgid "Annotate"
 msgstr ""
 
 #: src/settings/annotate.tsx
-msgid "Annotate is available in the macOS app downloaded from the website."
+msgid "Annotate is available in the macOS and Linux apps downloaded from the website."
 msgstr ""
 
 #: src/i18n/external-messages.ts
@@ -757,6 +765,10 @@ msgstr ""
 
 #: src/annotate/lifecycle.tsx
 msgid "Annotation ready"
+msgstr ""
+
+#: src/annotate/lifecycle.tsx
+msgid "Another recording is being transcribed on this computer. The annotation will be ready when it finishes."
 msgstr ""
 
 #: src/annotate/lifecycle.tsx
@@ -857,6 +869,10 @@ msgstr ""
 msgid "Applying…"
 msgstr ""
 
+#: src/settings/desktop-shortcuts.tsx
+msgid "Approve Librelog's shortcuts in your desktop's prompt."
+msgstr ""
+
 #: src/stt/detect-events.ts
 msgid "Are you in a meeting?"
 msgstr ""
@@ -880,6 +896,15 @@ msgstr ""
 
 #: src/shared/chat-cta.tsx
 msgid "Ask Librelog anything"
+msgstr ""
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Ask my desktop again"
+msgstr ""
+
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Ask which screen to record again"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/assign-speakers-dialog.tsx
@@ -1200,6 +1225,7 @@ msgid "Can’t transcribe all your languages together."
 msgstr ""
 
 #: src/capture/editor/index.tsx
+#: src/capture/linux/area.tsx
 #: src/i18n/native-labels.tsx
 #: src/session/components/outer-header/overflow/assign-speakers-dialog.tsx
 #: src/settings/ai/llm/subscriptions/connect.tsx
@@ -1229,6 +1255,10 @@ msgstr ""
 
 #: src/onboarding/index.tsx
 msgid "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on this Mac."
+msgstr ""
+
+#: src/onboarding/index.tsx
+msgid "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on your computer."
 msgstr ""
 
 #: src/i18n/external-messages.ts
@@ -1264,6 +1294,10 @@ msgstr ""
 
 #: src/settings/capture.tsx
 msgid "Captures stay on this Mac, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
+msgstr ""
+
+#: src/settings/capture.tsx
+msgid "Captures stay on your computer, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
 msgstr ""
 
 #: src/settings/general/timezone.tsx
@@ -1974,6 +2008,10 @@ msgid "Could not preserve the clipboard. Copy your last dictation from Settings 
 msgstr ""
 
 #: src/i18n/external-messages.ts
+msgid "Could not put your dictation on the clipboard. Copy your last dictation from Settings > Dictation."
+msgstr ""
+
+#: src/i18n/external-messages.ts
 msgid "Could not read the macOS shortcut settings: {rest}"
 msgstr ""
 
@@ -2664,6 +2702,10 @@ msgstr ""
 msgid "Drag to record · Space for a window · Return for the whole screen · Esc to cancel"
 msgstr ""
 
+#: src/annotate/lifecycle.tsx
+msgid "Draw"
+msgstr ""
+
 #: src/session/components/note-input/audio-drop-target.tsx
 msgid "Drop to upload and transcribe audio"
 msgstr ""
@@ -3200,6 +3242,10 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "Global shortcuts are unavailable in this desktop session."
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "GNOME shows tray icons only with the AppIndicator extension. Until it's on, closing the window minimizes Librelog instead of hiding it. To quit Librelog, choose File › Quit Librelog or press Control + Q."
 msgstr ""
 
 #: src/sidebar/timeline/index.tsx
@@ -5006,9 +5052,17 @@ msgstr ""
 msgid "On this computer"
 msgstr ""
 
+#: src/settings/capture-shortcuts.tsx
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses."
+msgstr ""
+
+#: src/settings/annotate.tsx
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Control + Alt + period turns drawing off, and holding the shortcut draws only where the desktop reports when you let go."
+msgstr ""
+
 #: src/settings/dictation.tsx
-msgid "On Wayland, approve the shortcuts in your desktop's prompt. Use Control + Alt + Escape to cancel. On X11, press Escape to cancel. The target app must expose an editable accessibility field."
-msgstr "En Wayland, autoriza los atajos en el diálogo del escritorio. Usa Control + Alt + Escape para cancelar. En X11, pulsa Escape para cancelar. La aplicación de destino debe ofrecer un campo editable mediante accesibilidad."
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Use Control + Alt + period to cancel. On X11, press Escape to cancel. Where a field doesn't take text through accessibility, Librelog pastes it through the clipboard; on Wayland your desktop asks once to allow Librelog to control the keyboard for that."
+msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "On-device models can take a few minutes to warm up before text appears."
@@ -5031,6 +5085,7 @@ msgctxt "device authentication reason"
 msgid "open"
 msgstr ""
 
+#: src/capture/linux/cards.tsx
 #: src/settings/todo/permission.tsx
 msgid "Open"
 msgstr ""
@@ -5109,6 +5164,14 @@ msgstr ""
 
 #: src/onboarding/final.tsx
 msgid "Opens when the models finish installing"
+msgstr ""
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Opens your desktop's screenshot tool, where you pick an area, a window or the screen."
+msgstr ""
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Opens your desktop's screenshot tool, where you pick the window."
 msgstr ""
 
 #: src/onboarding/index.tsx
@@ -5315,6 +5378,10 @@ msgstr ""
 msgid "Phone"
 msgstr ""
 
+#: src/capture/linux/area.tsx
+msgid "Pick a window"
+msgstr ""
+
 #: src/contacts/contact-page-header.tsx
 msgid "Pin"
 msgstr ""
@@ -5432,6 +5499,10 @@ msgstr ""
 msgid "Press to start recording the display under the pointer, and again to finish. While recording, hold it to draw in red where the pointer goes; let go to stop drawing. Escape turns drawing off."
 msgstr ""
 
+#: src/settings/annotate.tsx
+msgid "Press to start recording the screen you share, and again to finish. While recording, hold it to draw in red where the pointer goes, for up to 8 seconds at a time; let go, click or right click to stop drawing."
+msgstr ""
+
 #: src/settings/general/notification.tsx
 msgid "Prevent selected apps from triggering meeting detection."
 msgstr ""
@@ -5508,6 +5579,10 @@ msgstr ""
 
 #: src/i18n/native-labels.tsx
 msgid "Quit Completely…"
+msgstr ""
+
+#: src/main/windows-title-bar.tsx
+msgid "Quit Librelog"
 msgstr ""
 
 #: src/i18n/component-labels.tsx
@@ -5651,6 +5726,10 @@ msgstr ""
 msgid "Record the microphone"
 msgstr ""
 
+#: src/capture/linux/area.tsx
+msgid "Record whole screen"
+msgstr ""
+
 #: src/settings/general/permissions.tsx
 msgid "Record your voice in meetings and calls."
 msgstr ""
@@ -5703,6 +5782,10 @@ msgstr ""
 
 #: src/settings/capture.tsx
 msgid "Recordings"
+msgstr ""
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Records a movie (MP4, or WebM when no H.264 encoder is installed) of an area, a window or the whole screen. Press it again to stop."
 msgstr ""
 
 #: src/settings/capture-shortcuts.tsx
@@ -6121,6 +6204,11 @@ msgstr ""
 msgid "Screen Recording is not allowed for Librelog."
 msgstr ""
 
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Screen to record"
+msgstr ""
+
 #: src/capture/editor/toolbar.tsx
 msgid "Screenshot editor"
 msgstr ""
@@ -6143,7 +6231,7 @@ msgid "Screenshots and recordings are only available in the macOS app."
 msgstr ""
 
 #: src/settings/capture.tsx
-msgid "Screenshots and screen recordings are available in the macOS app downloaded from the website."
+msgid "Screenshots and screen recordings are available in the macOS and Linux apps downloaded from the website."
 msgstr ""
 
 #: src/session/components/note-input/transcript/renderer/index.tsx
@@ -6501,6 +6589,11 @@ msgstr ""
 msgid "Show ignored models"
 msgstr ""
 
+#: src/capture/lifecycle.tsx
+#: src/settings/capture-recent.tsx
+msgid "Show in Files"
+msgstr ""
+
 #: src/annotate/lifecycle.tsx
 #: src/capture/lifecycle.tsx
 #: src/settings/ai/llm/builtin.tsx
@@ -6510,6 +6603,7 @@ msgstr ""
 msgid "Show in Finder"
 msgstr ""
 
+#: src/annotate/lifecycle.tsx
 #: src/settings/ai/llm/builtin.tsx
 #: src/settings/ai/stt/model-rows.tsx
 #: src/sidebar/timeline/item.tsx
@@ -6821,6 +6915,7 @@ msgstr ""
 msgid "Steps run from top to bottom."
 msgstr ""
 
+#: src/annotate/lifecycle.tsx
 #: src/audio-player/timeline.tsx
 #: src/composer/index.tsx
 #: src/meeting-float/labels.ts
@@ -7023,6 +7118,10 @@ msgstr ""
 msgid "Takes the display under the pointer at once."
 msgstr ""
 
+#: src/settings/capture-shortcuts.tsx
+msgid "Takes the whole screen at once."
+msgstr ""
+
 #: src/i18n/component-labels.tsx
 msgid "Task List"
 msgstr ""
@@ -7166,6 +7265,11 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "The new transcription returned much less text. Your saved transcript and recording were kept. Try transcribing again."
+msgstr ""
+
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "The next recording asks which screen to record."
 msgstr ""
 
 #: src/settings/automations/workflow-builder.tsx
@@ -7458,6 +7562,10 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "Tip: The Librelog team loves our users!"
+msgstr ""
+
+#: src/settings/capture.tsx
+msgid "To stop a recording, press its shortcut again, choose Record Screen in Librelog's menu in the top bar, or stop sharing from your desktop's screen-sharing indicator. Recordings have no sound yet."
 msgstr ""
 
 #: src/sidebar/timeline/utils/index.ts
@@ -8293,6 +8401,39 @@ msgstr ""
 
 #: src/shared/long-load-gate.tsx
 msgid "Your data was updated by a newer version of Librelog, such as Librelog Nightly, and this version cannot open it yet. Your existing data was left unchanged. Install the latest version of Librelog, or keep using the newer app until this version catches up."
+msgstr ""
+
+#: src/onboarding/capture.tsx
+msgid "Your desktop asks before each capture, in its own dialog."
+msgstr ""
+
+#: src/settings/capture.tsx
+msgid "Your desktop asks before Librelog takes a screenshot or records the screen, in its own dialog."
+msgstr ""
+
+#: src/settings/annotate.tsx
+msgid "Your desktop asks which screen to share when you start an annotation, and remembers it where it can. The capsule and your red marks are part of the recording."
+msgstr ""
+
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Your desktop remembers the screen you picked last."
+msgstr ""
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Your desktop uses {trigger} instead of {keys}."
+msgstr ""
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Your desktop's shortcut prompt was dismissed, so these shortcuts don't work yet."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "Your dictation is on the clipboard. Press Control+Shift+V to paste it."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "Your dictation is on the clipboard. Press Control+V to paste it."
 msgstr ""
 
 #: src/settings/dictionary/index.tsx
