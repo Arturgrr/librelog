@@ -34,7 +34,13 @@ FEDORA_IMAGE=fedora:latest
 UBUNTU_IMAGE=ubuntu:24.04
 # Installed by every package; the smoke tests run each.
 BINARIES=(librelog librelog-cli librelog-chrome-native-host)
-DESKTOP_FILE=/usr/share/applications/Librelog.desktop
+STABLE_CONFIG="$SRC_TAURI/tauri.conf.stable.json"
+IDENTIFIER="$(jq -r .identifier "$STABLE_CONFIG")"
+# The launcher, named by the app id the desktop portals know Librelog by;
+# GNOME before 51 refuses one that is not reverse-DNS. The bundler's own
+# entry, named after the product, stays hidden.
+DESKTOP_FILE="/usr/share/applications/$IDENTIFIER.desktop"
+HIDDEN_DESKTOP_FILE="/usr/share/applications/$(jq -r .productName "$STABLE_CONFIG").desktop"
 ICON=/usr/share/icons/hicolor/512x512/apps/librelog.png
 
 single() {
@@ -69,12 +75,19 @@ build() {
   elif [[ "$TARGET" == x86_64-unknown-linux-gnu ]]; then
     fail "cargo xtask prepare-binaries did not build binaries/librelog-llama-server-$TARGET"
   fi
-  local config="$SRC_TAURI/tauri.conf.stable.json"
+  local config="$STABLE_CONFIG"
   local updater_artifacts=true
   [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] || updater_artifacts=false
-  jq --argjson updater "$updater_artifacts" '
+  local entry
+  entry="$(launcher_entry)"
+  # Tauri merges this over tauri.conf.json object by object, so the packages
+  # keep their settings there and gain the launcher.
+  jq --argjson updater "$updater_artifacts" \
+    --arg desktop "$DESKTOP_FILE" --arg entry "$entry" '
     .bundle.externalBin = ((.bundle.externalBin // []) + $ARGS.positional | unique)
     | if $updater then . else .bundle.createUpdaterArtifacts = false end
+    | .bundle.linux.deb.files[$desktop] = $entry
+    | .bundle.linux.rpm.files[$desktop] = $entry
   ' --args "${sidecars[@]}" <"$config" >"$config.tmp"
   mv "$config.tmp" "$config"
 
@@ -86,6 +99,29 @@ build() {
 
   ARCH=x86_64 node "$ROOT/scripts/repack-linux-appimage.mjs" "$BUNDLE_DIR/appimage"
   set_package_versions
+}
+
+# Fills in linux/app.desktop.in from the stable configuration and prints
+# the file's path.
+launcher_entry() {
+  local exec scheme mime out
+  exec="$(jq -r .mainBinaryName "$STABLE_CONFIG")"
+  mime=""
+  for scheme in $(jq -r '.plugins["deep-link"].desktop.schemes[]?' "$STABLE_CONFIG"); do
+    mime+="x-scheme-handler/$scheme;"
+  done
+  out="${CARGO_TARGET_DIR:-$SRC_TAURI/target}/linux-entry/$IDENTIFIER.desktop"
+  mkdir -p "$(dirname "$out")"
+  sed -e "s|@NAME@|$(jq -r .productName "$STABLE_CONFIG")|" \
+    -e "s|@COMMENT@|$(jq -r .bundle.shortDescription "$SRC_TAURI/tauri.conf.json")|" \
+    -e "s|@EXEC@|$exec|g" \
+    -e "s|@ICON@|$exec|" \
+    -e "s|@MIME_TYPE@|$mime|" \
+    "$SRC_TAURI/linux/app.desktop.in" >"$out"
+  if [[ -z "$mime" ]]; then
+    sed -i '/^MimeType=$/d' "$out"
+  fi
+  echo "$out"
 }
 
 # Tauri writes the app's semver into both packages; see linuxPackageVersion
@@ -157,15 +193,21 @@ verify() {
   expect_lines "$deb's Depends" "$depends" "${expected[@]}"
   local files
   files="$(dpkg-deb --fsys-tarfile "$deb" | tar -t | sed 's|^\./|/|')"
-  expect_lines "$deb" "$files" "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$ICON"
+  expect_lines "$deb" "$files" "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON"
+  local entries
+  entries="$(mktemp -d)"
+  mkdir -p "$entries/deb" "$entries/rpm"
+  dpkg-deb --fsys-tarfile "$deb" | tar -x -C "$entries/deb" ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE"
 
   mapfile -t expected < <(jq -r '.bundle.linux.rpm.depends[]' "$SRC_TAURI/tauri.conf.json")
   docker run --rm -i \
     --volume "$(dirname "$rpm"):/rpm:ro" \
+    --volume "$entries:/entries" \
     --env RPM_NAME="$(basename "$rpm")" \
     --env PACKAGE_VERSION \
+    --env DESKTOP_FILE --env HIDDEN_DESKTOP_FILE \
     --env EXPECTED_REQUIRES="$(printf '%s\n' "${expected[@]}")" \
-    --env EXPECTED_FILES="$(printf '%s\n' "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$ICON")" \
+    --env EXPECTED_FILES="$(printf '%s\n' "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON")" \
     "$FEDORA_IMAGE" bash -euo pipefail -s <<'EOF'
 rpm="/rpm/$RPM_NAME"
 evr="$(rpm -qp --qf '%{VERSION}-%{RELEASE}.%{ARCH}' "$rpm")"
@@ -181,8 +223,24 @@ done <<<"$EXPECTED_REQUIRES"
 while read -r path; do
   grep -Fxq -- "$path" <<<"$files" || { echo "::error::$RPM_NAME lacks $path"; status=1; }
 done <<<"$EXPECTED_FILES"
+[[ "$status" -eq 0 ]] || exit "$status"
+dnf install -y --setopt=install_weak_deps=False desktop-file-utils cpio >/dev/null
+(cd /entries/rpm && rpm2cpio "$rpm" | cpio -id --quiet ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE")
+# Exactly one launcher per package: the reverse-DNS entry, valid and shown;
+# the bundler's, named after the product, hidden and claiming no window.
+for package in deb rpm; do
+  launcher="/entries/$package$DESKTOP_FILE"
+  hidden="/entries/$package$HIDDEN_DESKTOP_FILE"
+  desktop-file-validate "$launcher" || { echo "::error::$package: $DESKTOP_FILE does not validate"; status=1; }
+  desktop-file-validate "$hidden" || { echo "::error::$package: $HIDDEN_DESKTOP_FILE does not validate"; status=1; }
+  if grep -q '^NoDisplay=true' "$launcher"; then echo "::error::$package: $DESKTOP_FILE is hidden"; status=1; fi
+  grep -q '^NoDisplay=true' "$hidden" || { echo "::error::$package: $HIDDEN_DESKTOP_FILE is shown"; status=1; }
+  if grep -q '^StartupWMClass=' "$hidden"; then echo "::error::$package: $HIDDEN_DESKTOP_FILE claims the window"; status=1; fi
+  grep -q '^StartupWMClass=' "$launcher" || { echo "::error::$package: $DESKTOP_FILE names no window class"; status=1; }
+done
 exit "$status"
 EOF
+  rm -rf "$entries"
 }
 
 # Run inside the containers: an app still running at the timeout passes, as
@@ -241,6 +299,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y "$PACKAGE"
 apt-get install -y dbus-x11 xvfb
+desktop-file-validate "$DESKTOP_FILE"
 for binary in $BINARIES; do check_libraries "/usr/bin/$binary"; done
 librelog-cli --help
 launch /usr/bin/librelog

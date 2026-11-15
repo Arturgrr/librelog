@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=@NAME@
+GenericName=Meeting Notes
+Comment=@COMMENT@
+Exec=@EXEC@ %u
+Icon=@ICON@
+Terminal=false
+Categories=Office;
+Keywords=notes;meeting;transcription;recording;dictation;
+StartupNotify=true
+StartupWMClass=@EXEC@
+MimeType=@MIME_TYPE@
+X-GNOME-UsesNotifications=true

@@ -27,18 +27,17 @@ const hostLibraryPatterns = [
   /^libspa-.*\.so(?:\..*)?$/,
 ];
 
-// linuxdeploy's GTK hook forces X11, which matches the app running through
-// XWayland on Wayland sessions; the patch keeps that default but lets a
-// GDK_BACKEND the user exported through to the app.
-const gdkBackendDefault = 'export GDK_BACKEND="${GDK_BACKEND:-x11}"';
+// linuxdeploy's GTK hook forces X11 by exporting GDK_BACKEND, which every
+// process the app starts would inherit: a browser opened from Librelog would
+// run through XWayland too. Librelog picks its own backend before GTK starts
+// (apps/desktop/src-tauri/src/startup.rs), so the patch drops the export.
+const gdkBackendExport =
+  /^export GDK_BACKEND=(?:x11|"\$\{GDK_BACKEND:-x11\}")(?:[ \t]+#.*)?\n?/m;
+const ownBackend = "# Librelog chooses its display backend itself.\n";
 
 export function patchGtkHook(source) {
-  if (source.includes(gdkBackendDefault)) {
-    return source;
-  }
-  const forcedX11 = /^export GDK_BACKEND=x11(?:[ \t]+#.*)?$/m;
-  if (forcedX11.test(source)) {
-    return source.replace(forcedX11, gdkBackendDefault);
+  if (gdkBackendExport.test(source)) {
+    return source.replace(gdkBackendExport, ownBackend);
   }
   if (/GDK_BACKEND/.test(source)) {
     throw new Error("Unrecognized GDK_BACKEND setting in AppImage GTK hook");

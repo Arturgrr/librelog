@@ -22,7 +22,7 @@ Every release on [GitHub Releases](https://github.com/Arturgrr/librelog/releases
 - On GNOME, the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) to see the Librelog icon in the top bar. On Fedora, install it with `sudo dnf install gnome-shell-extension-appindicator`, log out and back in, and turn it on in the Extensions app. Without it, Librelog runs without a top-bar icon.
 - A Vulkan-capable GPU is optional. Local models use it when it works and transcribe on the CPU otherwise. The RPM and deb install the Vulkan loader, and the AppImage carries one.
 
-On Wayland sessions Librelog runs through XWayland for now.
+On Wayland sessions Librelog's windows run through XWayland for now, so the dictation indicator and the meeting bar can stay where they belong and above other windows; shortcuts and pasting still go through your desktop's Wayland portals. With fractional scaling (125% or 150%), XWayland windows can look blurry. To run Librelog natively on Wayland instead, start it with `LIBRELOG_WAYLAND=1 librelog` (or put the variable before the AppImage): windows are sharp, but GNOME then decides where the dictation indicator, the meeting bar and notifications appear and may put other windows above them.
 
 ## Fedora
 
@@ -63,7 +63,7 @@ To remove Librelog, run `sudo apt remove librelog`.
    ./Librelog_*_amd64.AppImage
    ```
 
-The AppImage uses your system's PipeWire and Wayland libraries rather than copies from Ubuntu, which would not find PipeWire's modules on Fedora. If it does not start because FUSE is missing, run it with `--appimage-extract-and-run`. The AppImage does not add itself to the app grid.
+The AppImage uses your system's PipeWire and Wayland libraries rather than copies from Ubuntu, which would not find PipeWire's modules on Fedora. If it does not start because FUSE is missing, run it with `--appimage-extract-and-run`. The first time it runs, the AppImage adds a Librelog launcher to your app grid, `~/.local/share/applications/com.arturgrr.librelog.desktop`: your desktop needs it to know Librelog for global shortcuts and the paste permission. Librelog points it at the AppImage again whenever the AppImage moves, and removes it if you later install the RPM or deb, which bring their own.
 
 ## Updates
 

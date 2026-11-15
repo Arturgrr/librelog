@@ -37,6 +37,9 @@ fn mark_exit_flush_complete() {
 fn start_exit_hard_fallback() {
     std::thread::spawn(|| {
         std::thread::sleep(EXIT_HARD_FALLBACK_TIMEOUT);
+        // A recording's encoder must not outlive the app.
+        #[cfg(not(feature = "app-store"))]
+        tauri_plugin_capture::stop_pipelines(std::time::Duration::from_secs(1));
         std::process::exit(0);
     });
 }
@@ -83,11 +86,9 @@ pub fn main() {
     #[cfg(target_os = "linux")]
     {
         let product_name = context.config().product_name.clone().unwrap_or_default();
-        anlg_desktop_portal::set_app_id(anlg_desktop_portal::app_id(
-            &product_name,
-            &identifier,
-            &anlg_desktop_portal::xdg_data_dirs(),
-        ));
+        if let Some(message) = anlg_desktop_portal::prepare_app_id(&identifier, &product_name) {
+            eprintln!("{message}");
+        }
         // Registers before the first portal request, which waits for it.
         runtime.spawn(async {
             if let Err(error) = anlg_desktop_portal::connection().await {
@@ -523,6 +524,10 @@ pub fn main() {
 
             app.dictation()
                 .shutdown_environment(std::time::Duration::from_secs(2));
+            // Normally finished by the capture shutdown already; any pipeline
+            // left is asked to finalize its file, then killed.
+            #[cfg(not(feature = "app-store"))]
+            tauri_plugin_capture::stop_pipelines(std::time::Duration::from_secs(3));
 
             anlg_host::kill_processes_by_matcher(anlg_host::ProcessMatcher::Sidecar);
         }

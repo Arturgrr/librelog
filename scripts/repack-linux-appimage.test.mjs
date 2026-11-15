@@ -75,7 +75,7 @@ function fakeRun(fixture, commands) {
   };
 }
 
-test("the repacked AppImage uses Fedora's PipeWire and Wayland and keeps X11 as the default backend", async (t) => {
+test("the repacked AppImage uses Fedora's PipeWire and Wayland and leaves the GDK backend to the app", async (t) => {
   const fixture = await createFixture(t);
   const commands = [];
 
@@ -92,10 +92,7 @@ test("the repacked AppImage uses Fedora's PipeWire and Wayland and keeps X11 as 
   assert.equal(await fixture.exists("gtk-3.0/libwayland-client.so.0"), false);
   assert.equal(await fixture.exists("libpulse.so.0"), true);
   assert.equal(await fixture.exists("libgtk-3.so.0"), true);
-  assert.match(
-    await readFile(fixture.gtkHook, "utf8"),
-    /^export GDK_BACKEND="\$\{GDK_BACKEND:-x11\}"$/m,
-  );
+  assert.doesNotMatch(await readFile(fixture.gtkHook, "utf8"), /GDK_BACKEND/);
   assert.equal(await readFile(fixture.appImage, "utf8"), "repacked");
   assert.equal(
     await readFile(`${fixture.appImage}.sig`, "utf8"),
