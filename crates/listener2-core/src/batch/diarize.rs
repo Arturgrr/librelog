@@ -119,11 +119,12 @@ pub(super) enum ChannelAudio {
 /// Maps a transcript channel onto recorded audio and a speaker budget.
 /// Mirrors the live path: on a stereo capture channel 0 is the direct mic
 /// (the user alone) and channel 1 carries every remote participant, so
-/// participant counts shift by one. Progressive local providers collapse a
-/// stereo recording into one transcript channel; that channel is scored on
-/// the mix with the full participant count. In an in-person meeting the mic
-/// is shared by everyone, so channel 0 takes the full count too. `None`
-/// means skip the channel.
+/// participant counts shift by one. On-device engines, GGUF models included,
+/// transcribe each channel on its own; a provider that instead returns one
+/// transcript channel for a stereo recording heard the mix, so that channel
+/// is scored on the mix with the full participant count. In an in-person
+/// meeting the mic is shared by everyone, so channel 0 takes the count as a
+/// ceiling. `None` means skip the channel.
 pub(super) fn plan_channel(
     listen_params: &owhisper_interface::ListenParams,
     transcript_channels: usize,
@@ -841,9 +842,9 @@ mod tests {
 
     #[test]
     fn downmixed_stereo_transcript_is_scored_on_the_mix() {
-        // Whisper collapses a stereo capture into one transcript
-        // channel; its words come from mic and system audio together, so the
-        // direct mic file alone would miss every remote turn.
+        // A provider that returns one transcript channel for a stereo
+        // capture heard mic and system audio together, so the direct mic file
+        // alone would miss every remote turn.
         let (audio, bounds) =
             plan_channel(&listen_params(Some(3), None, None), 1, 2, 0, false).unwrap();
         assert_eq!(audio, ChannelAudio::Mix);

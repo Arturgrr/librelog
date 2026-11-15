@@ -102,13 +102,13 @@ During the meeting, Parakeet Streaming and Apple Speech label words only by wher
 - If **Parakeet Batch** is downloaded and supports the meeting's language, Librelog transcribes the recording again with it. With Apple Speech and no usable Parakeet Batch, Apple Speech transcribes it again.
 - Otherwise, including with Parakeet Streaming alone, the bundled speaker model labels the live transcript's words without transcribing again. Nothing is downloaded for this.
 - The recording must be kept. With **Audio file retention** set to **Don't save**, voices are not separated.
-- **In person.** When your microphone heard speech and your computer's audio stayed silent (a few seconds of stray sound still count as silent), the people sharing your microphone are separated into **Speaker 1**, **Speaker 2**, and so on, however many participants the note lists. If only one voice is found, as in a memo or a meeting where only you spoke, your words stay yours.
+- **In person.** When your microphone heard speech and your computer's audio stayed silent (a few seconds of stray sound still count as silent), the people sharing your microphone are separated into **Speaker 1**, **Speaker 2**, and so on, whether or not the note lists participants; a listed count is only an upper limit. If only one voice is found, as in a memo, a meeting where only you spoke, or a call whose computer audio never arrived, your words stay yours and the transcript is left unchanged.
 - **On a call.** The voices heard through your computer are separated when the meeting lists no participants besides you, or two or more. With exactly one other participant, the far end stays one speaker named after that person. Your microphone stays yours.
 - The transcript shows **Separating speakers...** while it runs, and the summary is written from the result. If you stop it, start another recording, or it fails, the live transcript stays as it was.
 
 The new transcript replaces the live one for that recording. Speakers you named during the meeting keep their names where the words line up. Turn this off under **Settings → Meetings → Separate speakers after meetings** if you prefer not to spend the extra processing after each meeting.
 
-For a note recorded before this worked, right-click **Transcript** and choose **Re-transcribe**. An in-person recording is separated the same way when the model keeps your microphone and your computer's audio apart, as Parakeet Batch and Apple Speech do.
+For a note recorded before this worked, right-click **Transcript** and choose **Separate speakers**. It labels the existing transcript from the kept recording with the bundled speaker model, without transcribing again or downloading anything, and changes nothing if it finds only one voice. It is offered for a note with a single recording. **Re-transcribe** also separates an in-person recording, with any model that transcribes your microphone and your computer's audio separately: Parakeet Batch, Apple Speech and the on-device GGUF models do.
 
 ## Other model-backed features
 
