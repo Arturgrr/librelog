@@ -48,12 +48,20 @@ pub fn formats(path: &Path, kind: &str) -> Result<Vec<(String, Vec<u8>)>, Annota
         <= MAX_DATA;
     Ok(match kind {
         "screenshot" => {
-            let picture = image::open(path).map_err(|error| fail(codes::IO, error))?;
-            let mut png = Cursor::new(Vec::new());
-            picture
-                .write_to(&mut png, image::ImageFormat::Png)
-                .map_err(|error| fail(codes::IO, error))?;
-            std::iter::once((PNG.to_owned(), png.into_inner()))
+            let bytes = std::fs::read(path).map_err(|error| fail(codes::IO, error))?;
+            // A PNG goes as it is; a JPEG is converted.
+            let png = if bytes.starts_with(b"\x89PNG") {
+                bytes
+            } else {
+                let picture =
+                    image::load_from_memory(&bytes).map_err(|error| fail(codes::IO, error))?;
+                let mut png = Cursor::new(Vec::new());
+                picture
+                    .write_to(&mut png, image::ImageFormat::Png)
+                    .map_err(|error| fail(codes::IO, error))?;
+                png.into_inner()
+            };
+            std::iter::once((PNG.to_owned(), png))
                 .chain(files)
                 .collect()
         }
