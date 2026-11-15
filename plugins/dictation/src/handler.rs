@@ -303,7 +303,12 @@ mod webview {
         #[cfg(not(target_os = "macos"))]
         let window = window.transparent(true);
         let window = window.build()?;
+        // On Linux only once shown (`place`): asked of a hidden window, tao
+        // finds no GDK window to shape and panics on the main thread.
+        #[cfg(not(target_os = "linux"))]
         window.set_ignore_cursor_events(true)?;
+        #[cfg(target_os = "linux")]
+        let _ = window;
         Ok(())
     }
 
