@@ -71,20 +71,25 @@ pub(super) async fn consolidate_hosted_speakers(
             continue;
         };
         let shared_mic = in_person && index == 0;
+        // A room mic is only shared once two of its labels hold real speech;
+        // a stray label on a solo memo is not a second person, whatever the
+        // count or the voiceprints say.
+        if shared_mic && labels_holding_speech(channel) < 2 {
+            continue;
+        }
         let labels = distinct_labels(channel);
         if labels.len() < 2 && !has_known {
             continue;
         }
         let cap = expected_speaker_cap(listen_params, shift);
         let over_cap = cap.is_some_and(|cap| labels.len() > cap);
-        if !over_cap && !has_known {
+        // With no count to hold them to, the provider's room labels are
+        // compared by voice, so one person split in two stays one.
+        let merge_same_voice = shared_mic && cap.is_none();
+        if !over_cap && !has_known && !merge_same_voice {
             // The provider already split the room mic correctly; only the
             // channel needs to change so those people stop rendering as "You".
-            // Without a participant count a stray label on a solo memo must
-            // not count as a second person.
-            settled_shared_mic |= shared_mic
-                && labels.len() >= 2
-                && (cap.is_some() || labels_holding_speech(channel) >= 2);
+            settled_shared_mic |= shared_mic;
             continue;
         }
         work.push(ChannelWork {
@@ -92,6 +97,7 @@ pub(super) async fn consolidate_hosted_speakers(
             audio,
             cap,
             shared_mic,
+            merge_same_voice,
             words: word_timings(channel),
         });
     }
@@ -148,6 +154,7 @@ struct ChannelWork {
     cap: Option<usize>,
     /// The direct mic of an in-person meeting.
     shared_mic: bool,
+    merge_same_voice: bool,
     /// `(start, end, speaker)` per word, per alternative.
     words: Vec<Vec<(f64, f64, Option<usize>)>>,
 }
@@ -265,7 +272,7 @@ fn consolidate_channels(
                 + progress_span * (work_index + 1) as f64 / work.len() as f64,
         );
 
-        let plan = consolidate_profiles(profiles, channel.cap, known);
+        let plan = consolidate_profiles(profiles, channel.cap, known, channel.merge_same_voice);
         relabels.push(ChannelRelabel {
             index: channel.index,
             mapping: plan.mapping,
@@ -378,10 +385,13 @@ pub(super) struct ConsolidationPlan {
 /// treated as authoritative rather than as a soft hint. Only then do labels
 /// with no clean speech to embed follow whichever embedded speaker they sit
 /// closest to in time; within the count a brief talker keeps their own label.
+/// With `merge_same_voice`, labels as alike as two windows of one voice are
+/// to the on-device diarizer are also merged.
 pub(super) fn consolidate_profiles(
     profiles: Vec<SpeakerProfile>,
     cap: Option<usize>,
     known: &[KnownSpeaker],
+    merge_same_voice: bool,
 ) -> ConsolidationPlan {
     let original_order: Vec<usize> = profiles.iter().map(|profile| profile.label).collect();
     let mut clusters: Vec<Cluster> = profiles
@@ -396,6 +406,9 @@ pub(super) fn consolidate_profiles(
         .collect();
 
     let identified = merge_known_duplicates(&mut clusters, known);
+    if merge_same_voice {
+        merge_same_voices(&mut clusters);
+    }
     if let Some(cap) = cap.filter(|cap| clusters.len() > *cap) {
         fold_unembedded(&mut clusters);
         merge_until_within_cap(&mut clusters, cap);
@@ -581,32 +594,49 @@ fn fold_unembedded(clusters: &mut Vec<Cluster>) {
 /// channel over the cap: the count was wrong, the voiceprints were not.
 fn merge_until_within_cap(clusters: &mut Vec<Cluster>, cap: usize) {
     while clusters.len() > cap.max(1) {
-        let mut best: Option<(usize, usize, f32)> = None;
-        for left in 0..clusters.len() {
-            for right in (left + 1)..clusters.len() {
-                if let (Some(a), Some(b)) = (&clusters[left].known_id, &clusters[right].known_id)
-                    && a != b
-                {
-                    continue;
-                }
-                let (Some(a), Some(b)) = (&clusters[left].centroid, &clusters[right].centroid)
-                else {
-                    continue;
-                };
-                let Some(score) = cosine_similarity(a, b) else {
-                    continue;
-                };
-                if best.is_none_or(|(_, _, best_score)| score > best_score) {
-                    best = Some((left, right, score));
-                }
-            }
-        }
-        let Some((left, right, _)) = best else {
+        let Some((left, right, _)) = most_similar_pair(clusters) else {
             break;
         };
         let other = clusters.remove(right);
         clusters[left].absorb(other);
     }
+}
+
+/// Merges labels closer than the on-device diarizer's clustering cut, which
+/// is a euclidean distance between unit embeddings.
+fn merge_same_voices(clusters: &mut Vec<Cluster>) {
+    let cut = DiarizationConfig::default().clustering_threshold;
+    let min_similarity = 1.0 - cut * cut / 2.0;
+    while let Some((left, right, score)) = most_similar_pair(clusters) {
+        if score < min_similarity {
+            break;
+        }
+        let other = clusters.remove(right);
+        clusters[left].absorb(other);
+    }
+}
+
+fn most_similar_pair(clusters: &[Cluster]) -> Option<(usize, usize, f32)> {
+    let mut best: Option<(usize, usize, f32)> = None;
+    for left in 0..clusters.len() {
+        for right in (left + 1)..clusters.len() {
+            if let (Some(a), Some(b)) = (&clusters[left].known_id, &clusters[right].known_id)
+                && a != b
+            {
+                continue;
+            }
+            let (Some(a), Some(b)) = (&clusters[left].centroid, &clusters[right].centroid) else {
+                continue;
+            };
+            let Some(score) = cosine_similarity(a, b) else {
+                continue;
+            };
+            if best.is_none_or(|(_, _, best_score)| score > best_score) {
+                best = Some((left, right, score));
+            }
+        }
+    }
+    best
 }
 
 fn apply_relabels(
@@ -636,7 +666,7 @@ fn apply_relabels(
                 word.speaker = Some(*new);
             }
         }
-        shared_mic |= relabel.shared_mic && after >= 2;
+        shared_mic |= relabel.shared_mic && after >= 2 && labels_holding_speech(channel) >= 2;
         summary.push(ChannelConsolidation {
             index: relabel.index,
             before: relabel.mapping.len(),
@@ -671,7 +701,8 @@ fn apply_relabels(
 #[cfg(test)]
 mod tests {
     use super::super::test_fixtures::{
-        NeverCancelled, Turn, english_1_coalesced_turns, in_person_fixture, params, stereo_fixture,
+        NeverCancelled, Turn, english_1_coalesced_turns, in_person_fixture, params,
+        solo_in_person_fixture, stereo_fixture,
     };
     use super::*;
     use crate::batch::{BatchProvider, BatchRunMode};
@@ -694,6 +725,7 @@ mod tests {
             ],
             Some(2),
             &[],
+            false,
         );
         assert_eq!(plan.mapping, vec![(3, 0), (1, 1)]);
         assert_eq!(plan.identified, 0);
@@ -709,6 +741,7 @@ mod tests {
             ],
             Some(2),
             &[],
+            false,
         );
         assert_eq!(plan.mapping, vec![(0, 0), (1, 1), (2, 0)]);
     }
@@ -723,6 +756,7 @@ mod tests {
             ],
             Some(1),
             &[],
+            false,
         );
         assert!(plan.mapping.iter().all(|(_, new)| *new == 0));
     }
@@ -741,6 +775,7 @@ mod tests {
             ],
             Some(5),
             &[ada],
+            false,
         );
         assert_eq!(plan.mapping, vec![(0, 0), (1, 1), (2, 0)]);
         assert_eq!(plan.identified, 1);
@@ -768,6 +803,7 @@ mod tests {
             ],
             Some(1),
             &known,
+            false,
         );
         assert_eq!(plan.mapping.len(), 3);
         assert_ne!(
@@ -797,6 +833,7 @@ mod tests {
             ],
             None,
             &known,
+            false,
         );
         assert_eq!(plan.mapping, vec![(0, 0), (1, 1)]);
     }
@@ -811,6 +848,7 @@ mod tests {
             ],
             Some(2),
             &[],
+            false,
         );
         assert_eq!(plan.mapping, vec![(0, 0), (1, 1), (2, 1)]);
     }
@@ -829,7 +867,8 @@ mod tests {
                     profile(2, None, vec![10.4, 11.6]),
                 ],
                 cap,
-                &[ada.clone()],
+                std::slice::from_ref(&ada),
+                false,
             );
             assert_eq!(plan.mapping, vec![(0, 0), (1, 1), (2, 2)], "cap {cap:?}");
             assert_eq!(plan.identified, 1);
@@ -842,6 +881,7 @@ mod tests {
             vec![profile(0, None, vec![0.0]), profile(1, None, vec![1.0])],
             Some(1),
             &[],
+            false,
         );
         assert_eq!(plan.mapping, vec![(0, 0), (1, 1)]);
     }
@@ -1092,33 +1132,88 @@ mod tests {
         assert_eq!(output.response.metadata["shared_mic"], true);
     }
 
+    /// A solo recording's mic as a provider labels it: the speaker's turns
+    /// spread over `labels` alternating labels.
+    fn solo_mic_channel(labels: usize) -> batch::Channel {
+        let mut index = 0;
+        channel(words_for_turns(
+            &english_1_coalesced_turns(),
+            0,
+            |_, turn| {
+                (turn.speaker == "speaker0").then(|| {
+                    index += 1;
+                    (index - 1) % labels
+                })
+            },
+        ))
+    }
+
     #[tokio::test]
-    async fn in_person_mic_is_shared_without_a_participant_count_or_decoding() {
-        // Two labels with real speech each and a silent system-audio channel:
-        // a room nobody listed, so nothing to merge and the recording is never
-        // opened, but the words still have to leave the "You" channel. A stray
-        // label of a few seconds on a solo memo is not a second person.
-        let params = params(
-            BatchProvider::Deepgram,
-            "https://api.deepgram.com/v1",
-            "/nonexistent/recording.wav",
-        );
-        let listen_params = owhisper_interface::ListenParams {
-            channels: 2,
-            ..Default::default()
-        };
-        for (mic, shared) in [
-            (in_person_mic_channel(1), true),
+    async fn a_room_mic_is_shared_only_when_two_distinct_voices_hold_speech() {
+        let room = in_person_fixture();
+        let solo = solo_in_person_fixture();
+        let mut stray = solo_mic_channel(1);
+        stray.alternatives[0]
+            .words
+            .push(word(30.0, 32.0, 0, Some(1)));
+        let known = vec![KnownSpeaker {
+            id: "someone-else".to_string(),
+            embedding: vec![1.0; 256],
+        }];
+        for (name, file, mic, num_speakers, known, shared) in [
             (
-                channel(vec![
-                    word(0.0, 30.0, 0, Some(0)),
-                    word(30.0, 32.0, 0, Some(1)),
-                ]),
+                "two people, nobody listed",
+                &room,
+                in_person_mic_channel(1),
+                None,
+                vec![],
+                true,
+            ),
+            (
+                "a stray label, nobody listed",
+                &solo,
+                stray.clone(),
+                None,
+                vec![],
+                false,
+            ),
+            (
+                "a stray label, one listed",
+                &solo,
+                stray.clone(),
+                Some(2),
+                vec![],
+                false,
+            ),
+            (
+                "a stray label, known voices",
+                &solo,
+                stray,
+                None,
+                known,
+                false,
+            ),
+            (
+                "one voice split in two labels",
+                &solo,
+                solo_mic_channel(2),
+                None,
+                vec![],
                 false,
             ),
         ] {
+            let mut params = params(
+                BatchProvider::Deepgram,
+                "https://api.deepgram.com/v1",
+                file.path().to_str().unwrap(),
+            );
+            params.known_speakers = known;
+            let listen_params = owhisper_interface::ListenParams {
+                channels: 2,
+                num_speakers,
+                ..Default::default()
+            };
             let mut output = output(vec![mic, channel(vec![])]);
-            let before_labels = distinct_labels(&output.response.results.channels[0]);
 
             consolidate_hosted_speakers(
                 Arc::new(NeverCancelled),
@@ -1128,14 +1223,12 @@ mod tests {
             )
             .await;
 
-            let mic = &output.response.results.channels[0];
-            assert_eq!(distinct_labels(mic), before_labels);
+            let words = &output.response.results.channels[0].alternatives[0].words;
             assert!(
-                mic.alternatives[0]
-                    .words
+                words
                     .iter()
                     .all(|word| (word.channel == SHARED_MIC_CHANNEL) == shared),
-                "shared: {shared}"
+                "{name}"
             );
         }
     }
