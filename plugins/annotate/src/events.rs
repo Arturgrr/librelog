@@ -30,3 +30,15 @@ pub enum AnnotateEvent {
     /// Ending the recording failed; the session is idle again.
     Failed { message: String },
 }
+
+/// What the ink overlay and the capsule show while recording on Linux.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotateSurface {
+    pub ink: crate::commands::InkMode,
+    pub pen_on: bool,
+    /// The capsule asks "Discard?".
+    pub asking: bool,
+    pub started_wall_ms: i64,
+    pub labels: crate::session::CapsuleLabels,
+}

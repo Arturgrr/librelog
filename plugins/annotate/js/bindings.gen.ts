@@ -179,14 +179,79 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * What the Linux ink overlay and capsule show; null while nothing records
+   * there, and always elsewhere.
+   */
+  async surface(): Promise<Result<AnnotateSurface | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|surface"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * The Linux ink overlay's pointer, in its own points: `move`, `down`, `up`
+   * or `leave`.
+   */
+  async inkPointer(
+    kind: string,
+    x: number,
+    y: number,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|ink_pointer", { kind, x, y }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Escape, or a right click, on the Linux ink overlay: drawing stops.
+   */
+  async inkEscape(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|ink_escape"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * A button of the Linux capsule: `pen`, `stop`, `discard`,
+   * `confirm_discard` or `keep`.
+   */
+  async capsulePressed(target: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|capsule_pressed", { target }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/
 
 export const events = __makeEvents__<{
   annotateEvent: AnnotateEvent;
+  annotateSurface: AnnotateSurface;
 }>({
   annotateEvent: "plugin:annotate:annotate-event",
+  annotateSurface: "plugin:annotate:annotate-surface",
 });
 
 /** user-defined constants **/
@@ -214,6 +279,19 @@ export type AnnotateEvent =
    * Ending the recording failed; the session is idle again.
    */
   | { type: "failed"; message: string };
+/**
+ * What the ink overlay and the capsule show while recording on Linux.
+ */
+export type AnnotateSurface = {
+  ink: InkMode;
+  penOn: boolean;
+  /**
+   * The capsule asks "Discard?".
+   */
+  asking: boolean;
+  startedWallMs: number;
+  labels: CapsuleLabels;
+};
 /**
  * The capsule's words in the app's language.
  */
@@ -246,7 +324,7 @@ export type Retention = "week" | "month" | "forever";
 export type Started = { id: string; dir: string };
 export type Status = {
   /**
-   * False off macOS, where nothing records.
+   * False off macOS and Linux, where nothing records.
    */
   available: boolean;
   phase: Phase;

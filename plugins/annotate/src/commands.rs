@@ -98,9 +98,12 @@ pub(crate) async fn cancel<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Resul
     session(&app).cancel().await.map_err(text)
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum InkMode {
+    #[default]
     Off,
     /// The pointer inks as it moves: while the shortcut is held.
     Hover,
@@ -174,4 +177,71 @@ pub(crate) async fn latest<R: tauri::Runtime>(
         .await
         .map_err(|error| error.to_string())?
         .map_err(text)
+}
+
+#[cfg(target_os = "linux")]
+fn linux<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<Arc<crate::linux::Linux>> {
+    app.try_state::<Arc<crate::linux::Linux>>()
+        .map(|linux| linux.inner().clone())
+}
+
+/// What the Linux ink overlay and capsule show; null while nothing records
+/// there, and always elsewhere.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn surface<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Option<crate::events::AnnotateSurface>> {
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        return Ok(linux.surface());
+    }
+    let _ = app;
+    Ok(None)
+}
+
+/// The Linux ink overlay's pointer, in its own points: `move`, `down`, `up`
+/// or `leave`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_pointer<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    kind: String,
+    x: f64,
+    y: f64,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.pointer(&kind, x, y);
+    }
+    let _ = (app, kind, x, y);
+    Ok(())
+}
+
+/// Escape, or a right click, on the Linux ink overlay: drawing stops.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_escape<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.escape();
+    }
+    let _ = app;
+    Ok(())
+}
+
+/// A button of the Linux capsule: `pen`, `stop`, `discard`,
+/// `confirm_discard` or `keep`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn capsule_pressed<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    target: String,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.press(&target);
+    }
+    let _ = (app, target);
+    Ok(())
 }

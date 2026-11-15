@@ -13,4 +13,8 @@ permissions = [
   "allow-set-retention",
   "allow-annotations-dir",
   "allow-latest",
+  "allow-surface",
+  "allow-ink-pointer",
+  "allow-ink-escape",
+  "allow-capsule-pressed",
 ]

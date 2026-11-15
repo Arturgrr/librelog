@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-ink-escape"
+description = "Enables the ink_escape command without any pre-configured scope."
+commands.allow = ["ink_escape"]
+
+[[permission]]
+identifier = "deny-ink-escape"
+description = "Denies the ink_escape command without any pre-configured scope."
+commands.deny = ["ink_escape"]

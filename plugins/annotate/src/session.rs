@@ -38,7 +38,7 @@ pub enum Phase {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    /// False off macOS, where nothing records.
+    /// False off macOS and Linux, where nothing records.
     pub available: bool,
     pub phase: Phase,
     /// The recording that stopped and waits for `finalize` or `cancel`.
@@ -199,7 +199,7 @@ impl Session {
             ),
         };
         Status {
-            available: cfg!(target_os = "macos"),
+            available: cfg!(any(target_os = "macos", target_os = "linux")),
             phase,
             stopped,
         }

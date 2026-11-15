@@ -34,6 +34,7 @@ impl From<anlg_annotate_macos::AnnotateError> for Error {
             codes::PERMISSION => Self::Permission,
             codes::BUSY => Self::Busy("recording"),
             codes::NOT_RECORDING => Self::NotRecording,
+            crate::native::CANCELLED => Self::Cancelled,
             _ => Self::Native(error.message),
         }
     }
