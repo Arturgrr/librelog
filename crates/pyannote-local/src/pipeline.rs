@@ -237,6 +237,13 @@ impl Diarizer {
         }
 
         let (mut labels, mut centroids) = self.cluster(&embeddings, step, request.bounds);
+        let mut identities = self.apply_known_speakers(
+            &embeddings,
+            &mut labels,
+            &mut centroids,
+            request.known_speakers,
+            request.bounds,
+        );
         if request.bounds.num_speakers.is_none() && request.bounds.min_speakers.is_none() {
             self.absorb_minor_speakers(
                 total,
@@ -245,15 +252,9 @@ impl Diarizer {
                 &embeddings,
                 &mut labels,
                 &mut centroids,
+                &mut identities,
             );
         }
-        let identities = self.apply_known_speakers(
-            &embeddings,
-            &mut labels,
-            &mut centroids,
-            request.known_speakers,
-            request.bounds,
-        );
 
         let speakers: Vec<DiarizedSpeaker> = centroids
             .into_iter()
@@ -343,7 +344,9 @@ impl Diarizer {
     /// `min_cluster_seconds` of speech in the reconstructed turns, the same
     /// evidence clustering asks of its anchors. Anchors can clear that bar on
     /// windows that barely vote, leaving a solo recording with a second
-    /// "speaker" of a few seconds. The voice with the most speech always stays.
+    /// "speaker" of a few seconds. The voice with the most speech always stays,
+    /// and so does any voice a known voiceprint named, however briefly it spoke.
+    #[allow(clippy::too_many_arguments)]
     fn absorb_minor_speakers(
         &self,
         total: usize,
@@ -352,6 +355,7 @@ impl Diarizer {
         embeddings: &[WindowEmbedding],
         labels: &mut [usize],
         centroids: &mut Vec<Vec<f32>>,
+        identities: &mut Vec<Option<SpeakerIdentity>>,
     ) {
         if centroids.len() < 2 {
             return;
@@ -381,7 +385,9 @@ impl Diarizer {
             .unwrap_or(0);
         let min_seconds = f64::from(self.config.min_cluster_seconds);
         let kept: Vec<usize> = (0..speech.len())
-            .filter(|label| *label == main || speech[*label] >= min_seconds)
+            .filter(|label| {
+                *label == main || speech[*label] >= min_seconds || identities[*label].is_some()
+            })
             .collect();
         if kept.len() == centroids.len() {
             return;
@@ -395,6 +401,10 @@ impl Diarizer {
             };
         }
         *centroids = kept_centroids;
+        *identities = kept
+            .iter()
+            .map(|label| identities[*label].clone())
+            .collect();
     }
 
     /// Known voiceprints steer the result in two ways: clusters whose best
@@ -946,6 +956,80 @@ mod tests {
                 .unwrap();
             assert_eq!(diarization.speaker_count(), 1, "{name}");
         }
+    }
+
+    const BRIEF_VOICE_MS: usize = 8_000;
+
+    #[test]
+    fn a_brief_known_voice_is_named_instead_of_absorbed() {
+        // english_1's second speaker cut down to their first few seconds: too
+        // little speech to stand as an anonymous voice, enough to be named.
+        #[derive(serde::Deserialize)]
+        struct Turn {
+            start: usize,
+            end: usize,
+            speaker: String,
+        }
+        let full = pcm_bytes_to_f32(anlg_data::english_1::AUDIO);
+        let mut diarizer = Diarizer::new(DiarizationConfig::default()).unwrap();
+        let reference = diarizer
+            .diarize(&mut full.as_slice(), &DiarizeRequest::default())
+            .unwrap();
+        assert_eq!(reference.speaker_count(), 2);
+        let brief_speaker = reference
+            .speakers
+            .iter()
+            .min_by(|a, b| {
+                let speech = |index| {
+                    reference
+                        .segments
+                        .iter()
+                        .filter(|segment| segment.speaker == index)
+                        .map(|segment| segment.end - segment.start)
+                        .sum::<f64>()
+                };
+                speech(a.index).total_cmp(&speech(b.index))
+            })
+            .unwrap();
+
+        let turns: Vec<Turn> =
+            serde_json::from_str(anlg_data::english_1::DIARIZATION_JSON).unwrap();
+        let mut audio = full.clone();
+        let to_sample = |ms: usize| (ms * SAMPLE_RATE as usize / 1000).min(full.len());
+        let mut kept_ms = 0;
+        for turn in turns.iter().filter(|turn| turn.speaker == "speaker1") {
+            if kept_ms + (turn.end - turn.start) <= BRIEF_VOICE_MS {
+                kept_ms += turn.end - turn.start;
+            } else {
+                audio[to_sample(turn.start)..to_sample(turn.end)].fill(0.0);
+            }
+        }
+
+        let anonymous = diarizer
+            .diarize(&mut audio.as_slice(), &DiarizeRequest::default())
+            .unwrap();
+        assert_eq!(anonymous.speaker_count(), 1, "the brief voice is absorbed");
+
+        let known = [KnownSpeaker {
+            id: "guest".to_string(),
+            embedding: brief_speaker.centroid.clone(),
+        }];
+        let named = diarizer
+            .diarize(
+                &mut audio.as_slice(),
+                &DiarizeRequest {
+                    known_speakers: &known,
+                    ..DiarizeRequest::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(named.speaker_count(), 2);
+        assert!(
+            named
+                .speakers
+                .iter()
+                .any(|speaker| speaker.identity.as_ref().is_some_and(|id| id.id == "guest"))
+        );
     }
 
     #[test]
