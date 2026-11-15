@@ -343,6 +343,18 @@
           "markdownDescription": "Denies the finalize command without any pre-configured scope."
         },
         {
+          "description": "Enables the forget_screen_choice command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-forget-screen-choice",
+          "markdownDescription": "Enables the forget_screen_choice command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the forget_screen_choice command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-forget-screen-choice",
+          "markdownDescription": "Denies the forget_screen_choice command without any pre-configured scope."
+        },
+        {
           "description": "Enables the ink_escape command without any pre-configured scope.",
           "type": "string",
           "const": "allow-ink-escape",
@@ -487,10 +499,22 @@
           "markdownDescription": "Denies the surface command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`",
+          "description": "Enables the surface_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-surface-ready",
+          "markdownDescription": "Enables the surface_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the surface_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-surface-ready",
+          "markdownDescription": "Denies the surface_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`"
         }
       ]
     }

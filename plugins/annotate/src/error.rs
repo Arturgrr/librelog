@@ -2,7 +2,16 @@ use serde::{Serialize, ser::Serializer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Annotate is only available in the macOS app.")]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        error("Annotate is only available in the macOS app.")
+    )]
+    #[cfg_attr(
+        target_os = "linux",
+        error(
+            "Annotate can't record on this computer: Librelog could not start its connection to the desktop's portals."
+        )
+    )]
     Unavailable,
     #[error("Screen Recording is not allowed for Librelog.")]
     Permission,

@@ -73,6 +73,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::ink_pointer::<tauri::Wry>,
             commands::ink_escape::<tauri::Wry>,
             commands::capsule_pressed::<tauri::Wry>,
+            commands::surface_ready::<tauri::Wry>,
+            commands::forget_screen_choice::<tauri::Wry>,
         ])
         .events(tauri_specta::collect_events![
             AnnotateEvent,

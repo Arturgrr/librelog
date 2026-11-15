@@ -12654,9 +12654,11 @@ dependencies = [
  "annotate-macos",
  "audio",
  "futures-util",
+ "gtk",
  "hound",
  "image",
  "libc",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "specta",
@@ -12672,6 +12674,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "x11rb",
 ]
 
 [[package]]

@@ -7,8 +7,11 @@ use serde_json::{Value, json};
 
 use crate::commands::InkMode;
 
-/// Ink left on with the pointer still this long goes back to off.
+/// The pen left this long without a stroke goes back to off.
 pub const INK_IDLE_MS: u64 = 30_000;
+/// Hover ink lasts this long after the shortcut said it is held: a desktop
+/// that never reports the release must not keep the pointer.
+pub const HOVER_MS: u64 = 8_000;
 /// An unanswered "Discard?" goes back to recording.
 pub const QUESTION_MS: u64 = 4_000;
 
@@ -44,7 +47,10 @@ pub struct Effects {
 pub struct Machine {
     ink: InkMode,
     asking_since: Option<u64>,
+    /// The pen's last stroke, or when it came on.
     last_activity: u64,
+    /// When the shortcut last said it is held.
+    hover_since: u64,
     events: Vec<Value>,
 }
 
@@ -61,6 +67,7 @@ impl Machine {
             ink: InkMode::Off,
             asking_since: None,
             last_activity: now,
+            hover_since: now,
             events: Vec::new(),
         }
     }
@@ -73,8 +80,12 @@ impl Machine {
         self.asking_since.is_some()
     }
 
-    /// The host's ink mode; returns whether it changed.
+    /// The host's ink mode; returns whether it changed. Hover again
+    /// restarts its time.
     pub fn set_ink(&mut self, mode: InkMode, now: u64) -> bool {
+        if mode == InkMode::Hover {
+            self.hover_since = now;
+        }
         if mode == self.ink {
             return false;
         }
@@ -83,7 +94,8 @@ impl Machine {
         true
     }
 
-    pub fn pointer_moved(&mut self, now: u64) {
+    /// The pen drew.
+    pub fn stroked(&mut self, now: u64) {
         self.last_activity = now;
     }
 
@@ -131,7 +143,12 @@ impl Machine {
 
     pub fn tick(&mut self, now: u64) -> Effects {
         let mut effects = Effects::default();
-        if self.ink != InkMode::Off && now.saturating_sub(self.last_activity) >= INK_IDLE_MS {
+        let idle = match self.ink {
+            InkMode::Off => false,
+            InkMode::Hover => now.saturating_sub(self.hover_since) >= HOVER_MS,
+            InkMode::Drag => now.saturating_sub(self.last_activity) >= INK_IDLE_MS,
+        };
+        if idle {
             self.ink = InkMode::Off;
             self.events.push(event("ink_off", Some("idle")));
             effects.ink_off = true;

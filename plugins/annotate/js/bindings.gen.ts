@@ -214,7 +214,7 @@ export const commands = {
     }
   },
   /**
-   * Escape, or a right click, on the Linux ink overlay: drawing stops.
+   * A right click on the Linux ink overlay: drawing stops.
    */
   async inkEscape(): Promise<Result<null, string>> {
     try {
@@ -236,6 +236,34 @@ export const commands = {
       return {
         status: "ok",
         data: await TAURI_INVOKE("plugin:annotate|capsule_pressed", { target }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * The Linux overlay's or capsule's page mounted: it may be shown.
+   */
+  async surfaceReady(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|surface_ready"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Linux: the next annotation asks which screen to share again.
+   */
+  async forgetScreenChoice(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|forget_screen_choice"),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -286,6 +314,10 @@ export type AnnotateSurface = {
   ink: InkMode;
   penOn: boolean;
   /**
+   * The overlay is up: the pen can draw.
+   */
+  drawable: boolean;
+  /**
    * The capsule asks "Discard?".
    */
   asking: boolean;
@@ -299,6 +331,11 @@ export type CapsuleLabels = {
   discardQuestion: string | null;
   discard: string | null;
   keep: string | null;
+  /**
+   * The Linux capsule's pen and stop buttons.
+   */
+  draw: string | null;
+  stop: string | null;
 };
 /**
  * What a finished annotation offers the frontend.

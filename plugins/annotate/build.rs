@@ -15,6 +15,8 @@ const COMMANDS: &[&str] = &[
     "ink_pointer",
     "ink_escape",
     "capsule_pressed",
+    "surface_ready",
+    "forget_screen_choice",
 ];
 
 fn main() {

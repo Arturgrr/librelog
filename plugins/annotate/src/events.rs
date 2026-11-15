@@ -37,6 +37,8 @@ pub enum AnnotateEvent {
 pub struct AnnotateSurface {
     pub ink: crate::commands::InkMode,
     pub pen_on: bool,
+    /// The overlay is up: the pen can draw.
+    pub drawable: bool,
     /// The capsule asks "Discard?".
     pub asking: bool,
     pub started_wall_ms: i64,

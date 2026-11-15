@@ -20,6 +20,8 @@ Default permissions for the plugin
 - `allow-ink-pointer`
 - `allow-ink-escape`
 - `allow-capsule-pressed`
+- `allow-surface-ready`
+- `allow-forget-screen-choice`
 
 ## Permission Table
 
@@ -130,6 +132,32 @@ Enables the finalize command without any pre-configured scope.
 <td>
 
 Denies the finalize command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-forget-screen-choice`
+
+</td>
+<td>
+
+Enables the forget_screen_choice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-forget-screen-choice`
+
+</td>
+<td>
+
+Denies the forget_screen_choice command without any pre-configured scope.
 
 </td>
 </tr>
@@ -442,6 +470,32 @@ Enables the surface command without any pre-configured scope.
 <td>
 
 Denies the surface command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-surface-ready`
+
+</td>
+<td>
+
+Enables the surface_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-surface-ready`
+
+</td>
+<td>
+
+Denies the surface_ready command without any pre-configured scope.
 
 </td>
 </tr>

@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use super::frames::{Decoded, PERIOD_MS};
 use super::windows::{Monitor, Opened};
 use super::*;
 
@@ -73,7 +72,7 @@ impl Decoder for FakeDecoder {
         size: (u32, u32),
         _within: Duration,
         frame: &mut dyn FnMut(&[u8]) -> bool,
-    ) -> Result<Decoded, String> {
+    ) -> Result<usize, String> {
         self.asked.lock().unwrap().push(size);
         let len = size.0 as usize * size.1 as usize * 4;
         for k in 0..self.frames {
@@ -82,16 +81,10 @@ impl Decoder for FakeDecoder {
                 *alpha = 255;
             }
             if !frame(&rgba) {
-                return Ok(Decoded {
-                    count: k + 1,
-                    complete: false,
-                });
+                return Ok(k + 1);
             }
         }
-        Ok(Decoded {
-            count: self.frames,
-            complete: true,
-        })
+        Ok(self.frames)
     }
 }
 
@@ -123,6 +116,7 @@ impl Surfaces for FakeSurfaces {
             capsule: Ok(()),
         }
     }
+    fn loaded(&self, _label: &str) {}
     fn ink_origin(&self) -> (f64, f64) {
         (0.0, 10.0)
     }
@@ -195,6 +189,7 @@ fn rig_with(surfaces: FakeSurfaces, placeable: bool, frames: usize) -> Rig {
         surfaces.clone(),
         clock.clone(),
         placeable,
+        PathBuf::from("/nonexistent/screencast-token"),
     );
     Rig {
         dir: tempfile::tempdir().unwrap(),
@@ -338,29 +333,47 @@ fn candidates_taken_while_ink_showed_show_the_screen_from_before_the_ink() {
 }
 
 #[test]
-fn ink_turns_itself_off_after_thirty_idle_seconds_and_escape_or_the_pen_always_end_it() {
+fn hover_ink_ends_without_word_from_the_shortcut_or_on_a_click_and_the_pen_after_idling() {
     let rig = rig();
     start(&rig);
+    // A desktop that never reports the shortcut's release.
     rig.linux.set_ink_mode("hover").unwrap();
-    rig.clock.at_ms(200 + 29_000);
+    for ms in (300..8_200).step_by(100) {
+        rig.clock.at_ms(ms);
+        rig.linux.pointer("move", ms as f64 / 10.0, 10.0);
+    }
     assert!(events(&rig).is_empty());
-    rig.linux.pointer("move", 10.0, 10.0);
-    rig.clock.at_ms(200 + 29_000 + 30_000);
+    rig.clock.at_ms(200 + 8_000);
     assert_eq!(events(&rig), ["ink_off:idle"]);
     assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
-    assert_eq!(rig.linux.surface().unwrap().ink, InkMode::Off);
+
+    // Held again: a click gives the pointer back.
+    rig.linux.set_ink_mode("hover").unwrap();
+    rig.linux.pointer("down", 10.0, 10.0);
+    assert_eq!(events(&rig), ["ink_off:escape"]);
+
+    // The pen idles 30 s after its last stroke; moving without drawing
+    // doesn't count.
+    rig.clock.at_ms(10_000);
+    rig.linux.press("pen");
+    rig.clock.at_ms(11_000);
+    rig.linux.pointer("down", 10.0, 10.0);
+    rig.linux.pointer("up", 20.0, 10.0);
+    rig.clock.at_ms(40_000);
+    rig.linux.pointer("move", 50.0, 50.0);
+    assert_eq!(events(&rig), ["pen_on"]);
+    rig.clock.at_ms(41_000);
+    assert_eq!(events(&rig), ["ink_off:idle"]);
 
     rig.linux.press("pen");
-    assert_eq!(rig.linux.surface().unwrap().ink, InkMode::Drag);
     rig.linux.escape();
-    assert_eq!(events(&rig), ["pen_on", "ink_off:escape"]);
     rig.linux.press("pen");
     rig.linux.press("pen");
-    assert_eq!(events(&rig), ["pen_on", "pen_off"]);
     assert_eq!(
-        *rig.surfaces.taken.lock().unwrap(),
-        [true, false, true, false, true, false]
+        events(&rig),
+        ["pen_on", "ink_off:escape", "pen_on", "pen_off"]
     );
+    assert_eq!(rig.surfaces.taken.lock().unwrap().len(), 10);
 }
 
 #[test]
@@ -396,6 +409,11 @@ fn an_overlay_that_cannot_ignore_the_pointer_is_never_used_and_the_recording_goe
     rig.linux.pointer("move", 10.0, 10.0);
     rig.linux.pointer("move", 50.0, 10.0);
     assert!(rig.surfaces.taken.lock().unwrap().is_empty());
+    // The capsule's pen doesn't come on with nothing to draw on.
+    rig.linux.set_ink_mode("off").unwrap();
+    rig.linux.press("pen");
+    let surface = rig.linux.surface().unwrap();
+    assert!(!surface.drawable && !surface.pen_on);
     let stopped = stop(&rig);
     assert_eq!(stopped["strokes"].as_array().unwrap().len(), 0);
     assert!(stopped["warnings"][0].as_str().unwrap().contains("no ink"));
@@ -607,29 +625,68 @@ fn strokes_are_clamped_thinned_and_hover_strokes_that_never_moved_are_dropped() 
 }
 
 #[test]
-fn ink_episodes_widen_strokes_merge_and_stop_standing_in_after_ten_seconds() {
+fn ink_episodes_widen_strokes_merge_and_frames_stand_in_from_before_else_after() {
     let episodes = frames::episodes(&[(5_000, 5_200), (1_000, 1_500)]);
     assert_eq!(episodes, [(700, 3_200), (4_700, 6_900)]);
     assert_eq!(
         frames::episodes(&[(5_000, 5_200), (1_000, 1_500), (3_400, 3_600)]),
         [(700, 6_900)]
     );
-    assert_eq!(frames::clean(2_000, &episodes), 700);
-    assert_eq!(frames::clean(4_000, &episodes), 4_000);
-    let long = frames::episodes(&[(1_000, 20_000)]);
-    assert_eq!(frames::clean(5_000, &long), 700);
-    assert_eq!(frames::clean(15_000, &long), 15_000);
-    assert_eq!(frames::offset(2_100, 8), 100);
-    assert_eq!(frames::index(PERIOD_MS * 3 + 10), 3);
+    // Frame 8 (2 s) shows ink: frame 2 (500 ms) is from before it.
+    assert_eq!(frames::shown(8, &episodes, 40), 2);
+    assert_eq!(frames::shown(16, &episodes, 40), 16);
+    // However long the ink lasted.
+    let long = frames::episodes(&[(1_000, 60_000)]);
+    assert_eq!(frames::shown(200, &long, 400), 2);
+    // Ink from the very start: the first frame after it, if there is one.
+    let first = frames::episodes(&[(100, 500)]);
+    assert_eq!(frames::shown(2, &first, 20), 9);
+    assert_eq!(frames::shown(2, &first, 9), 2);
     assert_eq!(frames::fit((2880, 1800), 480), (480, 300));
     assert_eq!(frames::fit((641, 401), 2560), (640, 400));
 }
 
+#[derive(Default)]
+struct FakeServer {
+    passes: Mutex<Option<bool>>,
+    released: AtomicUsize,
+    unmapped: AtomicUsize,
+}
+
+impl x11::Shape for FakeServer {
+    fn passes_pointer(&self, _xid: u32) -> Result<bool, String> {
+        (*self.passes.lock().unwrap()).ok_or_else(|| "no X server".into())
+    }
+    fn release(&self, _xid: u32) -> Result<(), String> {
+        self.released.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    fn unmap(&self, _xid: u32) -> Result<(), String> {
+        self.unmapped.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
 #[test]
-fn the_pipeline_reads_and_writes_only_inherited_descriptors() {
-    let args = frames::frames_args(7, 9, (480, 270)).join(" ");
-    assert_eq!(
-        args,
-        "-q fdsrc fd=7 ! decodebin ! videorate ! video/x-raw,framerate=4/1 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=480,height=270,pixel-aspect-ratio=1/1 ! fdsink fd=9"
-    );
+fn the_pointer_is_let_go_through_x_whenever_gtk_does_not_confirm_it() {
+    let server = FakeServer::default();
+    *server.passes.lock().unwrap() = Some(true);
+    assert!(x11::settle(Some(Ok(())), false, 7, &server).is_ok());
+    assert!(x11::settle(Some(Ok(())), true, 7, &server).is_err());
+    assert_eq!(server.released.load(Ordering::SeqCst), 0);
+    // A hung main thread, a GTK error, or a shape that didn't change.
+    assert!(x11::settle(None, false, 7, &server).is_err());
+    assert!(x11::settle(Some(Err("gone".into())), false, 7, &server).is_err());
+    *server.passes.lock().unwrap() = Some(false);
+    assert!(x11::settle(Some(Ok(())), false, 7, &server).is_err());
+    assert_eq!(server.released.load(Ordering::SeqCst), 3);
+    // Taking it never forces anything.
+    assert!(x11::settle(None, true, 7, &server).is_err());
+    assert_eq!(server.released.load(Ordering::SeqCst), 3);
+
+    x11::closed(Some(()), Some(7), &server);
+    x11::closed(None, None, &server);
+    assert_eq!(server.unmapped.load(Ordering::SeqCst), 0);
+    x11::closed(None, Some(7), &server);
+    assert_eq!(server.unmapped.load(Ordering::SeqCst), 1);
 }

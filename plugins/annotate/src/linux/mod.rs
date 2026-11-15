@@ -5,15 +5,18 @@
 //! capsule over it, and GStreamer children read the movie back.
 //!
 //! Failing safe comes first: the overlay ignores the pointer unless ink is
-//! on. Ink goes off with Escape or a right click on the overlay, the
-//! shortcut, the capsule's pen, and after 30 s without pointer movement.
-//! Both windows close on stop, cancel, the stream ending by itself and
-//! before every start. An overlay that cannot be made to ignore the pointer
-//! is closed, and the recording goes on without ink.
+//! on, and never covers the capsule. Ink goes off with a right click on the
+//! overlay, a click while the held shortcut inks, the shortcut's release,
+//! the capsule's pen, 8 s after the shortcut last said it is held, and 30 s
+//! after the pen's last stroke. Both windows close on stop, cancel, the
+//! stream ending by itself and before every start. An overlay the X server
+//! doesn't show ignoring the pointer is closed, and the recording goes on
+//! without ink.
 
 mod frames;
 mod ink;
 mod windows;
+mod x11;
 
 #[cfg(test)]
 mod tests;
@@ -41,6 +44,7 @@ use ink::{Machine, Press, Strokes};
 use windows::{Surfaces, Windows};
 
 const FPS: u32 = 30;
+const TOKEN_FILE: &str = "screencast-token";
 /// A recording stops by itself after 20 minutes, as on macOS.
 const MAX_DURATION_S: u32 = 20 * 60;
 
@@ -140,6 +144,8 @@ struct LabelsRequest {
     discard_question: Option<String>,
     discard: Option<String>,
     keep: Option<String>,
+    draw: Option<String>,
+    stop: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -187,6 +193,8 @@ pub struct Linux {
     surfaces: Arc<dyn Surfaces>,
     clock: Arc<dyn Clock>,
     placeable: bool,
+    /// The portal's token for the screen shared last.
+    token_file: PathBuf,
     state: Mutex<State>,
     /// The last stopped movie, for its key frames.
     movie: Mutex<Option<Movie>>,
@@ -206,7 +214,7 @@ impl Linux {
             gst: gst.clone(),
             picker: Arc::new(WholeScreen),
             events: events.clone(),
-            token_file: root.join("screencast-token"),
+            token_file: root.join(TOKEN_FILE),
             // As Capture's: the longest wait for an encoder's first bytes.
             probe: Duration::from_secs(5),
             tick: Duration::from_millis(100),
@@ -217,6 +225,7 @@ impl Linux {
             Arc::new(Windows::new(app)),
             Arc::new(HostClock),
             placeable(),
+            root.join(TOKEN_FILE),
         ))
     }
 
@@ -226,6 +235,7 @@ impl Linux {
         surfaces: Arc<dyn Surfaces>,
         clock: Arc<dyn Clock>,
         placeable: bool,
+        token_file: PathBuf,
     ) -> Self {
         Self {
             screen,
@@ -233,6 +243,7 @@ impl Linux {
             surfaces,
             clock,
             placeable,
+            token_file,
             state: Mutex::new(State::Idle),
             movie: Mutex::new(None),
         }
@@ -255,6 +266,7 @@ impl Linux {
         AnnotateSurface {
             ink,
             pen_on: ink == InkMode::Drag,
+            drawable: current.ink,
             asking: current.machine.asking(),
             started_wall_ms: current.wall_ms,
             labels: current.labels.clone(),
@@ -304,8 +316,15 @@ impl Linux {
             "microphone": false, "system_audio": false, "countdown_s": 0,
             "max_duration_s": MAX_DURATION_S,
         });
-        let reply: Value = serde_json::from_str(&self.screen.start(&recording.to_string())?)
-            .map_err(|error| fail(codes::INTERNAL, error))?;
+        let reply = self.screen.start(&recording.to_string())?;
+        let reply: Value = match serde_json::from_str(&reply) {
+            Ok(reply) => reply,
+            Err(error) => {
+                // It may be recording.
+                let _ = self.screen.cancel();
+                return Err(fail(codes::INTERNAL, error));
+            }
+        };
         if reply["status"] != "recording" {
             return Err(fail(CANCELLED, "the screen-sharing dialog was cancelled"));
         }
@@ -366,6 +385,8 @@ impl Linux {
                 discard_question: labels.discard_question.clone(),
                 discard: labels.discard.clone(),
                 keep: labels.keep.clone(),
+                draw: labels.draw.clone(),
+                stop: labels.stop.clone(),
             });
         let current = Current {
             dir: request.dir.clone(),
@@ -410,7 +431,16 @@ impl Linux {
             return;
         }
         let now = self.now(current);
-        current.machine.pointer_moved(now);
+        if current.machine.ink() == InkMode::Hover && kind == "down" {
+            // A click while the held shortcut inks: the pointer goes back.
+            if current.machine.escape() {
+                self.ink_changed(current);
+            }
+            return;
+        }
+        if current.machine.ink() == InkMode::Drag && (kind != "move" || current.strokes.live()) {
+            current.machine.stroked(now);
+        }
         let (left, top) = self.surfaces.ink_origin();
         let (x, y) = (x + left, y + top);
         let strokes = &mut current.strokes;
@@ -428,7 +458,7 @@ impl Linux {
         }
     }
 
-    /// Escape, or a right click, on the overlay: ink off.
+    /// A right click on the overlay: ink off.
     pub fn escape(&self) {
         let mut state = self.lock();
         if let State::Recording(current) = &mut *state
@@ -436,6 +466,19 @@ impl Linux {
             && current.machine.escape()
         {
             self.ink_changed(current);
+        }
+    }
+
+    /// The overlay's or the capsule's page mounted.
+    pub fn loaded(&self, label: &str) {
+        self.surfaces.loaded(label);
+    }
+
+    /// The next annotation asks which screen to share.
+    pub fn forget_screen(&self) -> std::io::Result<()> {
+        match std::fs::remove_file(&self.token_file) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
         }
     }
 
@@ -448,6 +491,10 @@ impl Linux {
             return;
         };
         if current.ended {
+            return;
+        }
+        // No pen without an overlay to draw on.
+        if press == Press::Pen && !current.ink && current.machine.ink() == InkMode::Off {
             return;
         }
         let now = self.now(current);
@@ -471,7 +518,7 @@ impl Native for Linux {
 
     fn open_screen_recording_settings(&self) -> Result<(), AnnotateError> {
         Err(fail(
-            codes::UNSUPPORTED,
+            codes::INVALID_ARGUMENT,
             "Linux has no Screen Recording setting: the desktop asks when a recording starts",
         ))
     }
@@ -538,17 +585,16 @@ impl Native for Linux {
             duration_ms,
             frames::episodes(&spans),
         );
-        let (candidates, offset) = match sampled {
+        let candidates = match sampled {
             Ok(sampled) => {
-                let offset = sampled.movie.offset;
                 *self.movie() = Some(sampled.movie);
-                (sampled.candidates, offset)
+                sampled.candidates
             }
             Err(error) => {
                 warnings.push(format!(
                     "No key frames could be read from the screen recording: {error}"
                 ));
-                (Vec::new(), 0)
+                Vec::new()
             }
         };
         Ok(json!({
@@ -556,7 +602,8 @@ impl Native for Linux {
             "started_host_ns": zero_ns,
             "started_wall_ms": wall_ms,
             "duration_ms": duration_ms,
-            "video_offset_ms": offset.max(0),
+            // The movie starts at the recording clock's zero.
+            "video_offset_ms": 0,
             "display": { "width_pt": display.0, "height_pt": display.1, "scale": display.2 },
             "front_app": {},
             "candidates": candidates

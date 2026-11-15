@@ -5,9 +5,11 @@
 //!
 //! The ink overlay is on screen, so on Linux the movie shows the ink.
 //! Annotate draws the marks onto its key frames itself, so a frame taken
-//! while ink showed is replaced by the last one before that ink appeared:
-//! the pointer belongs to the overlay while ink is on, so the screen
-//! underneath rarely changes meanwhile.
+//! while ink showed is replaced by the last one before that ink appeared,
+//! else the first one after it faded: the pointer belongs to the overlay
+//! while ink is on, so the screen underneath rarely changes meanwhile.
+//! Frame k is at k × `PERIOD_MS` from the movie's start, which is the
+//! recording clock's zero (`videorate` emits a frame at 0).
 
 use std::collections::HashSet;
 use std::io::Read;
@@ -34,19 +36,10 @@ const INK_BEFORE_MS: i64 = 300;
 /// ...and this long after the last: a lifted stroke is held 650 ms and fades
 /// over 650 ms, and the screen lags the clock.
 const INK_AFTER_MS: i64 = 650 + 650 + 400;
-/// A frame after this much continuous ink keeps its own picture: the screen
-/// before it is too old to stand in.
-const LOOKBACK_MS: i64 = 10_000;
 const SIZE_WITHIN: Duration = Duration::from_secs(15);
 const READ_BASE: Duration = Duration::from_secs(20);
 /// More than any one frame's PNG.
 const PNG_LIMIT: u64 = 256 * 1024 * 1024;
-
-pub struct Decoded {
-    pub count: usize,
-    /// Every frame of the movie was read.
-    pub complete: bool,
-}
 
 /// GStreamer, behind a trait for tests.
 pub trait Decoder: Send + Sync {
@@ -61,7 +54,7 @@ pub trait Decoder: Send + Sync {
         size: (u32, u32),
         within: Duration,
         frame: &mut dyn FnMut(&[u8]) -> bool,
-    ) -> Result<Decoded, String>;
+    ) -> Result<usize, String>;
 }
 
 /// The longest side at most `edge`, never larger, both sides even.
@@ -90,24 +83,28 @@ pub fn episodes(strokes: &[(u64, u64)]) -> Vec<(i64, i64)> {
     merged
 }
 
-/// The moment whose picture stands for `t`: `t` itself, or the start of
-/// the ink showing at `t`.
-pub fn clean(t: i64, episodes: &[(i64, i64)]) -> i64 {
-    episodes
-        .iter()
-        .find(|(start, end)| *start <= t && t <= *end && t - start <= LOOKBACK_MS)
-        .map_or(t, |(start, _)| *start)
-}
-
 /// The frame shown at movie time `ms`.
 pub fn index(ms: i64) -> usize {
     (ms.max(0) / PERIOD_MS) as usize
 }
 
-/// Where frame 0 falls on the recording's clock. The movie ends when the
-/// recording does; its head can lag the clock's start.
-pub fn offset(duration_ms: i64, count: usize) -> i64 {
-    duration_ms - count as i64 * PERIOD_MS
+/// The frame whose picture stands for frame `k` of `count`: itself, or
+/// when ink showed then, the last frame before that ink, else the first
+/// after it. With no such frame it keeps its own, ink and all, and the
+/// marks are drawn over the recorded ink.
+pub fn shown(k: usize, episodes: &[(i64, i64)], count: usize) -> usize {
+    let t = k as i64 * PERIOD_MS;
+    let Some(&(start, end)) = episodes
+        .iter()
+        .find(|(start, end)| *start <= t && t <= *end)
+    else {
+        return k;
+    };
+    if start >= 0 {
+        return index(start);
+    }
+    let after = index(end) + 1;
+    if after < count { after } else { k }
 }
 
 fn read_within(movie_ms: i64) -> Duration {
@@ -125,7 +122,6 @@ pub struct Sampled {
 #[derive(Clone, Debug)]
 pub struct Movie {
     pub video: PathBuf,
-    pub offset: i64,
     pub count: usize,
     pub size: (u32, u32),
     pub episodes: Vec<(i64, i64)>,
@@ -142,7 +138,7 @@ fn write_jpeg(path: &Path, (width, height): (u32, u32), rgba: &[u8]) -> Result<(
 }
 
 /// Writes `folder/{t_ms:08}.jpg` candidates of the movie, which ran
-/// `duration_ms` on the recording's clock.
+/// `duration_ms`.
 pub fn sample(
     decoder: &dyn Decoder,
     video: &Path,
@@ -155,32 +151,15 @@ pub fn sample(
     crate::session::ensure_root(folder).map_err(|error| error.to_string())?;
     let pending = |k: usize| folder.join(format!(".frame-{k:06}.jpg"));
     let mut k = 0;
-    let decoded = decoder.frames(video, small, read_within(duration_ms), &mut |rgba| {
+    let count = decoder.frames(video, small, read_within(duration_ms), &mut |rgba| {
         if let Err(error) = write_jpeg(&pending(k), small, rgba) {
             tracing::warn!(%error, "annotate candidate frame");
         }
         k += 1;
         true
     })?;
-    let count = decoded.count;
-    // Without the whole movie its end is unknown: start-aligned instead.
-    let offset = if decoded.complete {
-        offset(duration_ms, count)
-    } else {
-        0
-    };
-    let time = |k: usize| offset + k as i64 * PERIOD_MS;
-    let source: Vec<usize> = (0..count)
-        .map(|k| {
-            let t = time(k);
-            let shown = clean(t, &episodes);
-            if shown == t {
-                k
-            } else {
-                index(shown - offset).min(k)
-            }
-        })
-        .collect();
+    let time = |k: usize| k as i64 * PERIOD_MS;
+    let source: Vec<usize> = (0..count).map(|k| shown(k, &episodes, count)).collect();
     let used: HashSet<usize> = source.iter().copied().collect();
     let name = |k: usize| folder.join(format!("{:08}.jpg", time(k)));
     for k in 0..count {
@@ -191,7 +170,6 @@ pub fn sample(
         }
     }
     let candidates = (0..count)
-        .filter(|&k| time(k) >= 0)
         .map(|k| (time(k), name(source[k])))
         .filter(|(_, path)| path.is_file())
         .collect();
@@ -199,7 +177,6 @@ pub fn sample(
         candidates,
         movie: Movie {
             video: video.to_path_buf(),
-            offset,
             count,
             size,
             episodes,
@@ -237,8 +214,7 @@ pub fn extract(
         ));
     }
     let known = known.filter(|movie| movie.video == request.video);
-    let offset = known.map_or(request.video_offset_ms.unwrap_or(0), |movie| movie.offset);
-    let episodes = known.map_or(&[][..], |movie| &movie.episodes[..]);
+    let offset = request.video_offset_ms.unwrap_or(0);
     let size = match known {
         Some(movie) => movie.size,
         None => decoder
@@ -250,11 +226,15 @@ pub fn extract(
         .times_ms
         .iter()
         .map(|&t| {
-            let at = index(clean(t, episodes) - offset);
-            (
-                t,
-                known.map_or(at, |movie| at.min(movie.count.saturating_sub(1))),
-            )
+            let at = index(t - offset);
+            let at = known.map_or(at, |movie| {
+                shown(
+                    at.min(movie.count.saturating_sub(1)),
+                    &movie.episodes,
+                    movie.count,
+                )
+            });
+            (t, at)
         })
         .collect();
     let Some(last) = wanted.iter().map(|&(_, at)| at).max() else {
@@ -395,7 +375,7 @@ impl Decoder for Gstreamer {
         size: (u32, u32),
         within: Duration,
         frame: &mut dyn FnMut(&[u8]) -> bool,
-    ) -> Result<Decoded, String> {
+    ) -> Result<usize, String> {
         let (mut process, mut output) =
             self.launch(video, |input, out| frames_args(input, out, size))?;
         let len = size.0 as usize * size.1 as usize * 4;
@@ -410,27 +390,30 @@ impl Decoder for Gstreamer {
         });
         let deadline = Instant::now() + within;
         let mut count = 0;
-        let mut complete = true;
+        let mut whole = true;
         loop {
             match frames.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
                 Ok(buffer) => {
                     count += 1;
                     if !frame(&buffer) {
-                        complete = false;
+                        whole = false;
                         break;
                     }
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
                 Err(RecvTimeoutError::Timeout) => {
                     tracing::warn!("annotate: reading the movie took too long");
-                    complete = false;
+                    whole = false;
                     break;
                 }
             }
         }
         drop(frames);
-        if complete {
-            complete = wait(process.as_mut(), Duration::from_secs(5)) == Some(true);
+        if whole && wait(process.as_mut(), Duration::from_secs(5)) != Some(true) {
+            tracing::warn!(
+                errors = process.errors(),
+                "annotate: GStreamer ended with an error"
+            );
         }
         process.kill();
         let _ = reader.join();
@@ -440,6 +423,6 @@ impl Decoder for Gstreamer {
                 process.errors()
             ));
         }
-        Ok(Decoded { count, complete })
+        Ok(count)
     }
 }
