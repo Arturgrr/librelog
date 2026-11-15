@@ -81,20 +81,30 @@ build() {
   local entry
   entry="$(launcher_entry)"
   # Tauri merges this over tauri.conf.json object by object, so the packages
-  # keep their settings there and gain the launcher.
+  # keep their settings there and gain the launcher. The bundler writes the
+  # RPM uncompressed: its own compression takes most of an hour on this app,
+  # and set_package_versions rebuilds the RPM with rpmbuild, which compresses
+  # it in seconds.
   jq --argjson updater "$updater_artifacts" \
     --arg desktop "$DESKTOP_FILE" --arg entry "$entry" '
     .bundle.externalBin = ((.bundle.externalBin // []) + $ARGS.positional | unique)
     | if $updater then . else .bundle.createUpdaterArtifacts = false end
     | .bundle.linux.deb.files[$desktop] = $entry
     | .bundle.linux.rpm.files[$desktop] = $entry
+    | .bundle.linux.rpm.compression = {type: "none"}
   ' --args "${sidecars[@]}" <"$config" >"$config.tmp"
   mv "$config.tmp" "$config"
 
   (
     cd "$ROOT/apps/desktop"
-    pnpm tauri build --ci --target "$TARGET" --bundles rpm,appimage,deb \
+    pnpm tauri build --ci --target "$TARGET" --bundles rpm,deb \
       --config src-tauri/tauri.conf.stable.json
+    # The AppImage is bundled apart because the bundler gives it the deb's
+    # desktop entry, and the deb's is the hidden one. An AppImage has no
+    # other entry inside it, and appimagetool refuses one without Categories.
+    pnpm tauri bundle --ci --target "$TARGET" --bundles appimage \
+      --config src-tauri/tauri.conf.stable.json \
+      --config '{"bundle":{"linux":{"deb":{"desktopTemplate":"linux/appimage.desktop"}}}}'
   )
 
   ARCH=x86_64 node "$ROOT/scripts/repack-linux-appimage.mjs" "$BUNDLE_DIR/appimage"
@@ -133,17 +143,18 @@ set_package_versions() {
   deb="$(single "$BUNDLE_DIR/deb/*.deb")"
   rpm="$(single "$BUNDLE_DIR/rpm/*.rpm")"
   rm -f "$deb.sig" "$rpm.sig"
-  if [[ "$PACKAGE_VERSION" == "$VERSION" ]]; then
-    return
+
+  if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
+    local work
+    work="$(mktemp -d)"
+    dpkg-deb -R "$deb" "$work/deb"
+    sed -i "s/^Version: .*/Version: $PACKAGE_VERSION/" "$work/deb/DEBIAN/control"
+    dpkg-deb --root-owner-group -b "$work/deb" "$deb"
+    rm -rf "$work"
   fi
 
-  local work
-  work="$(mktemp -d)"
-  dpkg-deb -R "$deb" "$work/deb"
-  sed -i "s/^Version: .*/Version: $PACKAGE_VERSION/" "$work/deb/DEBIAN/control"
-  dpkg-deb --root-owner-group -b "$work/deb" "$deb"
-  rm -rf "$work"
-
+  # Every RPM is rebuilt, a stable version's too: the bundler left its
+  # payload uncompressed (see build).
   docker run --rm -i \
     --volume "$(dirname "$rpm"):/rpm" \
     --env RPM_NAME="$(basename "$rpm")" \

@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Meeting Notes
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %u
+Icon={{icon}}
+Terminal=false
+Categories={{categories}}
+Keywords=notes;meeting;transcription;recording;dictation;
+StartupNotify=true
+StartupWMClass={{exec}}
+{{#if mime_type}}
+MimeType={{mime_type}}
+{{/if}}
+X-GNOME-UsesNotifications=true
