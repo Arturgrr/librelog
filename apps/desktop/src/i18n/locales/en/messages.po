@@ -5023,6 +5023,10 @@ msgstr "On-device models can take a few minutes to warm up before text appears."
 msgid "Only notes of this subtype."
 msgstr "Only notes of this subtype."
 
+#: src/session/components/note-input/transcript/actions.ts
+msgid "Only one voice was found"
+msgstr "Only one voice was found"
+
 #: src/i18n/external-messages.ts
 msgid "Only screenshots can be edited."
 msgstr "Only screenshots can be edited."
@@ -6337,6 +6341,10 @@ msgstr "sent"
 msgid "Seoul"
 msgstr "Seoul"
 
+#: src/session/components/note-input/header-transcript.tsx
+msgid "Separate speakers"
+msgstr "Separate speakers"
+
 #: src/settings/general/audio-settings.tsx
 msgid "Separate speakers after meetings"
 msgstr "Separate speakers after meetings"
@@ -6702,6 +6710,7 @@ msgstr "Speaker"
 msgid "Speaker {speakerNumber}"
 msgstr "Speaker {speakerNumber}"
 
+#: src/session/components/note-input/transcript/actions.ts
 #: src/stt/capture-lifecycle.ts
 msgid "Speakers could not be separated"
 msgstr "Speakers could not be separated"
@@ -7182,6 +7191,10 @@ msgstr "The recording could not be finished ({reason}). What was recorded is kep
 #: src/stt/useRunBatch.ts
 msgid "the selected speech-to-text provider"
 msgstr "the selected speech-to-text provider"
+
+#: src/session/components/note-input/transcript/actions.ts
+msgid "The transcript was not changed."
+msgstr "The transcript was not changed."
 
 #: src/stt/capture-lifecycle.ts
 msgid "The transcript was saved, but Librelog could not start the summary. Try generating it again."

@@ -13,6 +13,8 @@ import {
 } from "./useRunBatch";
 import { useRunBatch } from "./useRunBatch";
 
+import type { WordWithId } from "~/stt/types";
+
 vi.mock("./capture-completion", () => ({
   completeCaptureTranscript: vi.fn().mockResolvedValue(undefined),
 }));
@@ -422,8 +424,14 @@ describe("useRunBatch", () => {
   });
 
   describe("separating the voices of the live words without a batch model", () => {
-    const liveWords = [
-      { id: "w0", text: " Um", channel: 0 },
+    const liveWords: WordWithId[] = [
+      {
+        id: "w0",
+        text: " Um",
+        start_ms: undefined,
+        end_ms: undefined,
+        channel: 0,
+      },
       {
         id: "w1",
         text: " Hello",
