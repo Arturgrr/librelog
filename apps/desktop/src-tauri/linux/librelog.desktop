@@ -6,7 +6,7 @@
 # whatever opens Librelog by its old name, hidden so only one launcher shows.
 Type=Application
 Name={{name}}
-Exec={{exec}} %u
+Exec=/usr/bin/{{exec}} %u
 Icon={{icon}}
 Terminal=false
 NoDisplay=true

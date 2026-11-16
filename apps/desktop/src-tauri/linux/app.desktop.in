@@ -1,9 +1,11 @@
 [Desktop Entry]
+# Exec is a full path: Librelog installs its CLI as ~/.local/bin/librelog,
+# which comes first on PATH and would be started in the app's place.
 Type=Application
 Name=@NAME@
 GenericName=Meeting Notes
 Comment=@COMMENT@
-Exec=@EXEC@ %u
+Exec=/usr/bin/@EXEC@ %u
 Icon=@ICON@
 Terminal=false
 Categories=Office;
