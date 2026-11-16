@@ -63,7 +63,7 @@ To remove Librelog, run `sudo apt remove librelog`.
    ./Librelog_*_amd64.AppImage
    ```
 
-The AppImage uses your system's PipeWire and Wayland libraries rather than copies from Ubuntu, which would not find PipeWire's modules on Fedora. If it does not start because FUSE is missing, run it with `--appimage-extract-and-run`. The first time it runs, the AppImage adds a Librelog launcher to your app grid, `~/.local/share/applications/com.arturgrr.librelog.desktop`: your desktop needs it to know Librelog for global shortcuts and the paste permission. Librelog points it at the AppImage again whenever the AppImage moves, and removes it if you later install the RPM or deb, which bring their own.
+The AppImage uses your system's PipeWire and Wayland libraries rather than copies from Ubuntu, which would not find PipeWire's modules on Fedora. GNOME and KDE desktops have them; on a minimal system, install PipeWire's libraries and the four Wayland ones (`libwayland-client`, `libwayland-cursor`, `libwayland-egl` and `libwayland-server`). If it does not start because FUSE is missing, run it with `--appimage-extract-and-run`. The first time it runs, the AppImage adds a Librelog launcher to your app grid, `~/.local/share/applications/com.arturgrr.librelog.desktop`: your desktop needs it to know Librelog for global shortcuts and the paste permission. Librelog points it at the AppImage again whenever the AppImage moves, and removes it if you later install the RPM or deb, which bring their own.
 
 ## Updates
 

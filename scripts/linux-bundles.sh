@@ -338,6 +338,7 @@ EOF
     "$FEDORA_IMAGE" bash -euxo pipefail -s <<'EOF'
 eval "$LAUNCH"
 dnf install -y gtk3 pipewire-libs alsa-lib mesa-libGL mesa-libEGL mesa-libgbm \
+  libwayland-client libwayland-cursor libwayland-egl libwayland-server \
   xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon mesa-dri-drivers util-linux which
 cd /tmp
 cp "$PACKAGE" Librelog.AppImage
