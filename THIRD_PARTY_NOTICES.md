@@ -66,8 +66,12 @@ llama.cpp's `common/base64.hpp` is public domain (notice in the file).
 | Pretendard 1.3.9, Copyright (c) 2021 Kil Hyung-jin     | `crates/export-core/fonts/Pretendard-*.otf`                       | OFL-1.1 | `crates/export-core/fonts/OFL.txt`                |
 | Inter 4, Copyright (c) 2016 The Inter Project Authors | `@fontsource-variable/inter`, bundled into the desktop app | OFL-1.1 | `licenses/OFL-1.1-Inter.txt` |
 | IBM Plex Mono, Copyright (c) 2017 IBM Corp., with Reserved Font Name "Plex" | `@fontsource/ibm-plex-mono`, bundled into the desktop app | OFL-1.1 | `licenses/OFL-1.1-IBM-Plex-Mono.txt` |
+| Bricolage Grotesque, Copyright 2022 The Bricolage Grotesque Project Authors | `apps/site/src/fonts/bricolage-grotesque-latin-wght-normal.woff2`, self-hosted by the website | OFL-1.1 | `apps/site/src/fonts/OFL-bricolage-grotesque.txt` |
+| Instrument Sans, Copyright 2022 The Instrument Sans Project Authors | `apps/site/src/fonts/instrument-sans-latin-wght-normal.woff2`, self-hosted by the website | OFL-1.1 | `apps/site/src/fonts/OFL-instrument-sans.txt` |
+| JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors | `apps/site/src/fonts/jetbrains-mono-latin-wght-normal.woff2`, self-hosted by the website | OFL-1.1 | `apps/site/src/fonts/OFL-jetbrains-mono.txt` |
+| Caveat, Copyright 2014 The Caveat Project Authors | `apps/site/src/fonts/caveat-latin-wght-normal.woff2`, self-hosted by the website | OFL-1.1 | `apps/site/src/fonts/OFL-caveat.txt` |
 
-Pretendard includes glyphs from Inter, Source Han Sans, and M PLUS 1; their copyright lines are in `OFL.txt`. Inter and IBM Plex Mono are unmodified and installed through [Fontsource](https://fontsource.org) (MIT packaging). The Librelog wordmark (`crates/export-core/assets/librelog-logo.svg`, `docs/logo/*.svg`) contains Inter SemiBold glyphs converted to outlines.
+Pretendard includes glyphs from Inter, Source Han Sans, and M PLUS 1; their copyright lines are in `OFL.txt`. Inter and IBM Plex Mono are unmodified and installed through [Fontsource](https://fontsource.org) (MIT packaging). The website's fonts are the unmodified Latin variable files from the `@fontsource-variable` packages, version 5.3.0, copied with their license texts so the site loads nothing from other servers. The Librelog wordmark (`crates/export-core/assets/librelog-logo.svg`, `docs/logo/*.svg`) contains Inter SemiBold glyphs converted to outlines.
 
 ## Adapted code
 

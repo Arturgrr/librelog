@@ -4,6 +4,7 @@ Librelog is a pnpm and Rust workspace. Read the nearest `AGENTS.md` before chang
 
 - `apps/desktop/`: Tauri 2 with React, TypeScript, Vite, and Tailwind. Zustand owns UI state; TanStack Query/Form own queries, mutations, and forms.
 - `apps/cli/`: Rust CLI/TUI and MCP entry point (`librelog-cli` package, `librelog` binary).
+- `apps/site/`: the public website, a Next.js, React and Tailwind static export in English and Portuguese (`@anlg/site`); see `apps/site/AGENTS.md`.
 - `crates/db-app/`: canonical SQLite schema and migrations shared by desktop and the CLI. `db-core` owns runtime initialization, `db-migrate` owns migration execution, and `plugins/db/` exposes the desktop transport. React consumes these through `packages/db-runtime`, `packages/db-react`, and `packages/db-tauri`; `packages/db` is the Drizzle adapter.
 
 Sessions are the core entity: all notes are backed by sessions. ProseMirror powers the editor (`packages/editor`, via `@handlewithcare/react-prosemirror`); documents use TipTap-dialect ProseMirror JSON, with converters/validation in `crates/tiptap`.
@@ -16,6 +17,7 @@ Sessions are the core entity: all notes are backed by sessions. ProseMirror powe
 - Typecheck (Rust): `cargo check --locked -p <package>`; match the relevant workflow's features and target. A root `cargo check` does not cover every platform.
 - Build shared UI before desktop checks: `pnpm -F @anlg/ui build`.
 - Desktop dev: `pnpm dev:desktop` (`pnpm dev` runs the same stack). Process Compose 1.122.0+ owns process lifecycle and logs; Turbo owns the shared UI build. See `CONTRIBUTING.md` for control ports and headless use.
+- Website: `pnpm dev:site` runs the Next.js dev server on http://127.0.0.1:4321; `pnpm build:site` exports the static site to `apps/site/out`.
 - Docs: the Mintlify site in `docs/` (navigation in `docs/docs.json`).
 
 ## Pre-commit verification
@@ -40,6 +42,7 @@ This map is a starting point; execute the relevant workflow's full locally repro
 | Desktop frontend and shared UI/editor packages            | Build `@anlg/ui`, then `pnpm -F @anlg/desktop typecheck`, `pnpm -F @anlg/desktop test`, lint, and i18n validation. Run changed packages' own scripts too. See `desktop_ci.yaml`.                                                                                                                                                                                                                                                                                 |
 | Desktop Rust and plugins                                  | See `desktop_ci.yaml`. Its native jobs run on pull requests that touch Rust, Swift or Cargo files, `crates/`, `plugins/`, `apps/cli/`, `apps/desktop/src-tauri/` or `skills/`. Crate tests run on Linux unless they need macOS: `linux_ci` tests the app and every crate outside the workflow's `MACOS_TESTS`, `CLI_TESTS` (tested in `cli_ci.yaml`) and `SKIP_TESTS` lists. macOS is one job on purpose, because hosted macOS runners are scarce: it tests the app with `MACOS_TESTS`, checks both `direct-distribution` and `app-store` features, and on the daily schedule or a manual run tests the whole workspace as before. Add a crate with macOS-specific code or tests to `MACOS_TESTS`, a crate with code for both macOS and Linux (such as `transcribe-gguf`) to `MACOS_AND_LINUX_TESTS`, which both jobs test, and keep the other lists. Windows installs the Vulkan SDK and SPIR-V headers, builds the app's tests and checks that they only delay-load `vulkan-1.dll`; Linux arm64 runs the app's `embedded_cli` tests. Linux jobs that build the app get CMake, the Vulkan headers, `glslc` and the SPIR-V headers from `scripts/setup-linux-others.sh`. Swift window changes also require `swift build --package-path plugins/windows/swift-lib` on macOS; dictation insertion changes require `swift test --package-path crates/dictation-ui-macos/swift-lib`. |
 | CLI, agent access, local SQLite schema/migrations, TipTap | See `cli_ci.yaml`: locked tests for `agent-access`, `librelog-cli`, `db-app`, `db-core`, `db-migrate`, and `tiptap`; Clippy with `--all-targets --no-deps -- -D warnings`; release CLI build and isolated smoke tests. Preserve the Linux/Windows smoke checks and skill/docs validation.                                                                                                                                                                         |
+| Website (`apps/site/`)                                    | See `site.yaml`: `pnpm -F @anlg/site typecheck` (which also catches a missing or extra translation key) and `pnpm -F @anlg/site build`. Check the show, the story and both languages in `pnpm dev:site`; `site.yaml` publishes `main` to GitHub Pages. |
 
 ### Generated files and data compatibility
 
