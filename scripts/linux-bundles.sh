@@ -41,6 +41,7 @@ IDENTIFIER="$(jq -r .identifier "$STABLE_CONFIG")"
 # entry, named after the product, stays hidden.
 DESKTOP_FILE="/usr/share/applications/$IDENTIFIER.desktop"
 HIDDEN_DESKTOP_FILE="/usr/share/applications/$(jq -r .productName "$STABLE_CONFIG").desktop"
+export DESKTOP_FILE HIDDEN_DESKTOP_FILE
 ICON=/usr/share/icons/hicolor/512x512/apps/librelog.png
 
 single() {
@@ -285,7 +286,7 @@ smoke() {
     --env DESKTOP_FILE
     --env RUST_BACKTRACE=1
   )
-  export LAUNCH DESKTOP_FILE
+  export LAUNCH
 
   echo "::group::RPM on $FEDORA_IMAGE"
   # dnf resolves every Requires against Fedora's own repositories here, so a
