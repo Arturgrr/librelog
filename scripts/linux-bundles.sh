@@ -65,6 +65,14 @@ fail() {
 
 build() {
   export APP_VERSION="${APP_VERSION:-$VERSION}"
+  # The app carries its own OpenSSL: linked against this machine's
+  # libssl.so.3, it does not start on a distribution that has moved on
+  # (Fedora 45 ships OpenSSL 4 only).
+  local openssl_libs
+  openssl_libs="/usr/lib/$(gcc -dumpmachine)"
+  [[ -f "$openssl_libs/libssl.a" && -f "$openssl_libs/libcrypto.a" ]] ||
+    fail "$openssl_libs has no static OpenSSL to link into the app (install libssl-dev)"
+  export OPENSSL_STATIC=1 OPENSSL_LIB_DIR="$openssl_libs" OPENSSL_INCLUDE_DIR=/usr/include/openssl
   TAURI_ENV_TARGET_TRIPLE="$TARGET" cargo xtask prepare-binaries
 
   local sidecars=(binaries/librelog-chrome-native-host resources/cli/librelog-cli)
