@@ -1,0 +1,281 @@
+{
+  "meta": {
+    "title": "Librelog · Reuniões, ditado e tela, no seu Mac",
+    "description": "Librelog anota suas reuniões, dita em qualquer app e grava o que você mostra na tela. Tudo num banco local no seu Mac. Sem conta, sem nuvem, sem telemetria. Open source, MIT.",
+    "ogTitle": "Librelog · Reuniões de um. Ditado do outro. Nuvem de nenhum.",
+    "ogAlt": "A página do Librelog revisada à mão com caneta vermelha."
+  },
+  "a11y": {
+    "skip": "Pular para o conteúdo",
+    "home": "Librelog, início",
+    "nav": "Principal"
+  },
+  "nav": {
+    "what": "O que faz",
+    "install": "Instalar",
+    "otherLang": "English",
+    "signIn": "Entrar",
+    "noAccount": "não tem conta"
+  },
+  "notch": {
+    "listen": "ouvindo",
+    "work": "transcrevendo no Mac",
+    "done": "pronto",
+    "rec": "annotate · riscando"
+  },
+  "hero": {
+    "eyebrow": "beta {version} · macOS 15+ · Apple silicon · sem conta · MIT",
+    "old": "O notetaker de IA para reuniões.",
+    "hmm": "hmm… será?",
+    "oldSub": "Notas de reunião com IA, seguras e sob o seu controle.",
+    "title": "Reuniões de um. Ditado do outro. Nuvem de nenhum.",
+    "lede": "Reuniões, ditado em qualquer app e o que você mostra na tela, num banco local no seu Mac. Sem conta, sem nuvem, sem a gente no meio.",
+    "download": "Baixar o beta",
+    "code": "Ver o código",
+    "arrow": "baixe aqui",
+    "dlNote": "1 arquivo .dmg do GitHub Releases · Mac M1 ou mais novo",
+    "notMac": "Por enquanto o Librelog é só para Mac com Apple silicon e macOS 15 ou mais novo. No Windows e no Linux, dá para <a href=\"https://github.com/Arturgrr/librelog#readme\">compilar do código</a>.",
+    "startLabel": "Tirar a tampa da caneta e assistir à demonstração, com som",
+    "uncap": "tire a tampa (tem som)",
+    "skip": "pular para o resultado",
+    "yourTurn": "agora a caneta é sua: ligue aí embaixo e risque esta página"
+  },
+  "show": {
+    "sheet": "folha de contato · 3 quadros"
+  },
+  "ui": {
+    "soundOn": "som ligado",
+    "penOff": "ligar a caneta",
+    "clear": "limpar",
+    "replay": "repetir a revisão",
+    "copy": "copiar"
+  },
+  "story": {
+    "eyebrow": "quatro atalhos · um banco local",
+    "title": "Fale. Reúna. Mostre. Capture.",
+    "intro": "Role a página. A janela acompanha cada capítulo.",
+    "tabsLabel": "Capítulos",
+    "tab1": "① Fale",
+    "tab2": "② Reúna",
+    "tab3": "③ Mostre",
+    "tab4": "④ Capture",
+    "s1": {
+      "spoken": "“subi a ata da daily”",
+      "channel": "# lançamento",
+      "question": "alguém mandou a ata?",
+      "typed": "Subi a ata da daily na pasta do cliente."
+    },
+    "s2": {
+      "notes": "suas notas",
+      "memo": "integral p/ partes<br />prova dia 28??<br />lista 3 - exercs 4,7<br />perguntar sobre trab",
+      "transcript": "transcrição",
+      "speaker": "Falante 1",
+      "prof": "Prof. Helena",
+      "line1": "a prova fica pro dia 28",
+      "me": "Eu",
+      "line2": "e o trabalho?",
+      "separating": "separando falantes…",
+      "summaryLabel": "resumo · Aula ▸ Cálculo",
+      "summaryTitle": "Aula 7 · Integração por partes",
+      "sum1": "• Prova em 28/11, confirmada pela Prof. Helena.",
+      "sum2": "• Lista 3: exercícios 4 e 7.",
+      "sum3": "• Trabalho: perguntar na próxima aula.",
+      "exported": "✓ exportado para ~/Notas/Aulas/Cálculo/"
+    },
+    "s3": {
+      "save": "Salvar",
+      "pasted": "contact-sheet.png “o botão salvar some com nota vazia”"
+    },
+    "s4": {
+      "client": "cliente:",
+      "copied": "copiado · seta + desfoque"
+    },
+    "c1": {
+      "num": "① fale",
+      "title": "Em qualquer app, sem sair do lugar.",
+      "body": "Segure o atalho, fale, solte. O notch mostra cada etapa e o texto entra inteiro onde estiver o cursor. Sua área de transferência volta como estava.",
+      "limit": "Até cinco ditados na fila. Para sozinho aos 5 minutos."
+    },
+    "c2": {
+      "num": "② reúna",
+      "title": "Suas notas tortas, o resumo direito.",
+      "body": "Você rabisca o que importa. O Librelog ouve o áudio do Mac, sem robô na chamada, e junta as suas notas com a transcrição num resumo no formato do tipo de nota.",
+      "limit": "As vozes viram pessoas depois da reunião, e o app lembra quem é quem."
+    },
+    "c3": {
+      "num": "③ mostre",
+      "title": "Circule de vermelho. O agente entende.",
+      "body": "⌥⇧S grava a tela enquanto você risca e fala. ⌥⇧A cola no Claude Code a folha de contato com os quadros numerados e o resumo do que você disse.",
+      "limit": "Experimental e desligado por padrão. Um monitor, até 20 minutos."
+    },
+    "c4": {
+      "num": "④ capture",
+      "title": "Print, MP4 e GIF, já marcados.",
+      "body": "Área, janela ou tela inteira. Setas, caixas, texto, desfoque do que é privado e corte, antes de mandar. Se quiser, no lugar dos atalhos do macOS.",
+      "limit": "Novo na 0.8. Desligado por padrão."
+    }
+  },
+  "zeros": {
+    "title": "O que a gente conta sobre você",
+    "accounts": "contas criadas",
+    "events": "eventos de telemetria",
+    "emails": "e-mails de marketing",
+    "meetings": "reuniões nos nossos servidores",
+    "note": "nem temos como contar."
+  },
+  "net": {
+    "label": "monitor de rede · Librelog.app",
+    "recording": "gravando reunião",
+    "requests": "requisições",
+    "addresses": "endereços possíveis",
+    "ours": "servidores nossos",
+    "colDest": "destino",
+    "colWhy": "por quê",
+    "empty": "nenhuma conexão",
+    "emptyHint": "Transcrevendo e resumindo com modelos locais.",
+    "addHf": "Baixar um modelo",
+    "addGh": "Procurar atualização",
+    "addAi": "Usar provedor com a sua chave",
+    "reset": "zerar",
+    "full": "Mais nada. Esses são todos os endereços que o app conhece, e cada um só aparece quando você pede.",
+    "eyebrow": "fica no Mac",
+    "title": "O app que só conhece três endereços.",
+    "body": "Áudio, transcrição, resumo e notas ficam no seu computador. O Librelog só fala com o provedor de IA que você escolher, com o Hugging Face quando você baixa um modelo e com o GitHub para atualizar. Provoque o monitor ao lado.",
+    "caveat": "Se você escolher um provedor hospedado, o áudio vai para ele, com a sua chave. Com um modelo local, não sai do Mac."
+  },
+  "letter": {
+    "title": "Para quem ainda anota",
+    "p1": "A gente gostava do caderno de reuniões do Anarlog. Só não queria login para abrir as próprias notas.",
+    "p2": "Então tiramos a conta, a cobrança, a nuvem e a telemetria, e fomos buscar no Hex as melhores ideias de ditado, do notch e da caneta vermelha. Obrigado aos dois projetos pelo caminho.",
+    "p3": "O que sobrou é um app que mora no seu Mac e não sabe quem você é. Se quebrar, a gente só fica sabendo se você contar."
+  },
+  "not": {
+    "eyebrow": "com o mesmo peso dos recursos",
+    "title": "O que o Librelog não faz.",
+    "intro": "Um beta honesto diz onde você pisa. A caneta passa por cada linha quando você rola.",
+    "i1": "Conta, login, assinatura",
+    "r1": "Tiramos de propósito. Não há a quem pagar.",
+    "i2": "Sync, times, compartilhamento",
+    "r2": "Dependiam de um servidor de empresa. O Anarlog continua tendo.",
+    "i3": "Telemetria e relatório de falhas",
+    "r3": "Quando quebra: Help → Report Bug abre a issue já preenchida, e nada sai até você enviar.",
+    "i4": "Windows, Linux, Mac Intel",
+    "r4": "Só compilando do código, por enquanto.",
+    "i5": "App notarizado pela Apple",
+    "r5": "Ainda não. Logo abaixo, como abrir mesmo assim."
+  },
+  "install": {
+    "eyebrow": "instalar · Apple silicon, macOS 15 ou mais novo",
+    "title": "O macOS vai desconfiar da gente. Justo.",
+    "intro": "O Librelog ainda não é notarizado, então a primeira abertura pede três passos. É uma vez só: as atualizações entram por dentro do app.",
+    "s1": "Abra o .dmg e arraste o Librelog para Applications.",
+    "s2": "Abra o app. No aviso do macOS, clique em Done.",
+    "s3": "Em System Settings → Privacy & Security, clique em Open Anyway e confirme.",
+    "alertTitle": "“Librelog” Not Opened",
+    "alertBody": "Apple could not verify “Librelog” is free of malware.",
+    "alertTrash": "Move to Trash",
+    "prefsMsg": "“Librelog” was blocked to protect your Mac.",
+    "terminalTitle": "Prefere o terminal?",
+    "checksum": "Para conferir o download, rode na pasta dele (o SHA256SUMS.txt vem em toda versão):",
+    "leaveTitle": "Como ir embora",
+    "leaveBody": "Apague o app e as pastas abaixo. Não fica nada em servidor nenhum, porque não temos servidor.",
+    "download": "Baixar o beta {version}",
+    "dlNote": "GitHub Releases · Librelog_&lt;versão&gt;_aarch64.dmg"
+  },
+  "cookie": {
+    "text": "Este site não usa cookies. Este aviso existe só para matar a saudade.",
+    "button": "Não senti falta"
+  },
+  "footer": {
+    "credits": "Fork do <a href=\"https://github.com/fastrepl/anarlog\">Anarlog</a>, da Fastrepl, com ideias do Hex. Código aberto, MIT.",
+    "noJs": "Este site não tem analytics.",
+    "sign": "o log é seu.",
+    "releases": "Versões",
+    "docs": "Documentação",
+    "issues": "Contar um problema",
+    "fonts": "Fontes e licenças"
+  },
+  "js": {
+    "ui": {
+      "soundOn": "som ligado",
+      "soundOff": "som desligado",
+      "penOn": "caneta ligada",
+      "penOff": "ligar a caneta",
+      "copy": "copiar",
+      "copied": "copiado ✓"
+    },
+    "elapsed": "Você está aqui há {t}. Isso não foi registrado em lugar nenhum.",
+    "console": "Sem analytics aqui. Confira na aba Rede.",
+    "net": {
+      "hf": ["huggingface.co", "Baixar o Parakeet TDT 0.6B v3 (~705 MB), conferido por SHA-256"],
+      "gh": ["github.com", "Ver se há versão nova no GitHub Releases"],
+      "ai": ["api.<seu provedor>", "Áudio da reunião, com a sua chave"]
+    },
+    "show": {
+      "meet1": "“Bom dia. Vamos começar pelo bug do salvar?”",
+      "meet2": "“Reproduzi ontem. Só acontece com nota vazia.”",
+      "separating": "reunião encerrada · separando falantes no seu Mac…",
+      "recognized": "Rafael e Marina reconhecidos pela voz",
+      "hold": "segurando o atalho · fale",
+      "dictated": "Subi a ata da daily na pasta do cliente.",
+      "transcribing": "transcrevendo no seu Mac…",
+      "pasted": "colado no Slack · sua área de transferência voltou",
+      "narr1": "“Notetaker de IA? Todo app diz isso. Risca.”",
+      "narr2": "“Escreve por cima: reuniões de um, ditado do outro, nuvem de nenhum.”",
+      "narr3": "“E entrar onde? Não tem conta. Risca também.”",
+      "sheet": "atalho solto · montando a folha de contato…",
+      "ready": "annotation ready · resumo copiado",
+      "termPath": "  …/annotations/…/contact-sheet.png",
+      "termSummary": "  “3 quadros. 1: título genérico. 2: escrito à mão. 3: entrar.”",
+      "agent": "Entendi. Troco o título pelo que está escrito à mão e tiro o Entrar.",
+      "applied": "✓ index.html · 2 mudanças",
+      "thinking": "pensando…",
+      "appliedBadge": "✓ aplicado",
+      "screen": "e o que você mostra na tela",
+      "drag": "captura de área · arraste",
+      "copied": "copiado · com seta",
+      "cards": {
+        "meet1": ["meet", "Falante 1 · 10:02", "Bom dia. Vamos começar pelo bug do salvar?"],
+        "meet2": ["meet", "Falante 2 · 10:02", "Reproduzi ontem. Só acontece com nota vazia."],
+        "sep": ["meet", "Separando falantes…", "2 vozes no áudio do computador"],
+        "rafael": "Rafael · 10:02",
+        "marina": "Marina · 10:02",
+        "voices": ["Vozes reconhecidas", "Rafael e Marina, de reuniões anteriores"],
+        "slack": ["dict", "Slack · #lançamento", "…"]
+      },
+      "burst": [
+        ["dict", "Ditado → Notion", "Revisar o roteiro do vídeo de 20 s."],
+        ["auto", "Automação", "daily.md exportado para ~/Notas/Daily/"],
+        ["net", "Monitor de rede", "0 requisições durante a reunião"],
+        ["meet", "Aula 7 · Cálculo II", "Resumo pronto no formato Aula"],
+        ["dict", "Ditado → Terminal", "git commit -m \"landing ao vivo\""],
+        ["model", "Parakeet TDT 0.6B v3", "~705 MB · SHA-256 conferido"],
+        ["ann", "Annotate", "3 quadros · folha de contato pronta"],
+        ["cap", "Captura", "GIF de 6 s salvo na Mesa"],
+        ["dict", "Ditado → Slack", "Subi o beta, podem testar."],
+        ["auto", "Automação", "Resumo refeito com os nomes certos"],
+        ["net", "Contas criadas", "0. Não tem como criar."],
+        ["meet", "Falantes", "Rafael reconhecido pela voz"]
+      ],
+      "burstCaptions": [
+        "ditando no Notion",
+        "reunião: Aula 7",
+        "exportado daily.md",
+        "ditando no terminal",
+        "modelo conferido",
+        "annotate: 3 quadros",
+        "GIF salvo",
+        "tudo no seu Mac"
+      ],
+      "tags": {
+        "meet": "reunião",
+        "dict": "ditado",
+        "ann": "annotate",
+        "cap": "captura",
+        "auto": "automação",
+        "net": "rede",
+        "model": "modelo local"
+      }
+    }
+  }
+}
