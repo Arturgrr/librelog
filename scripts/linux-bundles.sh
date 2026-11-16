@@ -208,13 +208,13 @@ verify() {
   expect_lines "$deb" "$files" "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON"
   local entries
   entries="$(mktemp -d)"
-  mkdir -p "$entries/deb" "$entries/rpm"
+  mkdir -p "$entries/deb"
   dpkg-deb --fsys-tarfile "$deb" | tar -x -C "$entries/deb" ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE"
 
   mapfile -t expected < <(jq -r '.bundle.linux.rpm.depends[]' "$SRC_TAURI/tauri.conf.json")
   docker run --rm -i \
     --volume "$(dirname "$rpm"):/rpm:ro" \
-    --volume "$entries:/entries" \
+    --volume "$entries:/entries:ro" \
     --env RPM_NAME="$(basename "$rpm")" \
     --env PACKAGE_VERSION \
     --env DESKTOP_FILE --env HIDDEN_DESKTOP_FILE \
@@ -237,12 +237,16 @@ while read -r path; do
 done <<<"$EXPECTED_FILES"
 [[ "$status" -eq 0 ]] || exit "$status"
 dnf install -y --setopt=install_weak_deps=False desktop-file-utils cpio >/dev/null
-(cd /entries/rpm && rpm2cpio "$rpm" | cpio -id --quiet ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE")
+# The RPM's entries stay inside the container: files it wrote into the
+# mounted folder would be root's, and the runner could not remove them.
+mkdir -p /tmp/entries/rpm
+ln -s /entries/deb /tmp/entries/deb
+(cd /tmp/entries/rpm && rpm2cpio "$rpm" | cpio -id --quiet ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE")
 # Exactly one launcher per package: the reverse-DNS entry, valid and shown;
 # the bundler's, named after the product, hidden and claiming no window.
 for package in deb rpm; do
-  launcher="/entries/$package$DESKTOP_FILE"
-  hidden="/entries/$package$HIDDEN_DESKTOP_FILE"
+  launcher="/tmp/entries/$package$DESKTOP_FILE"
+  hidden="/tmp/entries/$package$HIDDEN_DESKTOP_FILE"
   desktop-file-validate "$launcher" || { echo "::error::$package: $DESKTOP_FILE does not validate"; status=1; }
   desktop-file-validate "$hidden" || { echo "::error::$package: $HIDDEN_DESKTOP_FILE does not validate"; status=1; }
   if grep -q '^NoDisplay=true' "$launcher"; then echo "::error::$package: $DESKTOP_FILE is hidden"; status=1; fi
