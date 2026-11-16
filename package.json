@@ -2,8 +2,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs stack",
     "dev:desktop": "node scripts/dev.mjs desktop",
-    "dev:site": "node apps/site/dev.mjs",
-    "build:site": "node apps/site/build.mjs",
+    "dev:site": "pnpm -F @anlg/site dev",
+    "build:site": "pnpm -F @anlg/site build",
     "fmt:check": "dprint check",
     "fmt": "dprint fmt",
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",
