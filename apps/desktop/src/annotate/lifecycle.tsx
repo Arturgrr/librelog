@@ -19,7 +19,11 @@ import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 import { createAnnotateFlow, narrationMicrophone } from "./flow";
 import { chainRegistration } from "./registration";
 import { annotateRuns, useAnnotateStatus } from "./state";
-import { annotateAvailable, openScreenRecordingSettings } from "./system";
+import {
+  annotateAvailable,
+  annotateOnLinux,
+  openScreenRecordingSettings,
+} from "./system";
 
 import { useDictationStatus } from "~/dictation/state";
 import { localizeExternalMessage } from "~/i18n/external-messages";
@@ -109,6 +113,8 @@ function ActiveAnnotate() {
               discardQuestion: t`Discard?`,
               discard: t`Discard`,
               keep: t`Keep`,
+              draw: t`Draw`,
+              stop: t`Stop`,
             }),
           );
         },
@@ -165,7 +171,7 @@ function ActiveAnnotate() {
             description: t`Its summary is on the clipboard. Use your Paste last annotation shortcut in your coding agent to paste it with its image.`,
             duration: 8_000,
             action: {
-              label: t`Show in Finder`,
+              label: annotateOnLinux() ? t`Show in folder` : t`Show in Finder`,
               onClick: () =>
                 void revealAnnotation(finalized.contactSheet).catch(
                   (error: unknown) => toast.error(describe(error)),
@@ -200,7 +206,9 @@ function ActiveAnnotate() {
         },
         transcriptionWaiting: () =>
           toast(t`Waiting to transcribe the narration`, {
-            description: t`Another recording is being transcribed on this Mac. The annotation will be ready when it finishes.`,
+            description: annotateOnLinux()
+              ? t`Another recording is being transcribed on this computer. The annotation will be ready when it finishes.`
+              : t`Another recording is being transcribed on this Mac. The annotation will be ready when it finishes.`,
           }),
         nothingToPaste: () => toast(t`There's no annotation to paste yet.`),
         error: (error) => {

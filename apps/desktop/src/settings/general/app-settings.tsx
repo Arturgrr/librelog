@@ -20,6 +20,8 @@ interface AppSettingsViewProps {
   automaticUpdates: SettingItem;
   showAppInDock: SettingItem;
   showTrayIcon: SettingItem;
+  /** The desktop shows no tray icons: GNOME without AppIndicator. */
+  trayIconsHidden?: boolean;
 }
 
 export function AppSettingsView({
@@ -28,6 +30,7 @@ export function AppSettingsView({
   automaticUpdates,
   showAppInDock,
   showTrayIcon,
+  trayIconsHidden = false,
 }: AppSettingsViewProps) {
   const currentPlatform = platform();
   const isMacos = currentPlatform === "macos";
@@ -79,6 +82,13 @@ export function AppSettingsView({
                 <Trans>
                   Open Librelog from the menu bar, where it keeps running after
                   you close the window.
+                </Trans>
+              ) : trayIconsHidden ? (
+                <Trans>
+                  GNOME shows tray icons only with the AppIndicator extension.
+                  Until it's on, closing the window minimizes Librelog instead
+                  of hiding it. To quit Librelog, choose File › Quit Librelog or
+                  press Control + Q.
                 </Trans>
               ) : undefined
             }

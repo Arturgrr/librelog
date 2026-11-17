@@ -205,11 +205,19 @@ export function isRealtimeLocalModel(model?: string | null) {
   return model === "soniqo-parakeet-streaming" || model === "apple-speech";
 }
 
-// The on-device batch engine that re-reads a live on-device recording to
-// separate the voices on the system-audio channel. Parakeet Batch only counts
-// when it is already downloaded and speaks the meeting's language: running it
-// otherwise would start a multi-gigabyte download or replace the transcript
-// with the wrong language. Apple Speech can re-read its own recordings.
+export const LOCAL_DIARIZATION_TARGET = {
+  provider: "local_diarization",
+  model: "local-diarization",
+  baseUrl: "",
+  apiKey: "",
+} as const;
+
+// The on-device engine that re-reads a live on-device recording to separate
+// the voices sharing one channel. Parakeet Batch only counts when it is
+// already downloaded and speaks the meeting's language: running it otherwise
+// would start a multi-gigabyte download or replace the transcript with the
+// wrong language. Apple Speech can re-read its own recordings. Without either,
+// the bundled diarizer labels the live words without transcribing again.
 export function getSpeakerRefinementTarget(
   liveModel: string | null | undefined,
   parakeetBatchDownloaded: boolean,
@@ -245,7 +253,44 @@ export function getSpeakerRefinementTarget(
     };
   }
 
-  return null;
+  return LOCAL_DIARIZATION_TARGET;
+}
+
+// Mirrors REMOTE_SILENCE_MAX_SECONDS in listener2-core: a system-audio
+// channel with no more speech than this carried no call.
+const REMOTE_SILENCE_MAX_MS = 3_000;
+// An untimed system-audio word still shows someone spoke on the far end.
+const UNTIMED_WORD_MS = 300;
+
+// Whether the voices of a live on-device transcript are worth separating once
+// the recording stops. A mic that heard speech while system audio stayed
+// silent was an in-person meeting (or a solo memo, which the diarizer keeps as
+// one voice), whoever was invited. On a call, one known remote participant
+// already names the far end, and splitting a single voice would only add noise.
+export function shouldRefineSpeakers(
+  words: readonly { channel?: number; start_ms?: number; end_ms?: number }[],
+  remoteParticipants: number,
+) {
+  const remoteSpeechMs = words
+    .filter((word) => word.channel === 1)
+    .reduce(
+      (total, word) =>
+        total +
+        (word.start_ms === undefined || word.end_ms === undefined
+          ? UNTIMED_WORD_MS
+          : Math.max(0, word.end_ms - word.start_ms)),
+      0,
+    );
+  if (
+    remoteSpeechMs <= REMOTE_SILENCE_MAX_MS &&
+    words.some((word) => word.channel === 0)
+  ) {
+    return true;
+  }
+  if (remoteParticipants === 1) return false;
+  return remoteParticipants > 1
+    ? words.length > 0
+    : words.some((word) => word.channel === 1);
 }
 
 export function getSttModelTranscriptionMode(

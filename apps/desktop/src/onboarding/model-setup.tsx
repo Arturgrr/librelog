@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import type { ReactNode } from "react";
 
 import { DownloadSimple } from "@anlg/ui/components/icons";
@@ -90,8 +91,8 @@ export function IntelligenceStep({
   );
 }
 
-// On a Mac that can run built-in models, offer the default one; nothing is
-// downloaded until the person asks.
+// On a Mac or Linux computer that can run built-in models, offer the default
+// one; nothing is downloaded until the person asks.
 function BuiltinModelOffer() {
   const runtime = useQuery(builtinQueries.runtime());
   const models = useQuery({
@@ -119,7 +120,11 @@ function BuiltinModelOffer() {
     <div className="bg-raised border-border-weak flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3 text-sm">
       <span className="min-w-0 flex-[1_1_16rem]">
         <span className="font-medium">
-          <Trans>Run Intelligence on this Mac</Trans>
+          {platform() === "macos" ? (
+            <Trans>Run Intelligence on this Mac</Trans>
+          ) : (
+            <Trans>Run Intelligence on this computer</Trans>
+          )}
         </span>{" "}
         <span className="text-muted-foreground">
           <Trans>

@@ -31,7 +31,8 @@
         flex-direction: column;
         align-items: center;
       }
-      body:has(#root:not(:empty)) #boot-splash {
+      body:has(#root:not(:empty)) #boot-splash,
+      html[data-overlay-window] #boot-splash {
         display: none;
       }
       html.dark #boot-splash {

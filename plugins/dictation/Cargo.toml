@@ -45,7 +45,12 @@ objc2-app-kit = { workspace = true, features = ["NSRunningApplication", "NSWorks
 objc2-foundation = { workspace = true, features = ["NSString"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+anlg-desktop-portal = { workspace = true }
+arboard = { version = "3.6", features = ["wayland-data-control"] }
+# remote_desktop does not build without screencast in ashpd 0.13.
+ashpd = { workspace = true, features = ["tokio", "remote_desktop", "screencast"] }
 atspi = { version = "0.25", default-features = false, features = ["tokio"] }
+x11rb = { version = "0.13", features = ["xtest"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

@@ -11,6 +11,12 @@ const COMMANDS: &[&str] = &[
     "set_retention",
     "annotations_dir",
     "latest",
+    "surface",
+    "ink_pointer",
+    "ink_escape",
+    "capsule_pressed",
+    "surface_ready",
+    "forget_screen_choice",
 ];
 
 fn main() {

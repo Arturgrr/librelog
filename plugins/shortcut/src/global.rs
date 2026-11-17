@@ -13,7 +13,8 @@ use crate::{
 };
 
 pub fn uses_portal() -> bool {
-    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some()
+    cfg!(target_os = "linux")
+        && std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty())
 }
 
 const UNAVAILABLE: &str = "Global shortcuts are unavailable in this desktop session.";
@@ -38,9 +39,90 @@ pub struct GlobalState {
 struct Registration {
     keys: Keys,
     #[cfg(target_os = "linux")]
-    portal: Option<portal::Registration>,
-    #[cfg(target_os = "linux")]
-    paste_last_portal: Option<portal::Registration>,
+    portal: Portal,
+}
+
+/// What Wayland's one Global Shortcuts portal session should bind: what
+/// `held` holds, bound by [`desktop::run`] a moment after the last change.
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct Portal {
+    held: bindings::Held,
+}
+
+/// Tells the binding task that what is wanted changed, starting it on the
+/// first call.
+#[cfg(target_os = "linux")]
+fn wanted_changed(app: &tauri::AppHandle) {
+    let binder = app
+        .state::<std::sync::Arc<desktop::Binder>>()
+        .inner()
+        .clone();
+    if binder.start() {
+        tauri::async_runtime::spawn(desktop::run(binder.clone(), Portal::desktop(app.clone())));
+    }
+    binder.changed();
+}
+
+#[cfg(target_os = "linux")]
+impl Portal {
+    fn desktop(app: tauri::AppHandle) -> RealDesktop {
+        RealDesktop(app)
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct RealDesktop(tauri::AppHandle);
+
+#[cfg(target_os = "linux")]
+impl desktop::Desktop for RealDesktop {
+    type Session = portal::Registration;
+
+    async fn wanted(&self) -> Result<Vec<bindings::Binding>, String> {
+        let state = self.0.state::<GlobalState>();
+        let registration = state.registration.lock().await;
+        registration.portal.held.bindings()
+    }
+
+    async fn bind(
+        &self,
+        bindings: Vec<bindings::Binding>,
+        binder: std::sync::Arc<desktop::Binder>,
+    ) -> Result<(Self::Session, portal::Triggers), desktop::Failure> {
+        let app = self.0.clone();
+        portal::bind(
+            self.0.clone(),
+            bindings,
+            move |triggers| {
+                app.state::<status::DesktopStatus>()
+                    .triggers_changed(&app, triggers)
+            },
+            move || binder.changed(),
+        )
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn close(&self, session: Self::Session) {
+        session.close().await;
+    }
+
+    fn ended(&self, session: &Self::Session) -> bool {
+        session.ended()
+    }
+
+    fn report(&self, status: desktop::Status) {
+        self.0
+            .state::<status::DesktopStatus>()
+            .report(&self.0, status);
+    }
+}
+
+/// Remembers how Settings wrote each shortcut, so the desktop's answer can
+/// be shown next to it.
+#[cfg(target_os = "linux")]
+fn label(app: &tauri::AppHandle, key: Shortcut, shortcut: &str) {
+    app.state::<status::DesktopStatus>().label(key, shortcut);
 }
 
 /// The accelerators held through tauri-plugin-global-shortcut, kept by what
@@ -64,7 +146,7 @@ struct Keys {
     annotate_escape_wanted: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     /// Starts and stops dictation; the shortcut's position in the configured
     /// list.
@@ -424,12 +506,27 @@ type GlobalShortcut = tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>;
 pub async fn configure(app: tauri::AppHandle, shortcuts: Vec<String>) -> Result<(), String> {
     let plan = plan(&shortcuts, app.try_state::<GlobalShortcut>().is_some())?;
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     state.active.store(false, Ordering::SeqCst);
     app.state::<press::Presses>().reset();
-    unregister(&app, &state, &mut registration).await?;
+    unregister(&app, &state, registration)?;
 
-    let result = async {
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        for (source, key) in &plan.accelerators {
+            label(&app, *key, &shortcuts[*source]);
+        }
+        let held = &registration.portal.held;
+        let result = registration.keys.add_dictation(held, plan.accelerators);
+        if result.is_err() {
+            let _ = registration.keys.remove_dictation(held);
+        }
+        wanted_changed(&app);
+        return result;
+    }
+
+    let result = (|| {
         #[cfg(target_os = "macos")]
         if !plan.native.is_empty() {
             app.shortcut()
@@ -439,23 +536,18 @@ pub async fn configure(app: tauri::AppHandle, shortcuts: Vec<String>) -> Result<
         if plan.accelerators.is_empty() {
             return Ok(());
         }
-        #[cfg(target_os = "linux")]
-        if uses_portal() {
-            registration.portal = Some(portal::register(app.clone(), plan.accelerators).await?);
-            return Ok(());
-        }
         let global = global(&app, &state).ok_or(UNAVAILABLE)?;
         registration.keys.add_dictation(&global, plan.accelerators)
-    }
-    .await;
+    })();
     if result.is_err() {
-        let _ = unregister(&app, &state, &mut registration).await;
+        let _ = unregister(&app, &state, registration);
     }
     result
 }
 
-/// Releases the dictation shortcuts; the paste-last one stays.
-async fn unregister(
+/// Releases the dictation shortcuts; the paste-last one stays. On Wayland
+/// the portal session keeps them until the next rebind.
+fn unregister(
     app: &tauri::AppHandle,
     state: &GlobalState,
     registration: &mut Registration,
@@ -465,8 +557,10 @@ async fn unregister(
         registration.keys.remove_dictation(&global)?;
     }
     #[cfg(target_os = "linux")]
-    if let Some(portal) = registration.portal.take() {
-        portal.close().await;
+    if uses_portal() {
+        registration
+            .keys
+            .remove_dictation(&registration.portal.held)?;
     }
     Ok(())
 }
@@ -482,21 +576,22 @@ pub async fn configure_paste_last(
 ) -> Result<(), String> {
     let global_available = app.try_state::<GlobalShortcut>().is_some();
     let key = shortcut
-        .map(|shortcut| paste_last_key(&shortcut, global_available))
+        .as_deref()
+        .map(|shortcut| paste_last_key(shortcut, global_available))
         .transpose()?;
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
-    #[cfg(target_os = "linux")]
-    if let Some(portal) = registration.paste_last_portal.take() {
-        portal.close().await;
-    }
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     #[cfg(target_os = "linux")]
     if uses_portal() {
-        if let Some(key) = key {
-            registration.paste_last_portal =
-                Some(portal::register_paste_last(app.clone(), key).await?);
+        if let (Some(key), Some(shortcut)) = (key, shortcut.as_deref()) {
+            label(&app, key, shortcut);
         }
-        return Ok(());
+        let result = registration
+            .keys
+            .set_paste_last(&registration.portal.held, key);
+        wanted_changed(&app);
+        return result;
     }
     match global(&app, &state) {
         Some(global) => registration.keys.set_paste_last(&global, key),
@@ -543,16 +638,35 @@ pub async fn configure_annotate(
     paste: Option<String>,
 ) -> Result<(), String> {
     let global_available = app.try_state::<GlobalShortcut>().is_some();
-    let key = |shortcut: Option<String>| {
+    let key = |shortcut: &Option<String>| {
         shortcut
-            .map(|shortcut| paste_last_key(&shortcut, global_available))
+            .as_deref()
+            .map(|shortcut| paste_last_key(shortcut, global_available))
             .transpose()
     };
-    let (annotate, paste) = (key(shortcut)?, key(paste)?);
+    let (annotate_key, paste_key) = (key(&shortcut)?, key(&paste)?);
+    #[cfg(target_os = "linux")]
+    for (key, shortcut) in [(annotate_key, &shortcut), (paste_key, &paste)] {
+        if let (Some(key), Some(shortcut)) = (key, shortcut) {
+            label(&app, key, shortcut);
+        }
+    }
+    let (annotate, paste) = (annotate_key, paste_key);
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
     // A release lost to re-registering would leave the key held forever.
     app.state::<annotate::AnnotateGesture>().release_key();
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        let held = &registration.portal.held;
+        let result = registration.keys.set_annotate(held, annotate, paste);
+        if result.is_err() {
+            let _ = registration.keys.set_annotate(held, None, None);
+        }
+        wanted_changed(&app);
+        return result;
+    }
     let Some(global) = global(&app, &state) else {
         return if annotate.is_none() && paste.is_none() {
             Ok(())
@@ -653,11 +767,25 @@ pub async fn configure_capture(
     .into_iter()
     .filter_map(|(action, shortcut)| {
         let shortcut = shortcut.filter(|shortcut| !shortcut.trim().is_empty())?;
-        Some((action, paste_last_key(&shortcut, global_available)))
+        let key = paste_last_key(&shortcut, global_available);
+        #[cfg(target_os = "linux")]
+        if let Ok(key) = key {
+            label(&app, key, &shortcut);
+        }
+        Some((action, key))
     })
     .collect();
     let state = app.state::<GlobalState>();
-    let mut registration = state.registration.lock().await;
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        let result = registration
+            .keys
+            .set_capture(&registration.portal.held, keys);
+        wanted_changed(&app);
+        return result;
+    }
     let Some(global) = global(&app, &state) else {
         return if keys.is_empty() {
             Ok(())
@@ -684,8 +812,13 @@ pub fn validate_capture(
     )
 }
 
+#[cfg(any(target_os = "linux", test))]
+mod bindings;
+#[cfg(any(target_os = "linux", test))]
+pub(crate) mod desktop;
 #[cfg(target_os = "linux")]
 mod portal;
+pub(crate) mod status;
 #[cfg(any(target_os = "linux", test))]
 mod trigger;
 

@@ -5,6 +5,10 @@ use std::sync::{Arc, Mutex};
 const LAUNCH_LOCK_FILENAME: &str = "launch.lock";
 const SLOW_STARTUP_INDICATOR_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
 const WEBKIT_DISABLE_DMABUF_RENDERER: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+#[cfg(target_os = "linux")]
+const GDK_BACKEND: &str = "GDK_BACKEND";
+#[cfg(target_os = "linux")]
+const NATIVE_WAYLAND_OPT_IN: &str = "LIBRELOG_WAYLAND";
 
 // WebKitGTK's DMA-BUF renderer leaves a blank window on NVIDIA/Wayland and
 // some other GPU/compositor combinations. Set the fallback before Tokio or
@@ -26,6 +30,49 @@ pub(crate) fn apply_linux_webkit_workarounds() {
 
 fn linux_webkit_dmabuf_override(existing: Option<&std::ffi::OsStr>) -> Option<&'static str> {
     existing.is_none().then_some("1")
+}
+
+// GNOME's compositor ignores positioning and keep-above for native Wayland
+// windows, so the dictation HUD, the meeting bar and toasts would open
+// anywhere and sink behind other windows. Through XWayland they can be placed
+// and kept on top. GDK is told which backends it may use rather than given
+// GDK_BACKEND, which every process Librelog starts would inherit (a browser
+// opened from a link would run through XWayland too). The session is still
+// Wayland: shortcuts and pasting go through its portals. LIBRELOG_WAYLAND=1
+// keeps the native backend. Must run before GTK initialises.
+pub(crate) fn apply_linux_display_backend() {
+    #[cfg(target_os = "linux")]
+    {
+        let var = |name| std::env::var_os(name);
+        if prefers_xwayland(LinuxDisplayEnv {
+            wayland_display: var("WAYLAND_DISPLAY").as_deref(),
+            x11_display: var("DISPLAY").as_deref(),
+            gdk_backend: var(GDK_BACKEND).as_deref(),
+            native_wayland: var(NATIVE_WAYLAND_OPT_IN).as_deref(),
+        }) {
+            // Wayland stays allowed in case XWayland does not answer.
+            gdk::set_allowed_backends("x11,wayland");
+        }
+    }
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+struct LinuxDisplayEnv<'a> {
+    wayland_display: Option<&'a std::ffi::OsStr>,
+    x11_display: Option<&'a std::ffi::OsStr>,
+    gdk_backend: Option<&'a std::ffi::OsStr>,
+    native_wayland: Option<&'a std::ffi::OsStr>,
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn prefers_xwayland(env: LinuxDisplayEnv<'_>) -> bool {
+    let set = |value: Option<&std::ffi::OsStr>| value.is_some_and(|value| !value.is_empty());
+    // An X11 session, or a Wayland one without XWayland's display.
+    if !set(env.wayland_display) || !set(env.x11_display) {
+        return false;
+    }
+    // A backend the user chose, or the opt-out.
+    !set(env.gdk_backend) && env.native_wayland != Some(std::ffi::OsStr::new("1"))
 }
 
 // Startup migrations can hold the database for minutes before any window or
@@ -274,6 +321,33 @@ mod tests {
             linux_webkit_dmabuf_override(Some(std::ffi::OsStr::new("1"))),
             None
         );
+    }
+
+    #[test]
+    fn wayland_sessions_run_through_xwayland_unless_the_user_chose_a_backend() {
+        let os = |value: &'static str| Some(std::ffi::OsStr::new(value));
+        let env = |wayland, x11, gdk, native| LinuxDisplayEnv {
+            wayland_display: wayland,
+            x11_display: x11,
+            gdk_backend: gdk,
+            native_wayland: native,
+        };
+        let wayland = os("wayland-0");
+        let x11 = os(":0");
+        for (session, expected) in [
+            (env(wayland, x11, None, None), true),
+            (env(wayland, x11, os(""), None), true),
+            (env(wayland, x11, None, os("0")), true),
+            (env(wayland, x11, os("wayland"), None), false),
+            (env(wayland, x11, os("x11"), None), false),
+            (env(wayland, x11, None, os("1")), false),
+            // An X11 session, or a Wayland one without XWayland.
+            (env(None, x11, None, None), false),
+            (env(os(""), x11, None, None), false),
+            (env(wayland, None, None, None), false),
+        ] {
+            assert_eq!(prefers_xwayland(session), expected);
+        }
     }
 
     #[test]

@@ -58,10 +58,9 @@ export function AudioSettingsView({
         title={<Trans>Separate speakers after meetings</Trans>}
         description={
           <Trans>
-            When a meeting is transcribed live on this Mac, transcribe the saved
-            recording again after it ends to tell apart the people heard through
-            your computer. Needs saved audio and Parakeet Batch or Apple Speech,
-            and takes a few minutes after each meeting.
+            When a meeting is transcribed live on this Mac, tell apart the
+            people who shared your microphone or your computer's audio once it
+            ends. Needs saved audio and takes a few minutes after each meeting.
           </Trans>
         }
         checked={refineSpeakers.value}

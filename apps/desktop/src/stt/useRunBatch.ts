@@ -6,6 +6,7 @@ import {
   commands as transcriptionCommands,
   type BatchRefinementSource,
   type BatchProvider,
+  type BatchWord,
   type BatchTranscriptPromotion,
   type StoredSpeakerHint,
   type StoredTranscriptWord,
@@ -37,6 +38,7 @@ import { serializeBatchResumeContext } from "~/stt/batch-resume-context";
 import {
   getTranscriptionLanguages,
   isLocalFileSttModel,
+  LOCAL_DIARIZATION_TARGET,
   isLocalSttProviderAvailable,
   isOnDeviceSttModel,
   isSupportedLanguagesBatch,
@@ -73,6 +75,9 @@ type RunOptions = {
         startedAt: number;
       };
   captureInterval?: { startedAtMs: number; stoppedAtMs: number };
+  // Words of the current capture to label with the on-device diarizer instead
+  // of transcribing the recording again.
+  diarizeWords?: WordWithId[];
 };
 
 type BatchTarget = {
@@ -131,6 +136,121 @@ export async function reconcileRefinedSpeakerClusters(
   });
   if (result.status === "error") throw new Error(result.error);
   return result.data.map(toSpeakerHintWithId);
+}
+
+const LOCAL_DIARIZATION_BATCH_TARGET = {
+  ...LOCAL_DIARIZATION_TARGET,
+  label: LOCAL_DIARIZATION_TARGET.model,
+} satisfies BatchTarget;
+
+// The diarizer reads the whole recording, so words move from the capture's
+// clock to the file's, the same offset the saved replacement removes again.
+function toDiarizeWords(
+  words: WordWithId[],
+  promotion: RunOptions["promotion"],
+): BatchWord[] {
+  const offsetMs =
+    promotion?.scope === "current_capture" ? promotion.audioOffsetMs : 0;
+  let previousEndMs = 0;
+  return words.map((word) => {
+    const startMs = word.start_ms ?? previousEndMs;
+    // An untimed word still needs a length: a zero-length word at the
+    // capture's start would be cut by the save that removes the offset.
+    const endMs = Math.max(word.end_ms ?? startMs, startMs + 1);
+    previousEndMs = endMs;
+    return {
+      word: word.text ?? "",
+      punctuated_word: null,
+      start: (startMs + offsetMs) / 1000,
+      end: (endMs + offsetMs) / 1000,
+      confidence: 1,
+      channel: word.channel ?? 0,
+      speaker: null,
+    };
+  });
+}
+
+function diarizedWordKey(
+  text: string | undefined,
+  startMs: number,
+  endMs: number,
+) {
+  return `${Math.round(startMs)}|${Math.round(endMs)}|${(text ?? "").trim()}`;
+}
+
+function parseWordMetadata(metadata: unknown): Record<string, unknown> {
+  if (typeof metadata === "string") {
+    try {
+      const parsed: unknown = JSON.parse(metadata);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+// Whether the diarizer told at least two voices apart on some channel; one
+// voice per channel changes nothing the transcript shows.
+function separatedSpeakers(hints: SpeakerHintWithId[]) {
+  const speakersByChannel = new Map<number, Set<number>>();
+  for (const hint of hints) {
+    const value = parseWordMetadata(hint.value);
+    if (
+      typeof value.channel !== "number" ||
+      typeof value.speaker_index !== "number"
+    ) {
+      continue;
+    }
+    const speakers = speakersByChannel.get(value.channel) ?? new Set();
+    speakers.add(value.speaker_index);
+    speakersByChannel.set(value.channel, speakers);
+  }
+  return [...speakersByChannel.values()].some((speakers) => speakers.size > 1);
+}
+
+// The diarizer only adds speakers and may move a word to the shared mic, so
+// the live word keeps its id, text and metadata (timing provenance included).
+function keepLiveWordIdentity(
+  liveWords: WordWithId[],
+  diarizeWords: BatchWord[],
+  words: WordWithId[],
+  hints: SpeakerHintWithId[],
+) {
+  const live = new Map<string, WordWithId[]>();
+  liveWords.forEach((word, index) => {
+    const sent = diarizeWords[index]!;
+    const key = diarizedWordKey(word.text, sent.start * 1000, sent.end * 1000);
+    live.set(key, [...(live.get(key) ?? []), word]);
+  });
+  const ids = new Map<string, string>();
+  const keptWords = words.map((word) => {
+    const source = live
+      .get(diarizedWordKey(word.text, word.start_ms ?? 0, word.end_ms ?? 0))
+      ?.shift();
+    if (!source) return word;
+    ids.set(word.id, source.id);
+    const metadata = parseWordMetadata(word.metadata);
+    return {
+      ...word,
+      id: source.id,
+      text: source.text,
+      metadata: JSON.stringify({
+        ...metadata,
+        ...parseWordMetadata(source.metadata),
+        ...(metadata.shared_mic === true ? { shared_mic: true } : {}),
+      }),
+    };
+  });
+  const keptHints = hints.map((hint) => ({
+    ...hint,
+    word_id: ids.get(hint.word_id ?? "") ?? hint.word_id,
+  }));
+  return { words: keptWords, hints: keptHints };
 }
 
 const DIRECT_BATCH_PROVIDERS: Set<TranscriptionParams["provider"]> = new Set([
@@ -367,17 +487,19 @@ export const useRunBatch = (sessionId: string) => {
       const shouldUseSelectedTarget =
         selectedTargetSupported ||
         (fallbackTarget && sameBatchTarget(selectedTarget, fallbackTarget));
-      const target = options?.resume
-        ? {
-            provider: options.resume.provider,
-            model: options.resume.model,
-            baseUrl: conn?.baseUrl ?? "",
-            apiKey: conn?.apiKey ?? "",
-            label: options.resume.model,
-          }
-        : shouldUseSelectedTarget
-          ? (selectedTarget ?? fallbackTarget)
-          : fallbackTarget;
+      const target = options?.diarizeWords
+        ? LOCAL_DIARIZATION_BATCH_TARGET
+        : options?.resume
+          ? {
+              provider: options.resume.provider,
+              model: options.resume.model,
+              baseUrl: conn?.baseUrl ?? "",
+              apiKey: conn?.apiKey ?? "",
+              label: options.resume.model,
+            }
+          : shouldUseSelectedTarget
+            ? (selectedTarget ?? fallbackTarget)
+            : fallbackTarget;
 
       if (!target) {
         const providerLabel = selectedProviderLabel(conn, selectedModel);
@@ -388,7 +510,12 @@ export const useRunBatch = (sessionId: string) => {
         );
       }
 
-      if (!shouldUseSelectedTarget && !options?.recovery && !options?.resume) {
+      if (
+        !shouldUseSelectedTarget &&
+        !options?.recovery &&
+        !options?.resume &&
+        !options?.diarizeWords
+      ) {
         const unavailableLabel = selectedTarget
           ? selectedProviderLabel(conn, selectedModel)
           : selectedProviderLabel(conn);
@@ -491,6 +618,9 @@ export const useRunBatch = (sessionId: string) => {
         });
 
       const jobId = options?.recovery ? `${sessionId}:recovery` : sessionId;
+      const diarizeWords = options?.diarizeWords
+        ? toDiarizeWords(options.diarizeWords, options.promotion)
+        : [];
       const params: TranscriptionParams = {
         session_id: jobId,
         provider: target.provider,
@@ -503,6 +633,7 @@ export const useRunBatch = (sessionId: string) => {
         num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
         min_speakers: options?.minSpeakers,
         max_speakers: options?.maxSpeakers,
+        diarize_words: diarizeWords,
         resume_context:
           !handlePersist &&
           !options?.recovery &&
@@ -549,7 +680,14 @@ export const useRunBatch = (sessionId: string) => {
 
       // Resolved for callers that record what transcribed the audio: the
       // fallback when the selected model could not.
-      const used = {
+      // `separated` answers a diarize-only run: false when the transcript
+      // was left as it was because no second voice turned up.
+      const used: {
+        provider: TranscriptionParams["provider"];
+        model: string;
+        languages: string[];
+        separated?: boolean;
+      } = {
         provider: target.provider,
         model: target.model,
         languages,
@@ -559,6 +697,19 @@ export const useRunBatch = (sessionId: string) => {
         await options.recovery.persist(stagedWords, stagedHints);
         await acknowledgeCompletedBatch(jobId);
         return used;
+      }
+      if (options?.diarizeWords) {
+        if (!separatedSpeakers(stagedHints)) {
+          // Nothing to show for the pass: the live transcript stays as it is.
+          await acknowledgeCompletedBatch(jobId);
+          return { ...used, separated: false };
+        }
+        ({ words: stagedWords, hints: stagedHints } = keepLiveWordIdentity(
+          options.diarizeWords,
+          diarizeWords,
+          stagedWords,
+          stagedHints,
+        ));
       }
 
       try {
@@ -637,7 +788,7 @@ export const useRunBatch = (sessionId: string) => {
       if (options?.notifyOnCompletion !== false) {
         await notifyBatchCompleted();
       }
-      return used;
+      return options?.diarizeWords ? { ...used, separated: true } : used;
     },
     [
       conn,

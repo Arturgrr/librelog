@@ -92,7 +92,10 @@ impl Layout {
             if !old || !metadata.is_file() {
                 continue;
             }
-            if name.ends_with(".mp4") && metadata.len() > 0 {
+            let movie = crate::names::MOVIE_EXTENSIONS
+                .iter()
+                .any(|extension| name.ends_with(&format!(".{extension}")));
+            if movie && metadata.len() > 0 {
                 movies.push(file.path());
             } else {
                 let _ = std::fs::remove_file(file.path());
@@ -221,6 +224,7 @@ mod tests {
         let hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 3600);
         let movies = [
             layout.files_dir().join(".capture-a.mp4"),
+            layout.files_dir().join(".capture-c.webm"),
             layout.files_dir().join(".recording-cap-1-0000.mp4"),
         ];
         let swept = [

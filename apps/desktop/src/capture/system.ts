@@ -20,9 +20,19 @@ export const CAPTURE_SHORTCUT_KEYS = {
   gif: "capture_shortcut_gif",
 } as const satisfies Record<CaptureAction, string>;
 
-/** Capture works on macOS only, and not in the App Store build. */
+/** Capture works on macOS and Linux, and not in the App Store build. */
 export function captureAvailable() {
-  return platform() === "macos" && !isAppStoreBuild();
+  const os = platform();
+  return (os === "macos" || os === "linux") && !isAppStoreBuild();
+}
+
+/**
+ * Capture on Linux: the desktop's own picker and sharing dialog, no
+ * pointer switch for screenshots, no countdown or audio, and no macOS
+ * screenshot shortcuts to replace.
+ */
+export function captureOnLinux() {
+  return platform() === "linux";
 }
 
 /** Every Capture shortcut by action; empty is unbound. */

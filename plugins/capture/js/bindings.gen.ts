@@ -251,13 +251,110 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * The cards up, for the Linux card window; none elsewhere.
+   */
+  async cardStack(): Promise<Result<CaptureCards, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|card_stack"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * A button on a Linux card: `copy`, `save`, `edit`, `open` or `close`.
+   * False when that card is gone.
+   */
+  async cardPressed(
+    id: string,
+    action: string,
+  ): Promise<Result<boolean, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|card_pressed", { id, action }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * The pointer entered (or left) a Linux card, which then stays.
+   */
+  async cardHovered(
+    id: string,
+    hovered: boolean,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|card_hovered", {
+          id,
+          hovered,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * What the Linux area selector shows; null when no selector is up.
+   */
+  async areaFrame(): Promise<Result<AreaFrame | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|area_frame"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * The Linux area selector's answer.
+   */
+  async areaChosen(choice: AreaChoice): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|area_chosen", { choice }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Forgets the screen the Linux sharing dialog remembers, so the next
+   * recording asks which screen to record again. Nothing to do elsewhere.
+   */
+  async forgetScreenChoice(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:capture|forget_screen_choice"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/
 
 export const events = __makeEvents__<{
+  captureCards: CaptureCards;
   captureEvent: CaptureEvent;
 }>({
+  captureCards: "plugin:capture:capture-cards",
   captureEvent: "plugin:capture:capture-event",
 });
 
@@ -265,6 +362,60 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+/**
+ * What the user did in the Linux area selector. An area is in the
+ * picture's pixels.
+ */
+export type AreaChoice =
+  | { type: "area"; x: number; y: number; width: number; height: number }
+  /**
+   * The whole screen.
+   */
+  | { type: "whole" }
+  /**
+   * A window instead, picked in the desktop's dialog.
+   */
+  | { type: "window" }
+  | { type: "cancel" };
+/**
+ * What the Linux area selector shows: the frozen picture of every
+ * monitor, the part of it under the selector's own monitor, and the hint.
+ */
+export type AreaFrame = {
+  imagePath: string;
+  imageWidth: number;
+  imageHeight: number;
+  region: AreaRect;
+  hint: string;
+};
+/**
+ * Pixels of the area selector's picture.
+ */
+export type AreaRect = { x: number; y: number; width: number; height: number };
+/**
+ * A card in the Linux card window.
+ */
+export type CaptureCard = {
+  id: string;
+  /**
+   * `screenshot`, `video` or `gif`.
+   */
+  kind: string;
+  /**
+   * Empty when there is none.
+   */
+  thumbnailPath: string;
+  /**
+   * In the user's folder (its button shows it), not only the library.
+   */
+  saved: boolean;
+  durationMs: number;
+};
+/**
+ * The cards up on Linux, newest first: what the card window shows. Sent
+ * whenever it changes.
+ */
+export type CaptureCards = { cards: CaptureCard[]; labels: CardLabels };
 /**
  * A capture in the list, newest first.
  */
@@ -365,7 +516,7 @@ export type CapturePhase =
   | "finishing";
 export type CaptureStatus = {
   /**
-   * False off macOS, where nothing captures.
+   * False where nothing captures (Windows).
    */
   available: boolean;
   phase: CapturePhase;
@@ -386,6 +537,19 @@ export type CardActionKind =
    * Open the recording.
    */
   | "open";
+/**
+ * A card's words in the app's language.
+ */
+export type CardLabels = {
+  copy: string;
+  save: string;
+  /**
+   * Shows a saved capture in the file manager.
+   */
+  show: string;
+  edit: string;
+  close: string;
+};
 export type ImageFormat = "png" | "jpeg";
 export type RecordingOutput = "mp4" | "gif";
 export type RecordingRequest = {

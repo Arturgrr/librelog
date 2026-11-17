@@ -28,7 +28,7 @@ If the indicator can't be shown, the dictation still goes ahead without it.
 
 You hear a short sound when dictation starts and another when it stops and sends your audio to transcription. Cancelling is silent, and no sound plays while Librelog records a meeting. To dictate silently, turn off **Dictation sounds** in **Settings → Dictation**.
 
-Dictation stops after five minutes. Press Escape to cancel; on Wayland, use Control + Alt + Escape.
+Dictation stops after five minutes. Press Escape to cancel; on Wayland, use Control + Alt + period.
 
 Dictation also works while Librelog records a meeting, for example to type into the call's chat. The meeting keeps recording, and what you dictate is part of its microphone audio and transcript. With a self-hosted transcription server, the dictation skips the live preview and is transcribed when you finish, so it doesn't take the meeting's connection. With an on-device model, a dictation may wait a moment while the meeting's audio is being transcribed.
 
@@ -63,7 +63,7 @@ If nothing editable had focus, or the app could not insert the text, you still h
 - Find it in **Settings → Dictation history**, where it is marked **Not inserted**, unless history is off.
 - With **Keep last dictation on the clipboard** on, it is already on your clipboard.
 
-On Windows and Linux, the focused field must be editable when the text is inserted. On Linux, approve the desktop's shortcut prompt on Wayland. The target app must expose an editable accessibility field; password fields are excluded. Clear a selected text range before dictating, or use the copy action to replace it yourself.
+On Windows, the focused field must be editable when the text is inserted, and password fields are excluded. Clear a selected text range before dictating, or use the copy action to replace it yourself. On Linux, a dictation Librelog could not paste stays on your clipboard: see [Linux](#linux).
 
 ## Paste last dictation
 
@@ -93,6 +93,28 @@ What **Pause media** reaches depends on the platform:
 While you record a dictation, your computer does not go to sleep from inactivity.
 
 Dictation is a desktop interaction. The CLI and MCP interfaces do not start dictation or insert text into other apps.
+
+## Linux
+
+### Shortcuts on Wayland
+
+Librelog asks your desktop for all its shortcuts at once, through the Global Shortcuts portal, a moment after you change one. The desktop asks you to approve each new shortcut and may let you choose other keys; when it uses other keys than the ones in Settings, Settings says which. If you dismiss the desktop's prompt, Librelog does not ask again until you choose **Ask my desktop again** in Settings or restart Librelog. Control + Alt + period cancels the dictation you are recording. **Paste last dictation** pastes once you release its keys, or 1.5 seconds after you press them if your desktop does not report the release. In an X11 session Librelog takes the keys itself, and Escape cancels.
+
+### How the text gets in
+
+Native editable fields, such as those in GNOME's text editor, receive the text through accessibility (AT-SPI), and your clipboard is left alone. Terminals, Chromium browsers, Electron apps, Firefox, Librelog itself, apps that expose no editable field, and fields that do not take the text receive it as a paste: Librelog puts the text on the clipboard, presses Control + V (Control + Shift + V in a terminal it recognizes by its program name, such as GNOME Terminal, Ptyxis, Console, Konsole, kitty, Alacritty, WezTerm, Ghostty or foot), and puts your previous text or image back on the clipboard half a second later, unless you copied something else in the meantime. Anything else on the clipboard, such as copied files, cannot be put back, so the dictation stays there instead. Librelog asks clipboard managers that follow KDE's password-manager hint to skip the dictation. Password fields that expose accessibility are excluded.
+
+To press the paste keys for you, Librelog uses:
+
+- On GNOME and KDE Plasma on Wayland, the desktop's remote control (RemoteDesktop) portal. The first time a dictation that needs a paste starts, your desktop asks whether to allow Librelog to control the keyboard. Librelog keeps the desktop's approval in its data folder, so it asks once; revoke it in your desktop's settings. GNOME shows its remote control indicator while Librelog may press keys, until 15 seconds after the last paste.
+- On other Wayland compositors, such as Sway or Hyprland, `wtype` when it is installed, then the remote control portal.
+- In an X11 session, the X server's XTest extension, after you release the shortcut's modifier keys (up to two seconds).
+
+If none of these is available, or you decline the remote control prompt, the dictation stays on your clipboard and Librelog tells you to press Control + V (Control + Shift + V in a terminal). After you decline, Librelog does not ask again until you restart it.
+
+### XWayland
+
+On Wayland, Librelog runs its windows through XWayland, so the dictation indicator, the meeting bar and notifications stay where they belong and above other windows. Shortcuts and pasting still go through the Wayland session's portals. To run Librelog natively on Wayland, start it with `LIBRELOG_WAYLAND=1`, which also works for the AppImage. A `GDK_BACKEND` you set yourself is left as it is.
 
 ## Dictation history
 

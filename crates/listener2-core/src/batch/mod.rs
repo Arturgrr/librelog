@@ -15,7 +15,7 @@ use crate::{BatchEvent, BatchRuntime};
 
 use consolidate::consolidate_hosted_speakers;
 pub use diarize::KnownSpeaker;
-use diarize::apply_local_diarization;
+use diarize::{apply_local_diarization, existing_words_response};
 use progressive::run_progressive_batch_session;
 use simple::{run_apple_speech_batch, run_direct_batch_for_adapter_kind, run_soniqo_batch};
 
@@ -65,6 +65,9 @@ pub enum BatchProvider {
     Xai,
     SmallestAI,
     WisprFlow,
+    #[serde(rename = "local_diarization")]
+    #[strum(serialize = "local_diarization")]
+    LocalDiarization,
 }
 
 impl BatchProvider {
@@ -97,7 +100,11 @@ impl BatchProvider {
             Self::Xai => Some(AdapterKind::Xai),
             Self::SmallestAI => Some(AdapterKind::SmallestAI),
             Self::WisprFlow => Some(AdapterKind::WisprFlow),
-            Self::WhisperLocal | Self::Soniqo | Self::AppleSpeech | Self::DashScope => None,
+            Self::WhisperLocal
+            | Self::Soniqo
+            | Self::AppleSpeech
+            | Self::DashScope
+            | Self::LocalDiarization => None,
         }
     }
 }
@@ -127,6 +134,11 @@ pub struct BatchParams {
     /// provider.
     #[serde(default)]
     pub known_speakers: Vec<KnownSpeaker>,
+    /// Words of an existing transcript, timed against `file_path`. With
+    /// [`BatchProvider::LocalDiarization`] nothing is transcribed: the
+    /// on-device diarizer labels these words from the recording.
+    #[serde(default)]
+    pub diarize_words: Vec<owhisper_interface::batch::Word>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -253,6 +265,11 @@ async fn run_batch_inner(
         }
         BatchProvider::Soniqo => run_soniqo_batch(runtime, params, listen_params).await,
         BatchProvider::AppleSpeech => run_apple_speech_batch(runtime, params, listen_params).await,
+        BatchProvider::LocalDiarization => Ok(BatchRunOutput {
+            session_id: params.session_id.clone(),
+            mode: BatchRunMode::Direct,
+            response: existing_words_response(&params.diarize_words, listen_params.channels),
+        }),
         BatchProvider::DashScope => Err(crate::BatchFailure::BatchCapabilityUnsupported {
             provider: batch_provider_label(BatchProvider::DashScope),
         }
@@ -266,7 +283,17 @@ async fn run_batch_inner(
     }?;
 
     let (runtime, params, listen_params) = post_process;
-    apply_local_diarization(runtime.clone(), &params, &listen_params, &mut output).await;
+    let diarized =
+        apply_local_diarization(runtime.clone(), &params, &listen_params, &mut output).await;
+    // Separating speakers is the whole point of a diarize-only run, so its
+    // failure must reach the caller instead of returning the words unchanged.
+    if let (BatchProvider::LocalDiarization, Err(message)) = (&params.provider, diarized) {
+        return Err(crate::BatchFailure::DirectRequestFailed {
+            provider: batch_provider_label(BatchProvider::LocalDiarization),
+            message,
+        }
+        .into());
+    }
     consolidate_hosted_speakers(runtime, &params, &listen_params, &mut output).await;
     Ok(output)
 }
@@ -411,6 +438,7 @@ mod tests {
             min_speakers: None,
             max_speakers: None,
             known_speakers: vec![],
+            diarize_words: vec![],
         }
     }
 
@@ -494,6 +522,37 @@ mod tests {
             let message = format_user_friendly_error(error);
             assert!(message.starts_with("This recording is too large"));
         }
+    }
+
+    struct Cancelled;
+
+    impl BatchRuntime for Cancelled {
+        fn emit(&self, _event: BatchEvent) {}
+
+        fn is_cancelled(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn a_diarize_only_run_that_cannot_separate_fails_instead_of_returning_the_words() {
+        let file = test_fixtures::in_person_fixture();
+        let mut params = test_fixtures::params(
+            BatchProvider::LocalDiarization,
+            "",
+            file.path().to_str().unwrap(),
+        );
+        params.diarize_words = vec![owhisper_interface::batch::Word {
+            word: " hi".to_string(),
+            start: 0.0,
+            end: 0.5,
+            confidence: 1.0,
+            channel: 0,
+            speaker: None,
+            punctuated_word: None,
+        }];
+
+        assert!(run_batch_inner(Arc::new(Cancelled), params).await.is_err());
     }
 
     #[test]

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-area-chosen"
+description = "Enables the area_chosen command without any pre-configured scope."
+commands.allow = ["area_chosen"]
+
+[[permission]]
+identifier = "deny-area-chosen"
+description = "Denies the area_chosen command without any pre-configured scope."
+commands.deny = ["area_chosen"]

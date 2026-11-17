@@ -20,7 +20,11 @@ import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 import { type CaptureSettings, createCaptureFlow } from "./flow";
 import { chainRegistration } from "./registration";
 import { captureRuns, useCaptureStatus } from "./state";
-import { captureAvailable, useCaptureShortcutMap } from "./system";
+import {
+  captureAvailable,
+  captureOnLinux,
+  useCaptureShortcutMap,
+} from "./system";
 
 import { openScreenRecordingSettings } from "~/annotate/system";
 import { useDictationStatus } from "~/dictation/state";
@@ -60,7 +64,7 @@ export function useCaptureLabels() {
     keep: t`Keep`,
     copy: t`Copy`,
     save: t`Save`,
-    show: t`Show in Finder`,
+    show: captureOnLinux() ? t`Show in Files` : t`Show in Finder`,
     edit: t`Edit`,
     close: t`Close`,
   };
@@ -93,6 +97,9 @@ function useCaptureSettings(): CaptureSettings {
     "capture_gif_fps",
     "capture_gif_max_width",
   ] as const);
+  // Linux has no pointer switch for screenshots, no countdown and no audio
+  // yet; options left on from a Mac must not ask for the microphone.
+  const linux = captureOnLinux();
   return {
     copy: values.capture_copy_to_clipboard,
     saveToFolder: values.capture_save_to_folder,
@@ -100,12 +107,12 @@ function useCaptureSettings(): CaptureSettings {
     showCard: values.capture_show_card,
     openEditor: values.capture_open_editor,
     imageFormat: values.capture_image_format,
-    showCursor: values.capture_show_cursor,
+    showCursor: !linux && values.capture_show_cursor,
     recordFps: values.capture_record_fps,
     recordCursor: values.capture_record_cursor,
-    microphone: values.capture_record_microphone,
-    systemAudio: values.capture_record_system_audio,
-    countdown: values.capture_record_countdown,
+    microphone: !linux && values.capture_record_microphone,
+    systemAudio: !linux && values.capture_record_system_audio,
+    countdown: linux ? 0 : values.capture_record_countdown,
     gifFps: values.capture_gif_fps,
     gifMaxWidth: values.capture_gif_max_width,
   };
@@ -136,7 +143,7 @@ function savedToast(entry: CaptureEntry, copied: boolean) {
       copied && !inFolder
         ? undefined
         : {
-            label: t`Show in Finder`,
+            label: captureOnLinux() ? t`Show in Files` : t`Show in Finder`,
             onClick: () =>
               void revealCapture(entry.path).catch((error: unknown) =>
                 toast.error(describeError(error)),
@@ -162,7 +169,11 @@ function ActiveCapture() {
     const flow = createCaptureFlow({
       plugin: {
         status: async () => unwrap(await capture.status()),
-        screenRecording: async () => unwrap(await annotate.screenRecording()),
+        // Linux asks through the desktop's own dialog on every capture.
+        screenRecording: async () =>
+          captureOnLinux()
+            ? "granted"
+            : unwrap(await annotate.screenRecording()),
         requestScreenRecording: async () =>
           unwrap(await annotate.requestScreenRecording()),
         screenshot: async (request) =>

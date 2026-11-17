@@ -22,6 +22,7 @@ type CapturedMenuItem =
 const hoisted = vi.hoisted(() => ({
   enhance: vi.fn(),
   regenerateTranscript: vi.fn(),
+  separateSpeakers: vi.fn(),
   startListening: vi.fn(),
   stopListening: vi.fn(),
   stopTranscription: vi.fn(),
@@ -207,6 +208,7 @@ vi.mock("~/session/queries", () => ({
 
 vi.mock("~/session/components/note-input/transcript/actions", () => ({
   useRegenerateTranscript: () => hoisted.regenerateTranscript,
+  useSeparateSpeakers: () => hoisted.separateSpeakers,
 }));
 
 vi.mock("~/session/components/note-input/transcript/export-data", () => ({
@@ -532,7 +534,13 @@ describe("SessionViewSwitcher", () => {
     [
       "inactive with audio",
       { mode: "inactive", audio: true, resolved: true },
-      ["Copy", "Resume listening", "Re-transcribe", "Delete recording"],
+      [
+        "Copy",
+        "Resume listening",
+        "Re-transcribe",
+        "Separate speakers",
+        "Delete recording",
+      ],
     ],
     [
       "inactive without audio",
@@ -565,6 +573,30 @@ describe("SessionViewSwitcher", () => {
       expect(transcriptMenu().map((item) => item.text)).toEqual(expected);
     },
   );
+
+  it.each([
+    ["one recorded transcript", [true], true],
+    ["a transcript with no words yet", [false], false],
+    ["several captures", [true, true], false],
+  ])("offers Separate speakers for %s", (_label, transcripts, offered) => {
+    hoisted.sessionMode = "inactive";
+    hoisted.transcriptMetadata = transcripts.map((hasWords, index) => ({
+      id: `transcript-${index}`,
+      sessionId: "session-1",
+      startedAt: index,
+      hasWords,
+    }));
+    renderSwitcher({ currentTab: { type: "transcript" } });
+
+    const item = transcriptMenu().find(
+      (entry) => entry.text === "Separate speakers",
+    );
+    expect(Boolean(item)).toBe(offered);
+    item?.action?.();
+    if (offered) {
+      expect(hoisted.separateSpeakers).toHaveBeenCalledWith("transcript-0");
+    }
+  });
 
   it("disables Copy when the session has no transcript", () => {
     hoisted.hasTranscript = false;

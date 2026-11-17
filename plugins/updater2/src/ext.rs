@@ -18,6 +18,19 @@ static DOWNLOAD_MUTEX: LazyLock<tokio::sync::Mutex<()>> =
 
 static MEETING_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// On Linux only an AppImage replaces itself. RPM and deb installs belong to
+// the package manager (the updater would run `pkexec rpm -U` or `dpkg -i`),
+// and the release feed lists no packages for them: the app tells them about
+// a new version and links to its release page instead. An unbundled build
+// (`bundle_type()` is None) has nothing to replace either.
+pub fn self_update_supported() -> bool {
+    !cfg!(target_os = "linux")
+        || matches!(
+            tauri::utils::platform::bundle_type(),
+            Some(tauri::utils::config::BundleType::AppImage)
+        )
+}
+
 pub struct Updater2<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
     _runtime: std::marker::PhantomData<fn() -> R>,
@@ -152,6 +165,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
     }
 
     pub async fn download(&self, version: &str) -> Result<(), crate::Error> {
+        if !self_update_supported() {
+            return Err(crate::Error::SelfUpdateUnsupported);
+        }
         let _download_guard = DOWNLOAD_MUTEX.lock().await;
 
         if self.has_cached_update(version) {
@@ -228,6 +244,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
     // is what prevents an install/relaunch loop, since the installed artifact
     // stays cached until check() prunes it.
     pub async fn install_and_relaunch(&self, version: &str) -> Result<(), crate::Error> {
+        if !self_update_supported() {
+            return Err(crate::Error::SelfUpdateUnsupported);
+        }
         let current = self.manager.config().version.clone().unwrap_or_default();
         let is_newer = match (
             semver::Version::parse(version),

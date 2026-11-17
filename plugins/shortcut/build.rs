@@ -11,6 +11,8 @@ const COMMANDS: &[&str] = &[
     "set_annotate_recording",
     "configure_capture",
     "validate_capture",
+    "desktop_shortcuts",
+    "ask_desktop_again",
 ];
 
 fn main() {

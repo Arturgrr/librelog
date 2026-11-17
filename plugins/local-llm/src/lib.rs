@@ -84,15 +84,16 @@ pub fn init<R: tauri::Runtime>(options: InitOptions<R>) -> tauri::plugin::TauriP
 
             let server = binary::resolve().map(|binary| {
                 let handle = app.clone();
-                ServerManager::new(
-                    ServerConfig::new(binary, base.join("local-llm")),
-                    move |state| {
-                        let _ = LlmServerStateChanged {
-                            state: state.clone(),
-                        }
-                        .emit(&handle);
-                    },
-                )
+                let mut config = ServerConfig::new(binary, base.join("local-llm"));
+                // Linux GPUs run through Vulkan, whose drivers vary; Metal
+                // is part of macOS.
+                config.cpu_fallback = cfg!(target_os = "linux");
+                ServerManager::new(config, move |state| {
+                    let _ = LlmServerStateChanged {
+                        state: state.clone(),
+                    }
+                    .emit(&handle);
+                })
             });
             match &server {
                 Ok(server) => {

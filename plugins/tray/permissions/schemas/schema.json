@@ -367,10 +367,22 @@
           "markdownDescription": "Denies the take_pending_tray_start command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-set-tray-icon-visible`\n- `allow-set-tray-labels`\n- `allow-set-tray-paste-last-visible`\n- `allow-set-tray-capture-visible`\n- `allow-set-tray-recording-title`\n- `allow-take-pending-tray-start`",
+          "description": "Enables the tray_icon_shown_by_desktop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tray-icon-shown-by-desktop",
+          "markdownDescription": "Enables the tray_icon_shown_by_desktop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tray_icon_shown_by_desktop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tray-icon-shown-by-desktop",
+          "markdownDescription": "Denies the tray_icon_shown_by_desktop command without any pre-configured scope."
+        },
+        {
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-set-tray-icon-visible`\n- `allow-set-tray-labels`\n- `allow-set-tray-paste-last-visible`\n- `allow-set-tray-capture-visible`\n- `allow-set-tray-recording-title`\n- `allow-take-pending-tray-start`\n- `allow-tray-icon-shown-by-desktop`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-set-tray-icon-visible`\n- `allow-set-tray-labels`\n- `allow-set-tray-paste-last-visible`\n- `allow-set-tray-capture-visible`\n- `allow-set-tray-recording-title`\n- `allow-take-pending-tray-start`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-set-tray-icon-visible`\n- `allow-set-tray-labels`\n- `allow-set-tray-paste-last-visible`\n- `allow-set-tray-capture-visible`\n- `allow-set-tray-recording-title`\n- `allow-take-pending-tray-start`\n- `allow-tray-icon-shown-by-desktop`"
         }
       ]
     }

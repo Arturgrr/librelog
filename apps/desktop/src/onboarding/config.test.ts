@@ -27,7 +27,7 @@ it.each([
   ],
   ["macos", true, ["permissions", "transcription", "intelligence", "final"]],
   ["windows", false, ["transcription", "intelligence", "final"]],
-  ["linux", false, ["transcription", "intelligence", "final"]],
+  ["linux", false, ["transcription", "intelligence", "capture", "final"]],
 ])(
   "sets up transcription and intelligence (and offers Capture outside the App Store build) before finishing on %s, App Store %s",
   (platform, appStore, steps) => {

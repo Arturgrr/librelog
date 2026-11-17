@@ -16,6 +16,12 @@ Default permissions for the plugin
 - `allow-set-retention`
 - `allow-annotations-dir`
 - `allow-latest`
+- `allow-surface`
+- `allow-ink-pointer`
+- `allow-ink-escape`
+- `allow-capsule-pressed`
+- `allow-surface-ready`
+- `allow-forget-screen-choice`
 
 ## Permission Table
 
@@ -81,6 +87,32 @@ Denies the cancel command without any pre-configured scope.
 <tr>
 <td>
 
+`annotate:allow-capsule-pressed`
+
+</td>
+<td>
+
+Enables the capsule_pressed command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-capsule-pressed`
+
+</td>
+<td>
+
+Denies the capsule_pressed command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `annotate:allow-finalize`
 
 </td>
@@ -100,6 +132,84 @@ Enables the finalize command without any pre-configured scope.
 <td>
 
 Denies the finalize command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-forget-screen-choice`
+
+</td>
+<td>
+
+Enables the forget_screen_choice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-forget-screen-choice`
+
+</td>
+<td>
+
+Denies the forget_screen_choice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-ink-escape`
+
+</td>
+<td>
+
+Enables the ink_escape command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-ink-escape`
+
+</td>
+<td>
+
+Denies the ink_escape command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-ink-pointer`
+
+</td>
+<td>
+
+Enables the ink_pointer command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-ink-pointer`
+
+</td>
+<td>
+
+Denies the ink_pointer command without any pre-configured scope.
 
 </td>
 </tr>
@@ -334,6 +444,58 @@ Enables the stop command without any pre-configured scope.
 <td>
 
 Denies the stop command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-surface`
+
+</td>
+<td>
+
+Enables the surface command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-surface`
+
+</td>
+<td>
+
+Denies the surface command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-surface-ready`
+
+</td>
+<td>
+
+Enables the surface_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-surface-ready`
+
+</td>
+<td>
+
+Denies the surface_ready command without any pre-configured scope.
 
 </td>
 </tr>

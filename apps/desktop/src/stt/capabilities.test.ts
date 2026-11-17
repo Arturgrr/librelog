@@ -18,6 +18,8 @@ import {
   getOnDeviceTranscriptionConfig,
   getOnDeviceTranscriptionMode,
   getSpeakerRefinementTarget,
+  LOCAL_DIARIZATION_TARGET,
+  shouldRefineSpeakers,
   getSttModelTranscriptionMode,
   getTranscriptionLanguages,
   getUnsupportedDesktopLocalSttRepair,
@@ -217,6 +219,51 @@ describe("getSpeakerRefinementTarget", () => {
     expect(
       getSpeakerRefinementTarget("apple-speech", true, ["en"])?.model,
     ).toBe("soniqo-parakeet-batch");
+  });
+
+  test("separates voices without a batch model when Parakeet Batch is missing", () => {
+    expect(
+      getSpeakerRefinementTarget("soniqo-parakeet-streaming", false, ["en"]),
+    ).toEqual(LOCAL_DIARIZATION_TARGET);
+    expect(getSpeakerRefinementTarget("deepgram-nova-3", false, [])).toBe(null);
+  });
+});
+
+describe("shouldRefineSpeakers", () => {
+  const word = (channel: number, start_ms: number, end_ms: number) => ({
+    channel,
+    start_ms,
+    end_ms,
+  });
+  const mic = [word(0, 0, 400), word(0, 400, 900)];
+  const call = [...mic, word(1, 1_000, 6_000)];
+
+  test.each([
+    { name: "in person, nobody listed", words: mic, remotes: 0, refine: true },
+    {
+      name: "in person, one remote listed",
+      words: mic,
+      remotes: 1,
+      refine: true,
+    },
+    {
+      name: "in person, a stray remote word",
+      words: [...mic, word(1, 1_000, 2_000)],
+      remotes: 1,
+      refine: true,
+    },
+    { name: "1:1 call", words: call, remotes: 1, refine: false },
+    {
+      name: "1:1 call with untimed remote words",
+      words: [...mic, ...Array.from({ length: 20 }, () => ({ channel: 1 }))],
+      remotes: 1,
+      refine: false,
+    },
+    { name: "call, nobody listed", words: call, remotes: 0, refine: true },
+    { name: "group call", words: call, remotes: 2, refine: true },
+    { name: "nothing said", words: [], remotes: 0, refine: false },
+  ])("$name -> $refine", ({ words, remotes, refine }) => {
+    expect(shouldRefineSpeakers(words, remotes)).toBe(refine);
   });
 });
 

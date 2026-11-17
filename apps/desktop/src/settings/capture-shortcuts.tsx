@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import { type ReactNode, useId } from "react";
 
 import { commands as shortcutCommands } from "@anlg/plugin-shortcut";
@@ -7,6 +8,7 @@ import { X } from "@anlg/ui/components/icons";
 import { Button } from "@anlg/ui/components/ui/button";
 import { Switch } from "@anlg/ui/components/ui/switch";
 
+import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import {
   ShortcutCapture,
   ShortcutCaptureHint,
@@ -20,6 +22,7 @@ import { useAnnotateShortcuts } from "~/annotate/system";
 import {
   CAPTURE_SHORTCUT_KEYS,
   type CaptureAction,
+  captureOnLinux,
   useCaptureShortcutMap,
 } from "~/capture/system";
 import { useSystemShortcuts } from "~/capture/system-shortcuts";
@@ -33,10 +36,16 @@ function useRows(): Record<
   { title: ReactNode; description: ReactNode; captureLabel: string }
 > {
   const { t } = useLingui();
+  const linux = captureOnLinux();
   return {
     area: {
       title: <Trans>Capture area</Trans>,
-      description: (
+      description: linux ? (
+        <Trans>
+          Opens your desktop's screenshot tool, where you pick an area, a window
+          or the screen.
+        </Trans>
+      ) : (
         <Trans>
           Drag over what you want. Space switches to picking a window.
         </Trans>
@@ -45,17 +54,32 @@ function useRows(): Record<
     },
     fullscreen: {
       title: <Trans>Capture full screen</Trans>,
-      description: <Trans>Takes the display under the pointer at once.</Trans>,
+      description: linux ? (
+        <Trans>Takes the whole screen at once.</Trans>
+      ) : (
+        <Trans>Takes the display under the pointer at once.</Trans>
+      ),
       captureLabel: t`New Capture full screen shortcut`,
     },
     window: {
       title: <Trans>Capture window</Trans>,
-      description: <Trans>Click the window you want.</Trans>,
+      description: linux ? (
+        <Trans>
+          Opens your desktop's screenshot tool, where you pick the window.
+        </Trans>
+      ) : (
+        <Trans>Click the window you want.</Trans>
+      ),
       captureLabel: t`New Capture window shortcut`,
     },
     record: {
       title: <Trans>Record screen</Trans>,
-      description: (
+      description: linux ? (
+        <Trans>
+          Records a movie (MP4, or WebM when no H.264 encoder is installed) of
+          an area, a window or the whole screen. Press it again to stop.
+        </Trans>
+      ) : (
         <Trans>
           Records a movie (MP4) of an area, a window or the whole screen. Press
           it again to stop.
@@ -178,6 +202,17 @@ export function CaptureShortcutRows({
           </SettingRow>
         );
       })}
+      {platform() === "linux" && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>
+            On Wayland, your desktop asks you to approve each new shortcut and
+            may let you choose other keys; Librelog shows the keys it uses.
+          </Trans>
+        </p>
+      )}
+      <DesktopShortcutsNote
+        shortcuts={actions.map((action) => current[action]).filter(Boolean)}
+      />
       {recorder.editing !== null && (
         <ShortcutCaptureHint id={hintId} doubleTap={false} />
       )}
@@ -190,8 +225,12 @@ export function CaptureShortcutRows({
   );
 }
 
-/** The switch that hands ⌘⇧3, ⌘⇧4 and ⌘⇧5 to Librelog, and its state. */
+/** The switch that hands ⌘⇧3, ⌘⇧4 and ⌘⇧5 to Librelog; macOS only. */
 export function ReplaceSystemShortcuts() {
+  return captureOnLinux() ? null : <MacShortcutsSwitch />;
+}
+
+function MacShortcutsSwitch() {
   const system = useSystemShortcuts();
   const status = system.status.data;
   const state = system.status.isError

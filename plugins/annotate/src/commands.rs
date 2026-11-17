@@ -98,9 +98,12 @@ pub(crate) async fn cancel<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Resul
     session(&app).cancel().await.map_err(text)
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum InkMode {
+    #[default]
     Off,
     /// The pointer inks as it moves: while the shortcut is held.
     Hover,
@@ -174,4 +177,123 @@ pub(crate) async fn latest<R: tauri::Runtime>(
         .await
         .map_err(|error| error.to_string())?
         .map_err(text)
+}
+
+#[cfg(target_os = "linux")]
+fn linux<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<Arc<crate::linux::Linux>> {
+    app.try_state::<Arc<crate::linux::Linux>>()
+        .map(|linux| linux.inner().clone())
+}
+
+/// Only the Linux overlay's and capsule's own windows may speak for them.
+fn from<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, labels: &[&str]) -> Result<()> {
+    if labels.contains(&window.label()) {
+        Ok(())
+    } else {
+        Err(format!("not for the {} window", window.label()))
+    }
+}
+
+const INK: &str = "annotate-ink";
+const CAPSULE: &str = "annotate-capsule";
+
+/// What the Linux ink overlay and capsule show; null while nothing records
+/// there, and always elsewhere.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn surface<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+) -> Result<Option<crate::events::AnnotateSurface>> {
+    from(&window, &[INK, CAPSULE])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        return Ok(linux.surface());
+    }
+    let _ = app;
+    Ok(None)
+}
+
+/// The Linux overlay's or capsule's page mounted: it may be shown.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn surface_ready<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+) -> Result<()> {
+    from(&window, &[INK, CAPSULE])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.loaded(window.label());
+    }
+    let _ = app;
+    Ok(())
+}
+
+/// The Linux ink overlay's pointer, in its own points: `move`, `down`, `up`
+/// or `leave`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_pointer<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    kind: String,
+    x: f64,
+    y: f64,
+) -> Result<()> {
+    from(&window, &[INK])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.pointer(&kind, x, y);
+    }
+    let _ = (app, kind, x, y);
+    Ok(())
+}
+
+/// A right click on the Linux ink overlay: drawing stops.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_escape<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+) -> Result<()> {
+    from(&window, &[INK])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.escape();
+    }
+    let _ = app;
+    Ok(())
+}
+
+/// A button of the Linux capsule: `pen`, `stop`, `discard`,
+/// `confirm_discard` or `keep`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn capsule_pressed<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    target: String,
+) -> Result<()> {
+    from(&window, &[CAPSULE])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        linux.press(&target);
+    }
+    let _ = (app, target);
+    Ok(())
+}
+
+/// Linux: the next annotation asks which screen to share again.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn forget_screen_choice<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        return linux.forget_screen().map_err(|error| text(error.into()));
+    }
+    let _ = app;
+    Ok(())
 }

@@ -29,7 +29,7 @@ const MINE = {
   capture_shortcut_gif: "Alt+Shift+Digit6",
 };
 
-function setup(replaceAnswer = OFF) {
+function setup(replaceAnswer = OFF, available = true) {
   let stored = {
     ...MINE,
     capture_replace_system_shortcuts: false,
@@ -48,6 +48,7 @@ function setup(replaceAnswer = OFF) {
     save: vi.fn(async (values) => {
       stored = { ...stored, ...values };
     }),
+    available: () => available,
   };
   return {
     toggle: createSystemShortcutSwitch(deps),
@@ -107,5 +108,12 @@ describe("Replacing the macOS screenshot shortcuts", () => {
       capture_enabled: false,
       capture_replace_system_shortcuts: false,
     });
+  });
+
+  it("turns Capture off on Linux, which has no macOS shortcuts to ask about", async () => {
+    const { toggle, plugin, stored } = setup(OFF, false);
+    plugin.read.mockRejectedValue(new Error("only on macOS"));
+    await toggle.disableCapture();
+    expect(stored().capture_enabled).toBe(false);
   });
 });

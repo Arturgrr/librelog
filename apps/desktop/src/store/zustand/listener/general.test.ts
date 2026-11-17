@@ -730,6 +730,47 @@ describe("General Listener Slice", () => {
       ).toEqual(Array(4).fill({ source: "synthetic_text", chunk_start_ms: 0 }));
     });
 
+    test("handleBatchResponse marks the shared mic of an in-person meeting so a save keeps it mixed", () => {
+      const sessionId = "session-shared-mic";
+      const persist = vi.fn();
+      const { handleBatchStarted, handleBatchResponse, setBatchPersist } =
+        store.getState();
+      handleBatchStarted(sessionId);
+      setBatchPersist(sessionId, persist);
+      handleBatchResponse(sessionId, {
+        metadata: { diarization: { shared_mic: true } },
+        results: {
+          channels: [
+            {
+              alternatives: [
+                {
+                  transcript: "hello there",
+                  confidence: 1,
+                  words: ["hello", "there"].map((word, index) => ({
+                    word,
+                    punctuated_word: word,
+                    start: index,
+                    end: index + 0.5,
+                    confidence: 1,
+                    channel: 2,
+                    speaker: index,
+                  })),
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const words = persist.mock.calls[0]?.[0];
+      expect(
+        words.map(
+          (word: { metadata: { shared_mic?: boolean } }) =>
+            word.metadata.shared_mic,
+        ),
+      ).toEqual([true, true]);
+    });
+
     test("handleBatchResponse finds chunk boundaries with unordered chunks and words", () => {
       const sessionId = "session-unordered-synthetic-chunks";
       const persist = vi.fn();

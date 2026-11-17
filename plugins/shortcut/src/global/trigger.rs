@@ -46,8 +46,8 @@ pub(super) fn portal_trigger(key: Shortcut) -> Result<String, String> {
         "Comma" => "comma".into(),
         "Period" => "period".into(),
         "Slash" => "slash".into(),
-        "PageUp" => "Prior".into(),
-        "PageDown" => "Next".into(),
+        "PageUp" => "Page_Up".into(),
+        "PageDown" => "Page_Down".into(),
         "CapsLock" => "Caps_Lock".into(),
         "ContextMenu" => "Menu".into(),
         "NumLock" => "Num_Lock".into(),
@@ -56,7 +56,8 @@ pub(super) fn portal_trigger(key: Shortcut) -> Result<String, String> {
         "IntlBackslash" => "backslash".into(),
         "IntlYen" => "yen".into(),
         "Tab" | "Escape" | "Delete" | "Insert" | "Home" | "End" | "Pause" => code.clone(),
-        value if value.strip_prefix("Key").is_some_and(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_uppercase()) => value[3..].into(),
+        // xkb names letters in lower case, as the desktops store them.
+        value if value.strip_prefix("Key").is_some_and(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_uppercase()) => value[3..].to_ascii_lowercase(),
         value if value.strip_prefix("Digit").is_some_and(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_digit()) => value[5..].into(),
         value if value.strip_prefix('F').and_then(|s| s.parse::<u8>().ok()).is_some_and(|n| (1..=35).contains(&n)) => code.clone(),
         _ => return Err(format!("The {code} key is not supported for Wayland dictation shortcuts. Choose another key.")),
@@ -72,8 +73,8 @@ mod tests {
     #[test]
     fn translates_portal_keys_without_forwarding_web_code_names() {
         for (key, expected) in [
-            (Code::PageUp, "Prior"),
-            (Code::PageDown, "Next"),
+            (Code::PageUp, "Page_Up"),
+            (Code::PageDown, "Page_Down"),
             (Code::CapsLock, "Caps_Lock"),
             (Code::ContextMenu, "Menu"),
             (Code::NumLock, "Num_Lock"),
@@ -83,7 +84,7 @@ mod tests {
             (Code::IntlYen, "yen"),
             (Code::NumpadComma, "KP_Separator"),
             (Code::NumpadEqual, "KP_Equal"),
-            (Code::KeyD, "D"),
+            (Code::KeyD, "d"),
             (Code::Digit1, "1"),
             (Code::F12, "F12"),
             (Code::Numpad5, "KP_5"),

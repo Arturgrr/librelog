@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-ink-pointer"
+description = "Enables the ink_pointer command without any pre-configured scope."
+commands.allow = ["ink_pointer"]
+
+[[permission]]
+identifier = "deny-ink-pointer"
+description = "Denies the ink_pointer command without any pre-configured scope."
+commands.deny = ["ink_pointer"]

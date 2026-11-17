@@ -4,8 +4,8 @@ use tauri::Manager;
 
 use crate::session::{Session, blocking};
 use crate::types::{
-    CaptureEntry, CaptureOutcome, CaptureStatus, RecordingRequest, RecordingStart,
-    ScreenshotRequest, SystemShortcuts,
+    AreaChoice, AreaFrame, CaptureCards, CaptureEntry, CaptureOutcome, CaptureStatus,
+    RecordingRequest, RecordingStart, ScreenshotRequest, SystemShortcuts,
 };
 use crate::{Error, system};
 
@@ -189,4 +189,103 @@ pub(crate) async fn restore_system_shortcuts<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<SystemShortcuts> {
     on_worker(&app, |session| system::restore(&session.layout)).await
+}
+
+#[cfg(target_os = "linux")]
+fn overlays<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<Arc<crate::linux::Overlays>> {
+    app.try_state::<Arc<crate::linux::Overlays>>()
+        .map(|state| state.inner().clone())
+}
+
+/// The cards up, for the Linux card window; none elsewhere.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn card_stack<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<CaptureCards> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        return Ok(overlays.cards());
+    }
+    let _ = app;
+    Ok(CaptureCards::default())
+}
+
+/// A button on a Linux card: `copy`, `save`, `edit`, `open` or `close`.
+/// False when that card is gone.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn card_pressed<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+    action: String,
+) -> Result<bool> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        return Ok(overlays.press(&id, &action));
+    }
+    let _ = (app, id, action);
+    Ok(false)
+}
+
+/// The pointer entered (or left) a Linux card, which then stays.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn card_hovered<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+    hovered: bool,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        overlays.hover(&id, hovered);
+        return Ok(());
+    }
+    let _ = (app, id, hovered);
+    Ok(())
+}
+
+/// What the Linux area selector shows; null when no selector is up.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn area_frame<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Option<AreaFrame>> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        return Ok(overlays.area_frame());
+    }
+    let _ = app;
+    Ok(None)
+}
+
+/// Forgets the screen the Linux sharing dialog remembers, so the next
+/// recording asks which screen to record again. Nothing to do elsewhere.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn forget_screen_choice<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        return overlays.forget_screen().map_err(|error| error.to_string());
+    }
+    let _ = app;
+    Ok(())
+}
+
+/// The Linux area selector's answer.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn area_chosen<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    choice: AreaChoice,
+) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(overlays) = overlays(&app) {
+        overlays.choose_area(choice);
+        return Ok(());
+    }
+    let _ = (app, choice);
+    Ok(())
 }

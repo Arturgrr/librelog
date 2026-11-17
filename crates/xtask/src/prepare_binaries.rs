@@ -2,16 +2,35 @@ use anyhow::{Context, Result};
 use std::{env, fs, path::PathBuf, process::Command};
 use xshell::{Shell, cmd};
 
+/// Only the built-in model server, for its end-to-end tests.
+pub(crate) fn prepare_llama_server() -> Result<()> {
+    let src_tauri = crate::repo_root().join("apps/desktop/src-tauri");
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let sh = Shell::new()?;
+    sh.change_dir(&src_tauri);
+    let target_dir = target_dir(&sh, &cargo)?;
+    crate::llama_server::prepare(
+        &sh,
+        &target_triple()?,
+        &target_dir,
+        &src_tauri.join("binaries"),
+    )
+}
+
+fn target_triple() -> Result<String> {
+    match env::var("TAURI_ENV_TARGET_TRIPLE") {
+        Ok(v) => Ok(v),
+        Err(_) => rustc_host_triple(),
+    }
+}
+
 pub(crate) fn prepare_binaries() -> Result<()> {
     let root_dir = crate::repo_root();
     let src_tauri = root_dir.join("apps/desktop/src-tauri");
     let binaries_dir = src_tauri.join("binaries");
     let embedded_cli_dir = src_tauri.join("resources").join("cli");
 
-    let triple = match env::var("TAURI_ENV_TARGET_TRIPLE") {
-        Ok(v) => v,
-        Err(_) => rustc_host_triple()?,
-    };
+    let triple = target_triple()?;
     let ext = if triple.contains("windows") {
         ".exe"
     } else {

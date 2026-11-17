@@ -21,6 +21,8 @@ import { Toaster } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { AITaskWindowSyncBridge } from "./ai/task-window-sync";
+import { AnnotateCapsuleScreen } from "./annotate/linux/capsule";
+import { AnnotateInkScreen } from "./annotate/linux/ink";
 import { createToolRegistry } from "./contexts/tool-registry/core";
 import { AppI18nProvider } from "./i18n/provider";
 import { AppLockGate } from "./lock/gate";
@@ -40,6 +42,7 @@ import { useConfigValue } from "./shared/config";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
 import { LongLoadGate } from "./shared/long-load-gate";
 import { startInteractionProfiler } from "./shared/perf/interaction-profiler";
+import { initializeSelfUpdate } from "./shared/self-update";
 import { bootstrapThemeFromSettings } from "./shared/theme/apply";
 import { AppThemeProvider } from "./shared/theme/provider";
 import type { ThemePreference } from "./shared/theme/resolve";
@@ -124,7 +127,17 @@ function ReadyApp() {
 
 initWindowsPlugin();
 
-const isMainWindow = getCurrentWebviewWindowLabel() === "main";
+const windowLabel: string = getCurrentWebviewWindowLabel();
+const isMainWindow = windowLabel === "main";
+// Annotate's overlay and capsule on Linux cover the recorded screen: they
+// render at once, outside the router and the loading and lock gates, so
+// nothing opaque ever shows there.
+const AnnotateSurface =
+  windowLabel === "annotate-ink"
+    ? AnnotateInkScreen
+    : windowLabel === "annotate-capsule"
+      ? AnnotateCapsuleScreen
+      : null;
 
 if (isMainWindow) {
   void initializeAppExitFlush().catch((error) => {
@@ -139,7 +152,11 @@ async function renderApp() {
     startInteractionProfiler();
   }
 
-  await Promise.all([bootstrapThemeFromSettings(), initializeAppStoreBuild()]);
+  await Promise.all([
+    bootstrapThemeFromSettings(),
+    initializeAppStoreBuild(),
+    initializeSelfUpdate(),
+  ]);
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
@@ -148,7 +165,13 @@ async function renderApp() {
   );
 }
 
-if (!rootElement.innerHTML) {
+if (AnnotateSurface) {
+  ReactDOM.createRoot(rootElement).render(
+    <StrictMode>
+      <AnnotateSurface />
+    </StrictMode>,
+  );
+} else if (!rootElement.innerHTML) {
   void renderApp();
 }
 

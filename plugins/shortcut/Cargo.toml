@@ -10,6 +10,7 @@ tauri-plugin = { workspace = true, features = ["build"] }
 
 [dev-dependencies]
 specta-typescript = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [dependencies]
 serde = { workspace = true }
@@ -27,5 +28,6 @@ tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 anlg-shortcut-macos = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+anlg-desktop-portal = { workspace = true }
 ashpd = { workspace = true, features = ["tokio", "global_shortcuts"] }
 futures-util = { workspace = true }

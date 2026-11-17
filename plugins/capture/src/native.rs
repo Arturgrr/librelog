@@ -2,6 +2,7 @@
 //! in tests, and the JSON it answers with.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use anlg_annotate_macos::{AnnotateError, capture, codes};
 use serde::Deserialize;
@@ -31,6 +32,35 @@ pub trait Native: Send + Sync + 'static {
 
 /// The real one: the Swift package on macOS, `unsupported` elsewhere.
 pub struct System;
+
+/// This system's native layer: [`crate::linux`] on Linux (whose card and
+/// area windows' commands find their state through `app`), [`System`]
+/// elsewhere. `root` is the captures folder.
+#[cfg(target_os = "linux")]
+pub fn system(app: &tauri::AppHandle<tauri::Wry>, root: &Path) -> Arc<dyn Native> {
+    use tauri::Manager;
+    // The card and the selector load thumbnails and the frozen picture,
+    // which may be under a hidden folder (`~/.local/share`) the asset
+    // protocol's `**` does not reach.
+    if let Err(error) = app.asset_protocol_scope().allow_directory(root, true) {
+        tracing::warn!(%error, "capture asset scope");
+    }
+    match crate::linux::Linux::desktop(app.clone(), root, app.path().picture_dir().ok()) {
+        Ok((linux, overlays)) => {
+            app.manage(Arc::new(overlays));
+            linux
+        }
+        Err(error) => {
+            tracing::warn!(%error, "capture on Linux could not start");
+            Arc::new(System)
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn system(_app: &tauri::AppHandle<tauri::Wry>, _root: &Path) -> Arc<dyn Native> {
+    Arc::new(System)
+}
 
 fn failure(code: &str, message: impl std::fmt::Display) -> AnnotateError {
     AnnotateError {

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-forget-screen-choice"
+description = "Enables the forget_screen_choice command without any pre-configured scope."
+commands.allow = ["forget_screen_choice"]
+
+[[permission]]
+identifier = "deny-forget-screen-choice"
+description = "Denies the forget_screen_choice command without any pre-configured scope."
+commands.deny = ["forget_screen_choice"]

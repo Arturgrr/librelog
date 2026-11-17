@@ -9,6 +9,8 @@ pub const MANIFEST: &str = "annotation.json";
 /// The manifest format this crate writes.
 pub const VERSION: u32 = 1;
 pub const VIDEO_FILE: &str = "recording.mp4";
+/// The movie when the host had no H.264 encoder (Linux without one).
+pub const WEBM_VIDEO_FILE: &str = "recording.webm";
 pub const AUDIO_FILE: &str = "audio.wav";
 pub const SUMMARY_FILE: &str = "summary.md";
 pub const CONTACT_SHEET_FILE: &str = "contact-sheet.png";

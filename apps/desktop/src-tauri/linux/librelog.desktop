@@ -1,0 +1,12 @@
+[Desktop Entry]
+# The bundler names this entry after the product. The launcher is
+# <identifier>.desktop (linux/app.desktop.in, which linux-bundles.sh fills in
+# and adds to the packages): the desktop portals know Librelog by that
+# reverse-DNS id, and GNOME before 51 refuses any other. This one stays for
+# whatever opens Librelog by its old name, hidden so only one launcher shows.
+Type=Application
+Name={{name}}
+Exec=/usr/bin/{{exec}} %u
+Icon={{icon}}
+Terminal=false
+NoDisplay=true

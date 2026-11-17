@@ -404,6 +404,10 @@ msgstr "A participant declined recording. Librelog stopped listening."
 msgid "A preview in the corner of the screen to copy, save or edit the capture, or drag it into another app."
 msgstr "A preview in the corner of the screen to copy, save or edit the capture, or drag it into another app."
 
+#: src/settings/capture.tsx
+msgid "A preview in the corner of the screen to copy, save or edit the capture."
+msgstr "A preview in the corner of the screen to copy, save or edit the capture."
+
 #: src/onboarding/welcome-note.ts
 msgid "A quick introduction to Librelog."
 msgstr "A quick introduction to Librelog."
@@ -411,6 +415,10 @@ msgstr "A quick introduction to Librelog."
 #: src/settings/annotate.tsx
 msgid "A recording holds everything shown on the display under the pointer, what your microphone hears, your red marks, and the name and title of the app in front. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
 msgstr "A recording holds everything shown on the display under the pointer, what your microphone hears, your red marks, and the name and title of the app in front. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
+
+#: src/settings/annotate.tsx
+msgid "A recording holds everything shown on the screen you share, what your microphone hears and your red marks. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
+msgstr "A recording holds everything shown on the screen you share, what your microphone hears and your red marks. Each one is a folder on this computer, in Librelog's data folder under annotations, with the video, the audio, the key frames, a contact sheet and a summary. Your narration is transcribed by your transcription provider. Nothing else leaves this computer until you paste it somewhere: then it goes to that app and its provider."
 
 #: src/i18n/external-messages.ts
 msgid "A screenshot or recording is already in progress."
@@ -757,8 +765,8 @@ msgid "Annotate"
 msgstr "Annotate"
 
 #: src/settings/annotate.tsx
-msgid "Annotate is available in the macOS app downloaded from the website."
-msgstr "Annotate is available in the macOS app downloaded from the website."
+msgid "Annotate is available in the macOS and Linux apps downloaded from the website."
+msgstr "Annotate is available in the macOS and Linux apps downloaded from the website."
 
 #: src/i18n/external-messages.ts
 msgid "Annotate is only available in the macOS app."
@@ -771,6 +779,10 @@ msgstr "Annotate shortcut"
 #: src/annotate/lifecycle.tsx
 msgid "Annotation ready"
 msgstr "Annotation ready"
+
+#: src/annotate/lifecycle.tsx
+msgid "Another recording is being transcribed on this computer. The annotation will be ready when it finishes."
+msgstr "Another recording is being transcribed on this computer. The annotation will be ready when it finishes."
 
 #: src/annotate/lifecycle.tsx
 msgid "Another recording is being transcribed on this Mac. The annotation will be ready when it finishes."
@@ -870,6 +882,10 @@ msgstr "Apply to summary"
 msgid "Applying…"
 msgstr "Applying…"
 
+#: src/settings/desktop-shortcuts.tsx
+msgid "Approve Librelog's shortcuts in your desktop's prompt."
+msgstr "Approve Librelog's shortcuts in your desktop's prompt."
+
 #: src/stt/detect-events.ts
 msgid "Are you in a meeting?"
 msgstr "Are you in a meeting?"
@@ -894,6 +910,15 @@ msgstr "Ask Librelog AI anything"
 #: src/shared/chat-cta.tsx
 msgid "Ask Librelog anything"
 msgstr "Ask Librelog anything"
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Ask my desktop again"
+msgstr "Ask my desktop again"
+
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Ask which screen to record again"
+msgstr "Ask which screen to record again"
 
 #: src/session/components/outer-header/overflow/assign-speakers-dialog.tsx
 msgid "Assign speakers"
@@ -1120,6 +1145,10 @@ msgid "Berlin"
 msgstr "Berlin"
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Best for this computer"
+msgstr "Best for this computer"
+
+#: src/settings/ai/llm/builtin.tsx
 #: src/settings/ai/stt/model-rows.tsx
 msgid "Best for this Mac"
 msgstr "Best for this Mac"
@@ -1209,6 +1238,7 @@ msgid "Can’t transcribe all your languages together."
 msgstr "Can’t transcribe all your languages together."
 
 #: src/capture/editor/index.tsx
+#: src/capture/linux/area.tsx
 #: src/i18n/native-labels.tsx
 #: src/session/components/outer-header/overflow/assign-speakers-dialog.tsx
 #: src/settings/ai/llm/subscriptions/connect.tsx
@@ -1239,6 +1269,10 @@ msgstr "Cancel download"
 #: src/onboarding/index.tsx
 msgid "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on this Mac."
 msgstr "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on this Mac."
+
+#: src/onboarding/index.tsx
+msgid "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on your computer."
+msgstr "Capture an area, a window or the whole screen, record it as a movie or a GIF, and mark it up, with shortcuts that work in any app. Everything stays on your computer."
 
 #: src/i18n/external-messages.ts
 #: src/settings/capture-shortcuts.tsx
@@ -1274,6 +1308,10 @@ msgstr "Capture window"
 #: src/settings/capture.tsx
 msgid "Captures stay on this Mac, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
 msgstr "Captures stay on this Mac, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
+
+#: src/settings/capture.tsx
+msgid "Captures stay on your computer, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
+msgstr "Captures stay on your computer, in the folder you choose or in Librelog's data folder. Nothing leaves it until you paste or share a capture: then it goes wherever you paste it."
 
 #: src/settings/general/timezone.tsx
 msgid "Central Time"
@@ -1983,6 +2021,10 @@ msgid "Could not preserve the clipboard. Copy your last dictation from Settings 
 msgstr "Could not preserve the clipboard. Copy your last dictation from Settings > Dictation."
 
 #: src/i18n/external-messages.ts
+msgid "Could not put your dictation on the clipboard. Copy your last dictation from Settings > Dictation."
+msgstr "Could not put your dictation on the clipboard. Copy your last dictation from Settings > Dictation."
+
+#: src/i18n/external-messages.ts
 msgid "Could not read the macOS shortcut settings: {rest}"
 msgstr "Could not read the macOS shortcut settings: {rest}"
 
@@ -2673,6 +2715,10 @@ msgstr "Drag to capture · Space for a window · Esc to cancel"
 msgid "Drag to record · Space for a window · Return for the whole screen · Esc to cancel"
 msgstr "Drag to record · Space for a window · Return for the whole screen · Esc to cancel"
 
+#: src/annotate/lifecycle.tsx
+msgid "Draw"
+msgstr "Draw"
+
 #: src/session/components/note-input/audio-drop-target.tsx
 msgid "Drop to upload and transcribe audio"
 msgstr "Drop to upload and transcribe audio"
@@ -3210,6 +3256,10 @@ msgstr "GitHub Copilot authorization failed."
 #: src/i18n/external-messages.ts
 msgid "Global shortcuts are unavailable in this desktop session."
 msgstr "Global shortcuts are unavailable in this desktop session."
+
+#: src/settings/general/app-settings.tsx
+msgid "GNOME shows tray icons only with the AppIndicator extension. Until it's on, closing the window minimizes Librelog instead of hiding it. To quit Librelog, choose File › Quit Librelog or press Control + Q."
+msgstr "GNOME shows tray icons only with the AppIndicator extension. Until it's on, closing the window minimizes Librelog instead of hiding it. To quit Librelog, choose File › Quit Librelog or press Control + Q."
 
 #: src/sidebar/timeline/index.tsx
 msgid "Go back to now"
@@ -4318,6 +4368,10 @@ msgid "Minimize"
 msgstr "Minimize"
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Mistral AI's 3-billion-parameter multilingual model, for computers with less memory."
+msgstr "Mistral AI's 3-billion-parameter multilingual model, for computers with less memory."
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "Mistral AI's 3-billion-parameter multilingual model, for Macs with less memory."
 msgstr "Mistral AI's 3-billion-parameter multilingual model, for Macs with less memory."
 
@@ -5011,9 +5065,17 @@ msgstr "On device"
 msgid "On this computer"
 msgstr "On this computer"
 
+#: src/settings/capture-shortcuts.tsx
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses."
+msgstr "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses."
+
+#: src/settings/annotate.tsx
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Control + Alt + period turns drawing off, and holding the shortcut draws only where the desktop reports when you let go."
+msgstr "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Control + Alt + period turns drawing off, and holding the shortcut draws only where the desktop reports when you let go."
+
 #: src/settings/dictation.tsx
-msgid "On Wayland, approve the shortcuts in your desktop's prompt. Use Control + Alt + Escape to cancel. On X11, press Escape to cancel. The target app must expose an editable accessibility field."
-msgstr "On Wayland, approve the shortcuts in your desktop's prompt. Use Control + Alt + Escape to cancel. On X11, press Escape to cancel. The target app must expose an editable accessibility field."
+msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Use Control + Alt + period to cancel. On X11, press Escape to cancel. Where a field doesn't take text through accessibility, Librelog pastes it through the clipboard; on Wayland your desktop asks once to allow Librelog to control the keyboard for that."
+msgstr "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Use Control + Alt + period to cancel. On X11, press Escape to cancel. Where a field doesn't take text through accessibility, Librelog pastes it through the clipboard; on Wayland your desktop asks once to allow Librelog to control the keyboard for that."
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "On-device models can take a few minutes to warm up before text appears."
@@ -5022,6 +5084,10 @@ msgstr "On-device models can take a few minutes to warm up before text appears."
 #: src/settings/automations/workflow-builder.tsx
 msgid "Only notes of this subtype."
 msgstr "Only notes of this subtype."
+
+#: src/session/components/note-input/transcript/actions.ts
+msgid "Only one voice was found"
+msgstr "Only one voice was found"
 
 #: src/i18n/external-messages.ts
 msgid "Only screenshots can be edited."
@@ -5032,6 +5098,7 @@ msgctxt "device authentication reason"
 msgid "open"
 msgstr "open"
 
+#: src/capture/linux/cards.tsx
 #: src/settings/todo/permission.tsx
 msgid "Open"
 msgstr "Open"
@@ -5111,6 +5178,14 @@ msgstr "Opens System Settings and guides you to add Librelog to the {0} list."
 #: src/onboarding/final.tsx
 msgid "Opens when the models finish installing"
 msgstr "Opens when the models finish installing"
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Opens your desktop's screenshot tool, where you pick an area, a window or the screen."
+msgstr "Opens your desktop's screenshot tool, where you pick an area, a window or the screen."
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Opens your desktop's screenshot tool, where you pick the window."
+msgstr "Opens your desktop's screenshot tool, where you pick the window."
 
 #: src/onboarding/index.tsx
 msgid "Optional"
@@ -5316,6 +5391,10 @@ msgstr "Person for {0}: {personName}"
 msgid "Phone"
 msgstr "Phone"
 
+#: src/capture/linux/area.tsx
+msgid "Pick a window"
+msgstr "Pick a window"
+
 #: src/contacts/contact-page-header.tsx
 msgid "Pin"
 msgstr "Pin"
@@ -5433,6 +5512,10 @@ msgstr "Press the shortcut…"
 msgid "Press to start recording the display under the pointer, and again to finish. While recording, hold it to draw in red where the pointer goes; let go to stop drawing. Escape turns drawing off."
 msgstr "Press to start recording the display under the pointer, and again to finish. While recording, hold it to draw in red where the pointer goes; let go to stop drawing. Escape turns drawing off."
 
+#: src/settings/annotate.tsx
+msgid "Press to start recording the screen you share, and again to finish. While recording, hold it to draw in red where the pointer goes, for up to 8 seconds at a time; let go, click or right click to stop drawing."
+msgstr "Press to start recording the screen you share, and again to finish. While recording, hold it to draw in red where the pointer goes, for up to 8 seconds at a time; let go, click or right click to stop drawing."
+
 #: src/settings/general/notification.tsx
 msgid "Prevent selected apps from triggering meeting detection."
 msgstr "Prevent selected apps from triggering meeting detection."
@@ -5511,13 +5594,25 @@ msgstr "Quit Completely"
 msgid "Quit Completely…"
 msgstr "Quit Completely…"
 
+#: src/main/windows-title-bar.tsx
+msgid "Quit Librelog"
+msgstr "Quit Librelog"
+
 #: src/i18n/component-labels.tsx
 msgid "Quote"
 msgstr "Quote"
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Qwen's 4-billion-parameter model: good summaries at a size most computers can run."
+msgstr "Qwen's 4-billion-parameter model: good summaries at a size most computers can run."
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "Qwen's 4-billion-parameter model: good summaries at a size most Macs can run."
 msgstr "Qwen's 4-billion-parameter model: good summaries at a size most Macs can run."
+
+#: src/settings/ai/llm/builtin.tsx
+msgid "Qwen's 8-billion-parameter model: better summaries, for computers with 16 GB of memory or more."
+msgstr "Qwen's 8-billion-parameter model: better summaries, for computers with 16 GB of memory or more."
 
 #: src/settings/ai/llm/builtin.tsx
 msgid "Qwen's 8-billion-parameter model: better summaries, for Macs with 16 GB of memory or more."
@@ -5544,6 +5639,11 @@ msgstr "Read meeting controls and visible chat"
 #: src/settings/general/permissions.tsx
 msgid "Read meeting controls and visible chat."
 msgstr "Read meeting controls and visible chat."
+
+#. placeholder {0}: meetingMinutes(context)
+#: src/settings/ai/llm/builtin.tsx
+msgid "Reads about {0} minutes of meeting at once on this computer"
+msgstr "Reads about {0} minutes of meeting at once on this computer"
 
 #. placeholder {0}: meetingMinutes(context)
 #: src/settings/ai/llm/builtin.tsx
@@ -5639,6 +5739,10 @@ msgstr "Record system audio"
 msgid "Record the microphone"
 msgstr "Record the microphone"
 
+#: src/capture/linux/area.tsx
+msgid "Record whole screen"
+msgstr "Record whole screen"
+
 #: src/settings/general/permissions.tsx
 msgid "Record your voice in meetings and calls."
 msgstr "Record your voice in meetings and calls."
@@ -5692,6 +5796,10 @@ msgstr "Recording…"
 #: src/settings/capture.tsx
 msgid "Recordings"
 msgstr "Recordings"
+
+#: src/settings/capture-shortcuts.tsx
+msgid "Records a movie (MP4, or WebM when no H.264 encoder is installed) of an area, a window or the whole screen. Press it again to stop."
+msgstr "Records a movie (MP4, or WebM when no H.264 encoder is installed) of an area, a window or the whole screen. Press it again to stop."
 
 #: src/settings/capture-shortcuts.tsx
 msgid "Records a movie (MP4) of an area, a window or the whole screen. Press it again to stop."
@@ -6009,6 +6117,10 @@ msgid "Run a model on this computer, sign in with a subscription or use an API k
 msgstr "Run a model on this computer, sign in with a subscription or use an API key. It’s the same list as Settings › Intelligence."
 
 #: src/onboarding/model-setup.tsx
+msgid "Run Intelligence on this computer"
+msgstr "Run Intelligence on this computer"
+
+#: src/onboarding/model-setup.tsx
 msgid "Run Intelligence on this Mac"
 msgstr "Run Intelligence on this Mac"
 
@@ -6105,6 +6217,11 @@ msgstr "Screen Recording"
 msgid "Screen Recording is not allowed for Librelog."
 msgstr "Screen Recording is not allowed for Librelog."
 
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Screen to record"
+msgstr "Screen to record"
+
 #: src/capture/editor/toolbar.tsx
 msgid "Screenshot editor"
 msgstr "Screenshot editor"
@@ -6127,8 +6244,8 @@ msgid "Screenshots and recordings are only available in the macOS app."
 msgstr "Screenshots and recordings are only available in the macOS app."
 
 #: src/settings/capture.tsx
-msgid "Screenshots and screen recordings are available in the macOS app downloaded from the website."
-msgstr "Screenshots and screen recordings are available in the macOS app downloaded from the website."
+msgid "Screenshots and screen recordings are available in the macOS and Linux apps downloaded from the website."
+msgstr "Screenshots and screen recordings are available in the macOS and Linux apps downloaded from the website."
 
 #: src/session/components/note-input/transcript/renderer/index.tsx
 msgid "Scroll to bottom"
@@ -6337,13 +6454,13 @@ msgstr "sent"
 msgid "Seoul"
 msgstr "Seoul"
 
+#: src/session/components/note-input/header-transcript.tsx
+msgid "Separate speakers"
+msgstr "Separate speakers"
+
 #: src/settings/general/audio-settings.tsx
 msgid "Separate speakers after meetings"
 msgstr "Separate speakers after meetings"
-
-#: src/sidebar/toast/registry.tsx
-msgid "Separating speakers after meetings needs Parakeet Batch"
-msgstr "Separating speakers after meetings needs Parakeet Batch"
 
 #: src/session/components/note-input/transcript/screens/empty.tsx
 msgid "Separating speakers..."
@@ -6485,6 +6602,11 @@ msgstr "Show floating bar"
 msgid "Show ignored models"
 msgstr "Show ignored models"
 
+#: src/capture/lifecycle.tsx
+#: src/settings/capture-recent.tsx
+msgid "Show in Files"
+msgstr "Show in Files"
+
 #: src/annotate/lifecycle.tsx
 #: src/capture/lifecycle.tsx
 #: src/settings/ai/llm/builtin.tsx
@@ -6494,6 +6616,7 @@ msgstr "Show ignored models"
 msgid "Show in Finder"
 msgstr "Show in Finder"
 
+#: src/annotate/lifecycle.tsx
 #: src/settings/ai/llm/builtin.tsx
 #: src/settings/ai/stt/model-rows.tsx
 #: src/sidebar/timeline/item.tsx
@@ -6706,6 +6829,7 @@ msgstr "Speaker"
 msgid "Speaker {speakerNumber}"
 msgstr "Speaker {speakerNumber}"
 
+#: src/session/components/note-input/transcript/actions.ts
 #: src/stt/capture-lifecycle.ts
 msgid "Speakers could not be separated"
 msgstr "Speakers could not be separated"
@@ -6804,6 +6928,7 @@ msgstr "Stay current with updates installed the next time Librelog opens."
 msgid "Steps run from top to bottom."
 msgstr "Steps run from top to bottom."
 
+#: src/annotate/lifecycle.tsx
 #: src/audio-player/timeline.tsx
 #: src/composer/index.tsx
 #: src/meeting-float/labels.ts
@@ -7006,6 +7131,10 @@ msgstr "Take screenshots, record the screen as a movie or a GIF, and mark them u
 msgid "Takes the display under the pointer at once."
 msgstr "Takes the display under the pointer at once."
 
+#: src/settings/capture-shortcuts.tsx
+msgid "Takes the whole screen at once."
+msgstr "Takes the whole screen at once."
+
 #: src/i18n/component-labels.tsx
 msgid "Task List"
 msgstr "Task List"
@@ -7151,6 +7280,11 @@ msgstr "The narration could not be transcribed. The annotation is saved without 
 msgid "The new transcription returned much less text. Your saved transcript and recording were kept. Try transcribing again."
 msgstr "The new transcription returned much less text. Your saved transcript and recording were kept. Try transcribing again."
 
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "The next recording asks which screen to record."
+msgstr "The next recording asks which screen to record."
+
 #: src/settings/automations/workflow-builder.tsx
 msgid "The note type this automation applied to was deleted, so it matches no note. Choose another type or clear it."
 msgstr "The note type this automation applied to was deleted, so it matches no note. Choose another type or clear it."
@@ -7186,6 +7320,10 @@ msgstr "The recording could not be finished ({reason}). What was recorded is kep
 #: src/stt/useRunBatch.ts
 msgid "the selected speech-to-text provider"
 msgstr "the selected speech-to-text provider"
+
+#: src/session/components/note-input/transcript/actions.ts
+msgid "The transcript was not changed."
+msgstr "The transcript was not changed."
 
 #: src/stt/capture-lifecycle.ts
 msgid "The transcript was saved, but Librelog could not start the summary. Try generating it again."
@@ -7261,6 +7399,10 @@ msgid "This annotation is no longer waiting to be finished."
 msgstr "This annotation is no longer waiting to be finished."
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "This build of Librelog doesn’t include the model server. The release for Linux on x86-64 does."
+msgstr "This build of Librelog doesn’t include the model server. The release for Linux on x86-64 does."
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "This build of Librelog doesn’t include the model server. The release for Macs with Apple silicon does."
 msgstr "This build of Librelog doesn’t include the model server. The release for Macs with Apple silicon does."
 
@@ -7271,6 +7413,10 @@ msgstr "This built-in model isn’t downloaded. Download it in Settings › Inte
 #: src/i18n/external-messages.ts
 msgid "This capture is no longer in the list."
 msgstr "This capture is no longer in the list."
+
+#: src/ai/builtin-fetch.ts
+msgid "This computer needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
+msgstr "This computer needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
 
 #: src/session/components/version-history-dialog.tsx
 msgid "This device"
@@ -7307,10 +7453,6 @@ msgstr "This is a beta, so expect rough edges. Reports open a GitHub issue with 
 #: src/settings/ai/shared/list-apple-foundation.ts
 msgid "This Mac does not support Apple Intelligence."
 msgstr "This Mac does not support Apple Intelligence."
-
-#: src/ai/builtin-fetch.ts
-msgid "This Mac needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
-msgstr "This Mac needs its memory for transcription while it records and transcribes a meeting. The built-in model starts once that is done."
 
 #: src/ai/builtin-fetch.ts
 msgid "This meeting is too long for this model: it needs {prompt} tokens and the model holds {context} on this computer. Built-in models read the whole meeting at once, so choose a cloud model or a computer with more memory for meetings this long."
@@ -7435,6 +7577,10 @@ msgstr "Tip: Add teammate names, acronyms, company jargon, and product terms."
 msgid "Tip: The Librelog team loves our users!"
 msgstr "Tip: The Librelog team loves our users!"
 
+#: src/settings/capture.tsx
+msgid "To stop a recording, press its shortcut again, choose Record Screen in Librelog's menu in the top bar, or stop sharing from your desktop's screen-sharing indicator. Recordings have no sound yet."
+msgstr "To stop a recording, press its shortcut again, choose Record Screen in Librelog's menu in the top bar, or stop sharing from your desktop's screen-sharing indicator. Recordings have no sound yet."
+
 #: src/sidebar/timeline/utils/index.ts
 msgid "Today"
 msgstr "Today"
@@ -7450,6 +7596,10 @@ msgstr "Tokyo"
 #: src/sidebar/timeline/utils/index.ts
 msgid "Tomorrow"
 msgstr "Tomorrow"
+
+#: src/settings/ai/llm/builtin.tsx
+msgid "Too large for this computer"
+msgstr "Too large for this computer"
 
 #: src/settings/ai/llm/builtin.tsx
 msgid "Too large for this Mac"
@@ -7700,10 +7850,6 @@ msgstr "Unpin organization"
 msgid "Unpin Organization"
 msgstr "Unpin Organization"
 
-#: src/sidebar/toast/registry.tsx
-msgid "Until it is downloaded, everyone heard through your computer stays one speaker."
-msgstr "Until it is downloaded, everyone heard through your computer stays one speaker."
-
 #: src/chat/components/message/tool/search-meetings.tsx
 #: src/chat/context/session-drag.ts
 #: src/services/tray-recording.tsx
@@ -7947,6 +8093,10 @@ msgid "Uses Alibaba Cloud Model Studio's **OpenAI-compatible API**. The default 
 msgstr "Uses Alibaba Cloud Model Studio's **OpenAI-compatible API**. The default endpoint is the Singapore region; change the Base URL under Advanced when your API key belongs to another region."
 
 #: src/settings/ai/llm/builtin.tsx
+msgid "Uses at most half of this computer’s memory."
+msgstr "Uses at most half of this computer’s memory."
+
+#: src/settings/ai/llm/builtin.tsx
 msgid "Uses at most half of this Mac’s memory."
 msgstr "Uses at most half of this Mac’s memory."
 
@@ -8143,8 +8293,8 @@ msgid "What's new in {version}?"
 msgstr "What's new in {version}?"
 
 #: src/settings/general/audio-settings.tsx
-msgid "When a meeting is transcribed live on this Mac, transcribe the saved recording again after it ends to tell apart the people heard through your computer. Needs saved audio and Parakeet Batch or Apple Speech, and takes a few minutes after each meeting."
-msgstr "When a meeting is transcribed live on this Mac, transcribe the saved recording again after it ends to tell apart the people heard through your computer. Needs saved audio and Parakeet Batch or Apple Speech, and takes a few minutes after each meeting."
+msgid "When a meeting is transcribed live on this Mac, tell apart the people who shared your microphone or your computer's audio once it ends. Needs saved audio and takes a few minutes after each meeting."
+msgstr "When a meeting is transcribed live on this Mac, tell apart the people who shared your microphone or your computer's audio once it ends. Needs saved audio and takes a few minutes after each meeting."
 
 #: src/settings/ai/stt/index.tsx
 msgid "When it transcribes"
@@ -8275,6 +8425,39 @@ msgstr "Your conversation patterns"
 #: src/shared/long-load-gate.tsx
 msgid "Your data was updated by a newer version of Librelog, such as Librelog Nightly, and this version cannot open it yet. Your existing data was left unchanged. Install the latest version of Librelog, or keep using the newer app until this version catches up."
 msgstr "Your data was updated by a newer version of Librelog, such as Librelog Nightly, and this version cannot open it yet. Your existing data was left unchanged. Install the latest version of Librelog, or keep using the newer app until this version catches up."
+
+#: src/onboarding/capture.tsx
+msgid "Your desktop asks before each capture, in its own dialog."
+msgstr "Your desktop asks before each capture, in its own dialog."
+
+#: src/settings/capture.tsx
+msgid "Your desktop asks before Librelog takes a screenshot or records the screen, in its own dialog."
+msgstr "Your desktop asks before Librelog takes a screenshot or records the screen, in its own dialog."
+
+#: src/settings/annotate.tsx
+msgid "Your desktop asks which screen to share when you start an annotation, and remembers it where it can. The capsule and your red marks are part of the recording."
+msgstr "Your desktop asks which screen to share when you start an annotation, and remembers it where it can. The capsule and your red marks are part of the recording."
+
+#: src/settings/annotate.tsx
+#: src/settings/capture.tsx
+msgid "Your desktop remembers the screen you picked last."
+msgstr "Your desktop remembers the screen you picked last."
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Your desktop uses {trigger} instead of {keys}."
+msgstr "Your desktop uses {trigger} instead of {keys}."
+
+#: src/settings/desktop-shortcuts.tsx
+msgid "Your desktop's shortcut prompt was dismissed, so these shortcuts don't work yet."
+msgstr "Your desktop's shortcut prompt was dismissed, so these shortcuts don't work yet."
+
+#: src/i18n/external-messages.ts
+msgid "Your dictation is on the clipboard. Press Control+Shift+V to paste it."
+msgstr "Your dictation is on the clipboard. Press Control+Shift+V to paste it."
+
+#: src/i18n/external-messages.ts
+msgid "Your dictation is on the clipboard. Press Control+V to paste it."
+msgstr "Your dictation is on the clipboard. Press Control+V to paste it."
 
 #: src/settings/dictionary/index.tsx
 msgid "Your dictionary is empty"

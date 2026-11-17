@@ -21,11 +21,15 @@ You need:
 - The [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/)
 - On Apple Silicon Macs, Xcode with its Metal Toolchain component. The Command Line Tools alone cannot compile the MLX shader library used by local transcription. Xcode 26 and later install the component separately with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -downloadComponent MetalToolchain`; Xcode does not need to be selected with `xcode-select`.
 
-On Debian or Ubuntu, install the supported toolchains and system packages with:
+On Debian, Ubuntu or Fedora, install the supported toolchains and system packages with:
 
 ```bash
 bash scripts/setup-linux.sh
 ```
+
+The script uses apt on Debian and Ubuntu and dnf on Fedora, where it installs Fedora's own Node.js, which is 22 or later from Fedora 41. CI runs these scripts on Ubuntu only, so a wrong Fedora package name shows up only when someone runs them on Fedora; `scripts/setup-linux-tauri.sh` and `scripts/setup-linux-others.sh` keep the two lists side by side.
+
+To build the Linux packages (RPM, AppImage and deb) the way a release does, install the workspace, run `pnpm -F @anlg/ui build`, then `scripts/linux-bundles.sh build` on Ubuntu 24.04 with Docker available; `scripts/linux-bundles.sh verify` and `scripts/linux-bundles.sh smoke` then check the packages and install each one in a clean Fedora or Ubuntu container.
 
 Then install the workspace:
 

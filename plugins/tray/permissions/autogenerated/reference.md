@@ -10,6 +10,7 @@ Default permissions for the plugin
 - `allow-set-tray-capture-visible`
 - `allow-set-tray-recording-title`
 - `allow-take-pending-tray-start`
+- `allow-tray-icon-shown-by-desktop`
 
 ## Permission Table
 
@@ -172,6 +173,32 @@ Enables the take_pending_tray_start command without any pre-configured scope.
 <td>
 
 Denies the take_pending_tray_start command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`anlg-tray:allow-tray-icon-shown-by-desktop`
+
+</td>
+<td>
+
+Enables the tray_icon_shown_by_desktop command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`anlg-tray:deny-tray-icon-shown-by-desktop`
+
+</td>
+<td>
+
+Denies the tray_icon_shown_by_desktop command without any pre-configured scope.
 
 </td>
 </tr>

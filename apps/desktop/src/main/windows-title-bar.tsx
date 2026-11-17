@@ -1,6 +1,9 @@
 import { t } from "@lingui/core/macro";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { platform } from "@tauri-apps/plugin-os";
+import { exit } from "@tauri-apps/plugin-process";
 import { useCallback, useRef } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import { commands as openerCommands } from "@anlg/plugin-opener2";
 import { ArrowLeft, Sidebar, SidebarSimple } from "@anlg/ui/components/icons";
@@ -47,6 +50,22 @@ export function WindowsTitleBar({
   const goBack = useCustomSidebarBack();
   const showBackButton = hasCustomSidebarTab(currentTab);
   const editTargetRef = useRef<HTMLElement | null>(null);
+  // Closing the window keeps Librelog running for its shortcuts, and stock
+  // GNOME shows no tray icon to quit from: quitting lives here instead. It
+  // goes through the usual exit, which saves what is open first.
+  const linux = platform() === "linux";
+  const quit = useCallback(() => void exit(0), []);
+  useHotkeys(
+    "ctrl+q",
+    quit,
+    {
+      enabled: linux,
+      preventDefault: true,
+      enableOnFormTags: true,
+      enableOnContentEditable: true,
+    },
+    [quit],
+  );
 
   const rememberEditTarget = useCallback(() => {
     editTargetRef.current =
@@ -130,6 +149,12 @@ export function WindowsTitleBar({
               {t`Close`}
               <DropdownMenuShortcut>Alt+F4</DropdownMenuShortcut>
             </DropdownMenuItem>
+            {linux && (
+              <DropdownMenuItem onSelect={quit}>
+                {t`Quit Librelog`}
+                <DropdownMenuShortcut>Ctrl+Q</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
           </TitleBarMenu>
           <TitleBarMenu label={t`Edit`} onPointerDown={rememberEditTarget}>
             <DropdownMenuItem onSelect={() => runEditCommand("undo")}>

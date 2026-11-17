@@ -27,6 +27,7 @@ pub(super) fn params(provider: BatchProvider, base_url: &str, file_path: &str) -
         min_speakers: None,
         max_speakers: None,
         known_speakers: vec![],
+        diarize_words: vec![],
     }
 }
 
@@ -87,6 +88,23 @@ pub(super) fn stereo_fixture() -> tempfile::NamedTempFile {
 /// the shape of an in-person meeting recorded from one laptop.
 pub(super) fn in_person_fixture() -> tempfile::NamedTempFile {
     let left = english_1_mono();
+    let right = vec![0.0f32; left.len()];
+    write_stereo_wav(&left, &right)
+}
+
+/// Only `english_1`'s main speaker on the mic, the other voice cut to
+/// silence, and nothing on system audio: one person recording alone.
+pub(super) fn solo_in_person_fixture() -> tempfile::NamedTempFile {
+    let mono = english_1_mono();
+    let rate = TARGET_SAMPLE_RATE as usize;
+    let mut left = mono.clone();
+    for turn in english_1_turns() {
+        if turn.speaker != "speaker0" {
+            let start = (turn.start as usize * rate / 1000).min(mono.len());
+            let end = (turn.end as usize * rate / 1000).min(mono.len());
+            left[start..end].fill(0.0);
+        }
+    }
     let right = vec![0.0f32; left.len()];
     write_stereo_wav(&left, &right)
 }

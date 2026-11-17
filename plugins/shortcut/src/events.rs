@@ -130,3 +130,39 @@ pub struct CaptureShortcuts {
     pub record: Option<String>,
     pub gif: Option<String>,
 }
+
+/// Where the Wayland desktop's shortcut dialog stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DesktopShortcutsState {
+    /// Not Wayland, or no shortcut is set.
+    Unused,
+    /// The desktop is asking the user.
+    Waiting,
+    Bound,
+    /// The user dismissed the dialog; it is not shown again until they ask.
+    Dismissed,
+    Failed {
+        message: String,
+    },
+}
+
+/// One shortcut the desktop was asked for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct DesktopShortcut {
+    pub id: String,
+    /// The shortcut as Settings stores it; none for the cancel shortcut.
+    pub shortcut: Option<String>,
+    /// The keys the desktop says it bound, in its own words.
+    pub trigger: Option<String>,
+    /// The desktop bound other keys than Librelog asked for.
+    pub differs: bool,
+}
+
+common_event_derives! {
+    /// What the desktop did with Librelog's shortcuts on Wayland.
+    pub struct DesktopShortcutsEvent {
+        pub state: DesktopShortcutsState,
+        pub shortcuts: Vec<DesktopShortcut>,
+    }
+}

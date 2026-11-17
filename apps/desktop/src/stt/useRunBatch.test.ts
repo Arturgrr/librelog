@@ -13,6 +13,8 @@ import {
 } from "./useRunBatch";
 import { useRunBatch } from "./useRunBatch";
 
+import type { WordWithId } from "~/stt/types";
+
 vi.mock("./capture-completion", () => ({
   completeCaptureTranscript: vi.fn().mockResolvedValue(undefined),
 }));
@@ -419,6 +421,112 @@ describe("useRunBatch", () => {
       2000,
     );
     expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
+  });
+
+  describe("separating the voices of the live words without a batch model", () => {
+    const liveWords: WordWithId[] = [
+      {
+        id: "w0",
+        text: " Um",
+        start_ms: undefined,
+        end_ms: undefined,
+        channel: 0,
+      },
+      {
+        id: "w1",
+        text: " Hello",
+        start_ms: 0,
+        end_ms: 400,
+        channel: 0,
+        metadata: JSON.stringify({ timing: { source: "provider_word" } }),
+      },
+      { id: "w2", text: " there", start_ms: 400, end_ms: 900, channel: 0 },
+    ];
+    const separate = async () => {
+      const { result } = renderHook(() => useRunBatch("session-1"));
+      let outcome: Awaited<ReturnType<typeof result.current>> | undefined;
+      await act(async () => {
+        outcome = await result.current("/tmp/session.wav", {
+          provider: "local_diarization",
+          model: "local-diarization",
+          baseUrl: "",
+          apiKey: "",
+          diarizeWords: liveWords,
+          promotion: {
+            scope: "current_capture",
+            audioOffsetMs: 60_000,
+            replaceTranscriptId: "live",
+            startedAt: 1000,
+          },
+        });
+      });
+      return outcome;
+    };
+    // The response as the diarizer returns it: the words it was sent, on the
+    // shared mic, with `speakers` per word.
+    const diarized = (speakers: number[]) =>
+      startTranscriptionMock.mockImplementation(async (params, options) => {
+        options.handlePersist(
+          params.diarize_words.map(
+            (word: { word: string; start: number; end: number }) => ({
+              text: word.word,
+              start_ms: Math.round(word.start * 1000),
+              end_ms: Math.round(word.end * 1000),
+              channel: 2,
+              metadata: {
+                timing: { source: "provider_word" },
+                shared_mic: true,
+              },
+            }),
+          ),
+          speakers.map((speaker_index, wordIndex) => ({
+            wordIndex,
+            data: { type: "provider_speaker_index", speaker_index },
+          })),
+          { mode: "replace" },
+        );
+      });
+
+    test("sends a resumed capture's words on the recording's clock, an untimed first word included", async () => {
+      await separate();
+
+      expect(startTranscriptionMock.mock.calls[0]?.[0]).toMatchObject({
+        provider: "local_diarization",
+        diarize_words: [
+          { word: " Um", start: 60, end: 60.001, channel: 0, speaker: null },
+          { word: " Hello", start: 60, end: 60.4, channel: 0, speaker: null },
+          { word: " there", start: 60.4, end: 60.9, channel: 0, speaker: null },
+        ],
+      });
+      expect(toastWarningMock).not.toHaveBeenCalled();
+    });
+
+    test("leaves the live transcript alone when only one voice was found", async () => {
+      diarized([0, 0, 0]);
+
+      expect(await separate()).toMatchObject({ separated: false });
+      expect(saveBatchTranscriptMock).not.toHaveBeenCalled();
+      expect(notifyBatchCompletedMock).not.toHaveBeenCalled();
+    });
+
+    test("keeps each live word's id, text and timing when voices were separated", async () => {
+      diarized([0, 0, 1]);
+
+      expect(await separate()).toMatchObject({ separated: true });
+      const saved = saveBatchTranscriptMock.mock.calls[0]?.[0];
+      expect(saved.words.map((word: { id: string }) => word.id)).toEqual([
+        "w0",
+        "w1",
+        "w2",
+      ]);
+      expect(JSON.parse(saved.words[1].metadata)).toEqual({
+        timing: { source: "provider_word" },
+        shared_mic: true,
+      });
+      expect(
+        saved.hints.map((hint: { word_id: string }) => hint.word_id),
+      ).toEqual(["w0", "w1", "w2"]);
+    });
   });
 
   test("repairs a chunk separately from live capture and waits for its database commit", async () => {

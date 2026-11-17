@@ -24,6 +24,12 @@
 # built-in model end-to-end tests against that build. That build is long, so
 # it runs on schedule and manual runs, and on pull requests and pushes only
 # when crates/xtask changes (`changes` decides that too).
+# linux_bundle builds the stable app's RPM, AppImage and deb with the release's
+# own scripts/linux-bundles.sh, checks their metadata and installs and launches
+# each in a clean Fedora or Ubuntu container. A release build takes long, so
+# pull requests and pushes get it only when what decides the packages changes
+# (bundle configuration, dependencies, the packaging scripts; `changes`
+# decides); schedule and manual runs always do.
 # Each job builds its tests in one cargo invocation where it can: a different
 # set of packages resolves different features and rebuilds the crates they
 # share. windows_ci says why it cannot.
@@ -50,6 +56,9 @@ on:
       - plugins/**
       - crates/**
       - scripts/bash-guard.sh
+      - scripts/linux-bundles.sh
+      - scripts/release.mjs
+      - scripts/repack-linux-appimage.mjs
       - scripts/setup-linux-others.sh
       - scripts/setup-linux-tauri.sh
       - skills/**
@@ -68,6 +77,9 @@ on:
       - plugins/**
       - crates/**
       - scripts/bash-guard.sh
+      - scripts/linux-bundles.sh
+      - scripts/release.mjs
+      - scripts/repack-linux-appimage.mjs
       - scripts/setup-linux-others.sh
       - scripts/setup-linux-tauri.sh
       - skills/**
@@ -92,18 +104,23 @@ env:
   # dependency whose macOS behaviour the tests reach (local transcription,
   # capture, the app's macOS plugins). macos_ci tests them; linux_ci skips them.
   MACOS_TESTS: >-
-    afconvert annotate-macos apple-todo audio-actual audio-norm detect
-    dictation-ui-macos listener-core listener2-core local-model local-stt-core
-    notification overlay-kit owhisper-client recording-environment shortcut-macos
-    tauri-plugin-anlg-tray tauri-plugin-dictation tauri-plugin-dock
-    tauri-plugin-shortcut tauri-plugin-todo tauri-plugin-transcription
-    transcribe-soniqo transcribe-speechanalyzer transcription-core
+    afconvert annotate-macos apple-todo audio-norm dictation-ui-macos
+    listener-core listener2-core local-model notification overlay-kit
+    owhisper-client shortcut-macos tauri-plugin-dock tauri-plugin-todo
+    tauri-plugin-transcription transcribe-soniqo transcribe-speechanalyzer
+    transcription-core
   # Tested by both macos_ci and linux_ci: transcribe-gguf builds transcribe.cpp
   # with Metal on macOS, and with Vulkan and a driver fingerprint on Linux.
   # macos_ci builds that Metal engine for the app anyway, so its tests add
   # little there. local-llm starts, stops and reaps server processes, which
-  # macOS and Linux handle differently.
-  MACOS_AND_LINUX_TESTS: transcribe-gguf local-llm
+  # macOS and Linux handle differently. The others have Linux code (PipeWire
+  # and PulseAudio capture, AT-SPI and PulseAudio detection, pactl and MPRIS,
+  # the shortcuts portal, Linux dictation insertion, the tray) whose tests use
+  # fakes, mocks or pure functions, so they need no audio device or display.
+  MACOS_AND_LINUX_TESTS: >-
+    transcribe-gguf local-llm audio-actual detect local-stt-core
+    recording-environment tauri-plugin-anlg-tray tauri-plugin-dictation
+    tauri-plugin-shortcut
   # Tested by cli_ci, whose paths cover them and their workspace dependencies.
   CLI_TESTS: agent-access db-app db-migrate librelog-cli tiptap
   # Built here but never tested here, as before.
@@ -129,6 +146,7 @@ jobs:
     outputs:
       native: ${{ steps.paths.outputs.native }}
       xtask: ${{ steps.paths.outputs.xtask }}
+      packaging: ${{ steps.paths.outputs.packaging }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -150,9 +168,18 @@ jobs:
           # The release's sidecar build, which macos_ci repeats; inside the
           # native inputs, so macos_ci runs whenever this matches.
           xtask_pattern='^crates/xtask/'
+          # What decides the Linux packages linux_bundle builds. The release
+          # scripts are not native inputs: they alone run only linux_bundle.
+          packaging_pattern='^apps/desktop/src-tauri/(tauri[^/]*\.json|linux/|icons/|Cargo\.toml|build\.rs|capabilities/)'
+          packaging_pattern+='|^apps/desktop/package\.json$'
+          packaging_pattern+='|^(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)$|^crates/xtask/'
+          packaging_pattern+='|^\.github/workflows/desktop_ci\.yaml$'
+          packaging_pattern+='|^\.github/actions/(install_desktop_deps|rust_install)/'
+          packaging_pattern+='|^scripts/(linux-bundles\.sh|release\.mjs|repack-linux-appimage\.mjs|setup-linux-others\.sh|setup-linux-tauri\.sh)$'
 
           native=true
           xtask=true
+          packaging=true
           if [[ "$EVENT_NAME" == pull_request || "$EVENT_NAME" == push ]] &&
             git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             # --no-renames lists both sides of a move.
@@ -166,9 +193,11 @@ jobs:
               head -n 20 <<<"$matched"
             fi
             grep -qE "$xtask_pattern" <<<"$changed" || xtask=false
+            grep -qE "$packaging_pattern" <<<"$changed" || packaging=false
           fi
           echo "native=$native" | tee -a "$GITHUB_OUTPUT"
           echo "xtask=$xtask" | tee -a "$GITHUB_OUTPUT"
+          echo "packaging=$packaging" | tee -a "$GITHUB_OUTPUT"
 
   js_ci:
     if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
@@ -358,16 +387,22 @@ jobs:
       - uses: $/.github/actions/install_desktop_deps
         with:
           target: linux
+      # desktop-v3: linux_ci also tests the crates moved to
+      # MACOS_AND_LINUX_TESTS.
       - uses: $/.github/actions/rust_install
         with:
           platform: linux-x86_64
-          cache-key: desktop-v2
+          cache-key: desktop-v3
       # The built-in model server's end-to-end tests
       # (crates/local-llm/tests/llama_server.rs) run in the next step against
-      # llama.cpp's own Ubuntu build and a 1 MB model, both pinned by SHA-256.
-      # If a download fails they skip themselves, with a warning here; a
-      # hash mismatch fails the job.
+      # a 1 MB model pinned by SHA-256 and, when `changes` says xtask builds
+      # (crates/xtask changed, or a schedule or manual run), the server the
+      # Linux packages ship, built by `cargo xtask prepare-llama-server`;
+      # otherwise llama.cpp's own Ubuntu build, pinned by SHA-256. If a
+      # download fails they skip themselves, with a warning here; a hash
+      # mismatch or a failed build fails the job.
       - env:
+          BUILD_SERVER: ${{ needs.changes.outputs.xtask }}
           LLAMA_URL: https://github.com/ggml-org/llama.cpp/releases/download/b12110/llama-b12110-bin-ubuntu-x64.tar.gz
           LLAMA_SHA256: 368227edcc229be5f9bed16a2223d79b5e41d0ac2e19bcf5825e82291c060e55
           MODEL_URL: https://huggingface.co/ggml-org/test-model-stories260K/resolve/479896ec924af6d40fd419ab8f4d1eb2101de00d/stories260K-f32.gguf
@@ -375,16 +410,26 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/llama"
           mkdir -p "$dir"
-          if ! curl -fsSL --retry 3 -o "$dir/llama.tar.gz" "$LLAMA_URL" ||
-            ! curl -fsSL --retry 3 -o "$dir/model.gguf" "$MODEL_URL"; then
-            echo "::warning::Could not download llama-server or its test model; the built-in model end-to-end tests skip."
+          if [[ "$BUILD_SERVER" == true ]]; then
+            cargo xtask prepare-llama-server
+            server="$GITHUB_WORKSPACE/apps/desktop/src-tauri/binaries/librelog-llama-server-x86_64-unknown-linux-gnu"
+            "$server" --version
+          else
+            if ! curl -fsSL --retry 3 -o "$dir/llama.tar.gz" "$LLAMA_URL"; then
+              echo "::warning::Could not download llama-server; the built-in model end-to-end tests skip."
+              exit 0
+            fi
+            echo "$LLAMA_SHA256  $dir/llama.tar.gz" | sha256sum --check --strict
+            tar -xzf "$dir/llama.tar.gz" -C "$dir"
+            server="$dir/llama-b12110/llama-server"
+          fi
+          if ! curl -fsSL --retry 3 -o "$dir/model.gguf" "$MODEL_URL"; then
+            echo "::warning::Could not download the test model; the built-in model end-to-end tests skip."
             exit 0
           fi
-          echo "$LLAMA_SHA256  $dir/llama.tar.gz" | sha256sum --check --strict
           echo "$MODEL_SHA256  $dir/model.gguf" | sha256sum --check --strict
-          tar -xzf "$dir/llama.tar.gz" -C "$dir"
           {
-            echo "LIBRELOG_LLAMA_SERVER=$dir/llama-b12110/llama-server"
+            echo "LIBRELOG_LLAMA_SERVER=$server"
             echo "LIBRELOG_LLAMA_TEST_MODEL=$dir/model.gguf"
           } >>"$GITHUB_ENV"
       # The app and every crate outside MACOS_TESTS, CLI_TESTS and SKIP_TESTS.
@@ -427,6 +472,35 @@ jobs:
       # also covers `cargo check -p desktop`; only the library has these tests.
       - run: cargo test --locked --target aarch64-unknown-linux-gnu -p desktop --lib --bins embedded_cli
 
+  linux_bundle:
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      # The workspace target directory is the one the Rust cache saves.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: $/.github/actions/install_desktop_deps
+        with:
+          target: linux
+      # The release build's cache, which release.yaml saves on main too.
+      - uses: $/.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          cache-key: linux-bundle
+      - uses: $/.github/actions/pnpm_install
+      - run: pnpm -F @anlg/ui build
+      # No signing key here: the build makes no updater artifacts and leaves
+      # the AppImage unsigned; release.yaml checks the signature.
+      - run: scripts/linux-bundles.sh build
+      - run: scripts/linux-bundles.sh verify
+      - run: scripts/linux-bundles.sh smoke
+
   desktop_i18n:
     if: ${{ !startsWith(github.head_ref || '', 'blog/') }}
     runs-on: ubuntu-latest
@@ -447,16 +521,19 @@ jobs:
       windows_ci,
       linux_ci,
       linux_arm_ci,
+      linux_bundle,
       desktop_i18n,
     ]
     runs-on: ubuntu-latest
     steps:
       # Every job must succeed, except that the JS jobs skip blog/ branches and
-      # the native jobs skip changes that do not touch what they build. A job
-      # that never got a runner fails this, whatever result GitHub reports.
+      # the native jobs and linux_bundle skip changes that do not touch what
+      # they build. A job that never got a runner fails this, whatever result
+      # GitHub reports.
       - env:
           NEEDS: ${{ toJSON(needs) }}
           NATIVE: ${{ needs.changes.outputs.native }}
+          PACKAGING: ${{ needs.changes.outputs.packaging }}
           BLOG: ${{ startsWith(github.head_ref || '', 'blog/') }}
         run: |
           status=0
@@ -466,6 +543,7 @@ jobs:
               *:success) continue ;;
               js_ci:skipped | desktop_i18n:skipped) [[ "$BLOG" == true ]] && continue ;;
               changes:skipped) ;;
+              linux_bundle:skipped) [[ "$PACKAGING" == true ]] || continue ;;
               *:skipped) [[ "$NATIVE" == true ]] || continue ;;
             esac
             echo "::error::$job finished with $result but had to succeed."

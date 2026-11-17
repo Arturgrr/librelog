@@ -11,7 +11,10 @@ import { IconHeaderView, copyTextToClipboard } from "./header-shared";
 import { TranscriptAudioIcon } from "./header-transcript-icon";
 
 import * as AudioPlayer from "~/audio-player";
-import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
+import {
+  useRegenerateTranscript,
+  useSeparateSpeakers,
+} from "~/session/components/note-input/transcript/actions";
 import {
   buildTranscriptExportSegments,
   formatTranscriptExportSegments,
@@ -195,6 +198,7 @@ function HeaderViewTranscriptActive({
 }) {
   const { t } = useLingui();
   const regenerate = useRegenerateTranscript(sessionId);
+  const separateSpeakers = useSeparateSpeakers(sessionId);
   const startListening = useStartListeningWithBatchOverride(sessionId);
   const hasTranscript = useHasTranscript(sessionId);
   const transcriptMetadata = useSessionTranscriptMetadata(sessionId);
@@ -216,6 +220,12 @@ function HeaderViewTranscriptActive({
     onClick?.();
   }, [canEdit, editMode, onClick, onEditModeChange]);
   const canCopyTranscript = transcriptMetadata.some((t) => t.hasWords);
+  // With several captures the recording's clock no longer matches one
+  // transcript's, so only a single-capture note can be separated in place.
+  const separableTranscriptId =
+    transcriptMetadata.length === 1 && transcriptMetadata[0]!.hasWords
+      ? transcriptMetadata[0]!.id
+      : null;
   const handleCopyTranscript = useCallback(async () => {
     try {
       const transcriptExportRequest =
@@ -280,6 +290,15 @@ function HeaderViewTranscriptActive({
           void regenerate();
         },
       });
+      if (separableTranscriptId) {
+        items.push({
+          id: `separate-speakers-${sessionId}`,
+          text: t`Separate speakers`,
+          action: () => {
+            void separateSpeakers(separableTranscriptId);
+          },
+        });
+      }
     }
 
     if (audioExists) {
@@ -301,6 +320,8 @@ function HeaderViewTranscriptActive({
     handleResumeListening,
     isDeletingRecording,
     regenerate,
+    separableTranscriptId,
+    separateSpeakers,
     sessionMode,
     sessionId,
     t,

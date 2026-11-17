@@ -91,7 +91,7 @@ pub fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::Window
                             {
                                 tracing::warn!(%error, "instruction close frame restore failed");
                             }
-                            if let Err(error) = AppWindow::Main.hide(&app) {
+                            if let Err(error) = close_main_window(&app) {
                                 tracing::warn!(%error, "instruction close hide failed");
                             }
                         });
@@ -100,11 +100,28 @@ pub fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::Window
                     if window.is_fullscreen().unwrap_or(false) {
                         let _ = window.set_fullscreen(false);
                     }
-                    if w.hide(app).is_ok() {
+                    if close_main_window(app).is_ok() {
                         api.prevent_close();
                     }
                 }
             }
+        }
+    }
+}
+
+fn close_main_window(app: &tauri::AppHandle<tauri::Wry>) -> Result<(), crate::Error> {
+    let close = app
+        .try_state::<crate::DockVisibilityState>()
+        .map_or(crate::MainWindowClose::Hide, |state| {
+            state.main_window_close()
+        });
+    match close {
+        crate::MainWindowClose::Hide => AppWindow::Main.hide(app),
+        crate::MainWindowClose::Minimize => {
+            if let Some(window) = AppWindow::Main.get(app) {
+                window.minimize()?;
+            }
+            Ok(())
         }
     }
 }

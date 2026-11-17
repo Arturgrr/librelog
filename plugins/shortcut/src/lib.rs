@@ -33,13 +33,16 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             global::set_annotate_recording,
             global::configure_capture,
             global::validate_capture,
+            global::status::desktop_shortcuts,
+            global::status::ask_desktop_again,
         ])
         .events(tauri_specta::collect_events![
             ShortcutEvent,
             PasteLastEvent,
             AnnotateShortcutEvent,
             PasteLastAnnotationEvent,
-            CaptureShortcutEvent
+            CaptureShortcutEvent,
+            DesktopShortcutsEvent
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
@@ -56,6 +59,9 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             app.manage(global::GlobalState::default());
             app.manage(press::Presses::default());
             app.manage(annotate::AnnotateGesture::default());
+            app.manage(global::status::DesktopStatus::default());
+            #[cfg(target_os = "linux")]
+            app.manage(std::sync::Arc::new(global::desktop::Binder::default()));
             Ok(())
         })
         .build()

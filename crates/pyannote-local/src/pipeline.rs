@@ -202,6 +202,7 @@ impl Diarizer {
             let start = index * step;
             audio.read(start, &mut window)?;
             let valid = WINDOW_SAMPLES.min(total - start);
+            dither_digital_silence(start, &mut window[..valid]);
             let mut activity = self.segmenter.run_window(&window)?;
             activity
                 .frames
@@ -236,13 +237,24 @@ impl Diarizer {
         }
 
         let (mut labels, mut centroids) = self.cluster(&embeddings, step, request.bounds);
-        let identities = self.apply_known_speakers(
+        let mut identities = self.apply_known_speakers(
             &embeddings,
             &mut labels,
             &mut centroids,
             request.known_speakers,
             request.bounds,
         );
+        if request.bounds.num_speakers.is_none() && request.bounds.min_speakers.is_none() {
+            self.absorb_minor_speakers(
+                total,
+                step,
+                &activities,
+                &embeddings,
+                &mut labels,
+                &mut centroids,
+                &mut identities,
+            );
+        }
 
         let speakers: Vec<DiarizedSpeaker> = centroids
             .into_iter()
@@ -326,6 +338,73 @@ impl Diarizer {
             }
         }
         (labels, centroids)
+    }
+
+    /// With no count from the caller, a voice is only trusted once it holds
+    /// `min_cluster_seconds` of speech in the reconstructed turns, the same
+    /// evidence clustering asks of its anchors. Anchors can clear that bar on
+    /// windows that barely vote, leaving a solo recording with a second
+    /// "speaker" of a few seconds. The voice with the most speech always stays,
+    /// and so does any voice a known voiceprint named, however briefly it spoke.
+    #[allow(clippy::too_many_arguments)]
+    fn absorb_minor_speakers(
+        &self,
+        total: usize,
+        step: usize,
+        activities: &[WindowActivity],
+        embeddings: &[WindowEmbedding],
+        labels: &mut [usize],
+        centroids: &mut Vec<Vec<f32>>,
+        identities: &mut Vec<Option<SpeakerIdentity>>,
+    ) {
+        if centroids.len() < 2 {
+            return;
+        }
+        let placeholders = (0..centroids.len())
+            .map(|index| DiarizedSpeaker {
+                index,
+                centroid: Vec::new(),
+                identity: None,
+            })
+            .collect();
+        let draft = reconstruct(
+            &self.config,
+            total,
+            step,
+            activities,
+            embeddings,
+            labels,
+            placeholders,
+        );
+        let mut speech = vec![0.0f64; centroids.len()];
+        for segment in &draft.segments {
+            speech[segment.speaker] += segment.end - segment.start;
+        }
+        let main = (0..speech.len())
+            .max_by(|a, b| speech[*a].total_cmp(&speech[*b]))
+            .unwrap_or(0);
+        let min_seconds = f64::from(self.config.min_cluster_seconds);
+        let kept: Vec<usize> = (0..speech.len())
+            .filter(|label| {
+                *label == main || speech[*label] >= min_seconds || identities[*label].is_some()
+            })
+            .collect();
+        if kept.len() == centroids.len() {
+            return;
+        }
+        let kept_centroids: Vec<Vec<f32>> =
+            kept.iter().map(|label| centroids[*label].clone()).collect();
+        for (label, item) in labels.iter_mut().zip(embeddings) {
+            *label = match kept.iter().position(|kept| kept == label) {
+                Some(index) => index,
+                None => clustering::nearest_centroid(&item.embedding, &kept_centroids).unwrap_or(0),
+            };
+        }
+        *centroids = kept_centroids;
+        *identities = kept
+            .iter()
+            .map(|label| identities[*label].clone())
+            .collect();
     }
 
     /// Known voiceprints steer the result in two ways: clusters whose best
@@ -514,6 +593,29 @@ fn reconstruct(
         })
         .collect();
     Diarization { segments, speakers }
+}
+
+/// Peak of the noise that replaces exact zeros: about -80 dBFS, below any
+/// real microphone's noise floor.
+const DIGITAL_SILENCE_DITHER: f32 = 1.0e-4;
+
+/// A muted microphone or a dropout records exact zeros, which no real room
+/// produces. Embeddings of speech that borders such stretches drift far
+/// enough to open a second cluster for one voice, so a solo recording would
+/// come back as two people. Inaudible noise, seeded by sample position so a
+/// rerun gives the same result, restores the floor the models were trained on.
+fn dither_digital_silence(start: usize, samples: &mut [f32]) {
+    for (offset, sample) in samples.iter_mut().enumerate() {
+        if *sample != 0.0 {
+            continue;
+        }
+        let mut seed = (start + offset) as u64;
+        seed = (seed ^ (seed >> 33)).wrapping_mul(0xff51_afd7_ed55_8ccd);
+        seed = (seed ^ (seed >> 33)).wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+        seed ^= seed >> 33;
+        let unit = (seed >> 40) as f32 / (1u64 << 24) as f32;
+        *sample = (unit * 2.0 - 1.0) * DIGITAL_SILENCE_DITHER;
+    }
 }
 
 fn seconds_to_frames(seconds: f32) -> usize {
@@ -799,6 +901,135 @@ mod tests {
         assert!(seen.len() > 1);
         assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
         assert!((seen.last().copied().unwrap() - 1.0).abs() < f32::EPSILON);
+    }
+
+    /// One fixture speaker alone, with every other turn replaced by exact
+    /// zeros: a solo recording whose mic was muted or dropped out in between.
+    fn solo_with_muted_stretches(audio: &[u8], diarization_json: &str, who: &str) -> Vec<f32> {
+        #[derive(serde::Deserialize)]
+        struct Turn {
+            start: usize,
+            end: usize,
+            speaker: String,
+        }
+        let turns: Vec<Turn> = serde_json::from_str(diarization_json).unwrap();
+        let mut audio = pcm_bytes_to_f32(audio);
+        let to_sample = |ms: usize| (ms * SAMPLE_RATE as usize / 1000).min(audio.len());
+        let mut own = vec![false; audio.len()];
+        let mut others = vec![false; audio.len()];
+        for turn in &turns {
+            let target = if turn.speaker == who {
+                &mut own
+            } else {
+                &mut others
+            };
+            target[to_sample(turn.start)..to_sample(turn.end)].fill(true);
+        }
+        for (index, sample) in audio.iter_mut().enumerate() {
+            if !own[index] || others[index] {
+                *sample = 0.0;
+            }
+        }
+        audio
+    }
+
+    #[test]
+    fn solo_voice_with_muted_stretches_stays_one_speaker() {
+        // Without the dither the first excerpt splits in two; without the
+        // speech floor the second one does.
+        for (name, audio, json) in [
+            (
+                "korean_1",
+                anlg_data::korean_1::AUDIO,
+                anlg_data::korean_1::DIARIZATION_JSON,
+            ),
+            (
+                "korean_2",
+                anlg_data::korean_2::AUDIO,
+                anlg_data::korean_2::DIARIZATION_JSON,
+            ),
+        ] {
+            let mut audio = solo_with_muted_stretches(audio, json, "speaker0");
+            let mut diarizer = Diarizer::new(DiarizationConfig::default()).unwrap();
+            let diarization = diarizer
+                .diarize(&mut audio, &DiarizeRequest::default())
+                .unwrap();
+            assert_eq!(diarization.speaker_count(), 1, "{name}");
+        }
+    }
+
+    const BRIEF_VOICE_MS: usize = 8_000;
+
+    #[test]
+    fn a_brief_known_voice_is_named_instead_of_absorbed() {
+        // english_1's second speaker cut down to their first few seconds: too
+        // little speech to stand as an anonymous voice, enough to be named.
+        #[derive(serde::Deserialize)]
+        struct Turn {
+            start: usize,
+            end: usize,
+            speaker: String,
+        }
+        let full = pcm_bytes_to_f32(anlg_data::english_1::AUDIO);
+        let mut diarizer = Diarizer::new(DiarizationConfig::default()).unwrap();
+        let reference = diarizer
+            .diarize(&mut full.as_slice(), &DiarizeRequest::default())
+            .unwrap();
+        assert_eq!(reference.speaker_count(), 2);
+        let brief_speaker = reference
+            .speakers
+            .iter()
+            .min_by(|a, b| {
+                let speech = |index| {
+                    reference
+                        .segments
+                        .iter()
+                        .filter(|segment| segment.speaker == index)
+                        .map(|segment| segment.end - segment.start)
+                        .sum::<f64>()
+                };
+                speech(a.index).total_cmp(&speech(b.index))
+            })
+            .unwrap();
+
+        let turns: Vec<Turn> =
+            serde_json::from_str(anlg_data::english_1::DIARIZATION_JSON).unwrap();
+        let mut audio = full.clone();
+        let to_sample = |ms: usize| (ms * SAMPLE_RATE as usize / 1000).min(full.len());
+        let mut kept_ms = 0;
+        for turn in turns.iter().filter(|turn| turn.speaker == "speaker1") {
+            if kept_ms + (turn.end - turn.start) <= BRIEF_VOICE_MS {
+                kept_ms += turn.end - turn.start;
+            } else {
+                audio[to_sample(turn.start)..to_sample(turn.end)].fill(0.0);
+            }
+        }
+
+        let anonymous = diarizer
+            .diarize(&mut audio.as_slice(), &DiarizeRequest::default())
+            .unwrap();
+        assert_eq!(anonymous.speaker_count(), 1, "the brief voice is absorbed");
+
+        let known = [KnownSpeaker {
+            id: "guest".to_string(),
+            embedding: brief_speaker.centroid.clone(),
+        }];
+        let named = diarizer
+            .diarize(
+                &mut audio.as_slice(),
+                &DiarizeRequest {
+                    known_speakers: &known,
+                    ..DiarizeRequest::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(named.speaker_count(), 2);
+        assert!(
+            named
+                .speakers
+                .iter()
+                .any(|speaker| speaker.identity.as_ref().is_some_and(|id| id.id == "guest"))
+        );
     }
 
     #[test]

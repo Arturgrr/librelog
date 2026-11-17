@@ -29,7 +29,7 @@ Librelog offers four on-device Transcription providers. Settings lists a provide
 | Soniqo | Parakeet Streaming | During the meeting | Apple Silicon; live transcription for 25 European languages |
 | Soniqo | Parakeet Batch | After recording | Apple Silicon; speaker-labeled transcription for 25 European languages. Prefer this for hour-long calls. |
 | Apple Speech | Apple Speech | During the meeting | macOS 26 with a supported language added in System Settings. Live transcription uses one language at a time from German, English, Spanish, French, Italian, Japanese, Korean, Portuguese, Cantonese, or Chinese. |
-| Local models | A downloadable model from the [transcribe.cpp catalog](#local-models) | After recording | Apple Silicon Mac, Windows x86_64, or Linux x86_64 or ARM64. On Windows and Linux, [build Librelog from source](/desktop-installation#build-from-source). An x86_64 processor needs AVX2. |
+| Local models | A downloadable model from the [transcribe.cpp catalog](#local-models) | After recording | Apple Silicon Mac, Windows x86_64, or Linux x86_64 or ARM64. On Linux x86_64, [install a package](/install-linux); on Windows and Linux ARM64, [build Librelog from source](/desktop-installation#build-from-source). An x86_64 processor needs AVX2. |
 | BYO-model | A whisper.cpp `.bin` or GGUF `.gguf` file you select | After recording | The same platforms as Local models. Choose **Choose a .bin or .gguf model** to pick the file. |
 
 Parakeet Batch does not always provide word-level audio timestamps. When it returns text without a usable speech alignment, Librelog keeps the individual words editable and groups the display by audio channel and processing chunk. The order between channels within a chunk is uncertain, and those words cannot be used for precise audio seeking. Speech-aligned words retain their timing.
@@ -40,7 +40,7 @@ You can also keep audio on your network by pointing **Custom**, or Deepgram's **
   Compatibility code still recognizes some older local model IDs, but they are not offered as new choices. The table above is the current user-facing model list.
 </Note>
 
-For local summaries and chat, download one of the [Built-in models](#built-in-models) on an Apple Silicon Mac, or connect **LM Studio**, **Ollama**, or **Unsloth** and choose any compatible model they serve. Librelog does not silently substitute another model. **Apple Intelligence** is also available as an experimental, text-only Intelligence provider on eligible Macs running macOS 26 or later.
+For local summaries and chat, download one of the [Built-in models](#built-in-models) on an Apple Silicon Mac or a Linux x86_64 computer, or connect **LM Studio**, **Ollama**, or **Unsloth** and choose any compatible model they serve. Librelog does not silently substitute another model. **Apple Intelligence** is also available as an experimental, text-only Intelligence provider on eligible Macs running macOS 26 or later.
 
 If a selected local model or server is unavailable, Librelog reports a connection error instead of sending the request to another provider.
 
@@ -80,7 +80,7 @@ Local models use Metal on Apple Silicon and Vulkan on Windows and Linux. The pro
 
 ### Built-in models
 
-**Built-in models** run language models for summaries, titles, and chat with [llama.cpp](https://github.com/ggml-org/llama.cpp), which ships inside the Librelog release for Apple Silicon Macs. Each model is one Q4_K_M GGUF file downloaded on request from its publisher's own Hugging Face repository, pinned to one revision and checked against its size and SHA-256. Settings shows each model's download size, license, source, and whether it fits your Mac.
+**Built-in models** run language models for summaries, titles, and chat with [llama.cpp](https://github.com/ggml-org/llama.cpp), which ships inside the Librelog releases for Apple Silicon Macs and for Linux x86_64. Each model is one Q4_K_M GGUF file downloaded on request from its publisher's own Hugging Face repository, pinned to one revision and checked against its size and SHA-256. Settings shows each model's download size, license, source, and whether it fits your computer.
 
 | Model | Download | Most context in Librelog | License |
 | --- | --- | --- | --- |
@@ -92,21 +92,24 @@ Local models use Metal on Apple Silicon and Vulkan on Windows and Linux. The pro
 
 - **Memory.** Librelog estimates each model's memory from its file and the context it needs, and loads it with the longest of 8,192, 16,384, 32,768, and 65,536 tokens, or the model's own limit if lower, that stays within half of your Mac's memory. It never reserves more than 65,536 tokens, however much memory is free. **Tight** means only the shortest context, 8,192 tokens, fits, using up to 65% of memory. **Too large for this Mac** models cannot be selected. On a Mac with 8 GB of memory or less, a model does not start while a meeting is being recorded or its recording transcribed; it starts once that is done. A model that is already running keeps serving.
 - **Long meetings.** Librelog sends the whole transcript in one request. Each model shows about how many minutes of meeting it can read at once on your Mac. A meeting that leaves too little room for the summary fails with **This meeting is too long for this model**, before the model spends time on it; choose a model that reads more, or a hosted provider, for it. A summary that runs out of room while it is being written fails the same way and is not saved.
+- **Linux.** The model runs on a GPU that Vulkan reaches, through your graphics driver's Vulkan support, and otherwise on the CPU, which works but is slow: expect a summary to take minutes. If the server stops while it starts on the GPU, Librelog starts it again on the CPU until you quit. The processor needs AVX2, FMA, F16C, and BMI2; without them Built-in models are not offered. Memory is judged from the computer's RAM, not the GPU's. The project has not yet exercised the Vulkan path on real GPUs.
 - **Thinking.** Built-in models answer without a separate reasoning step, so there is no reasoning-effort setting for them.
 - **Lifecycle.** The model loads with the first request and unloads after five idle minutes. It listens only on `127.0.0.1` with a key that changes every time it starts, and Librelog stops it when you quit.
 
 ### Speakers after a live on-device meeting
 
-During the meeting, Parakeet Streaming and Apple Speech label words only by where they came from: your microphone, or your computer's audio. Everyone you hear through the computer shares one speaker until the meeting ends. When you stop, Librelog transcribes the saved recording again on this Mac and separates the voices on the computer-audio channel:
+During the meeting, Parakeet Streaming and Apple Speech label words only by where they came from: your microphone, or your computer's audio. Everyone you hear through the computer shares one speaker, and everyone in the room with you shares your microphone, until the meeting ends. Voices are never separated live. When you stop, Librelog separates them on this Mac from the saved recording:
 
-- If **Parakeet Batch** is downloaded and supports the meeting's language, Librelog uses it. With Apple Speech and no usable Parakeet Batch, Apple Speech transcribes the recording again.
-- Parakeet Streaming cannot separate speakers by itself. Librelog never downloads Parakeet Batch for this on its own; it shows a hint next to the transcript instead.
+- If **Parakeet Batch** is downloaded and supports the meeting's language, Librelog transcribes the recording again with it. With Apple Speech and no usable Parakeet Batch, Apple Speech transcribes it again.
+- Otherwise, including with Parakeet Streaming alone, the bundled speaker model labels the live transcript's words without transcribing again. Nothing is downloaded for this.
 - The recording must be kept. With **Audio file retention** set to **Don't save**, voices are not separated.
-- It runs when the meeting lists no participants besides you, or two or more. With exactly one other participant, the far end stays one speaker named after that person. Without listed participants, a recording with no speech from the computer's audio, such as a memo, is skipped.
+- **In person.** When your microphone heard speech and your computer's audio stayed silent (a few seconds of stray sound still count as silent), the people sharing your microphone are separated into **Speaker 1**, **Speaker 2**, and so on, whether or not the note lists participants; a listed count is only an upper limit. If only one voice is found, as in a memo, a meeting where only you spoke, or a call whose computer audio never arrived, your words stay yours and the transcript is left unchanged.
+- **On a call.** The voices heard through your computer are separated when the meeting lists no participants besides you, or two or more. With exactly one other participant, the far end stays one speaker named after that person. Your microphone stays yours.
 - The transcript shows **Separating speakers...** while it runs, and the summary is written from the result. If you stop it, start another recording, or it fails, the live transcript stays as it was.
-- Your microphone channel is only split for an in-person meeting that has no computer audio and lists two or more other participants.
 
-The new transcript replaces the live one for that recording. Speakers you named during the meeting keep their names where the words line up. Turn this off under **Settings → Meetings → Separate speakers after meetings** if you prefer not to spend the extra minutes and processing after each meeting.
+The new transcript replaces the live one for that recording. Speakers you named during the meeting keep their names where the words line up. Turn this off under **Settings → Meetings → Separate speakers after meetings** if you prefer not to spend the extra processing after each meeting.
+
+For a note recorded before this worked, right-click **Transcript** and choose **Separate speakers**. It labels the existing transcript from the kept recording with the bundled speaker model, without transcribing again or downloading anything, and changes nothing if it finds only one voice. It is offered for a note with a single recording. **Re-transcribe** also separates an in-person recording, with any model that transcribes your microphone and your computer's audio separately: Parakeet Batch, Apple Speech and the on-device GGUF models do.
 
 ## Other model-backed features
 

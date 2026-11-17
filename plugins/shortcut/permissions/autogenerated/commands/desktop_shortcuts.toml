@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-desktop-shortcuts"
+description = "Enables the desktop_shortcuts command without any pre-configured scope."
+commands.allow = ["desktop_shortcuts"]
+
+[[permission]]
+identifier = "deny-desktop-shortcuts"
+description = "Denies the desktop_shortcuts command without any pre-configured scope."
+commands.deny = ["desktop_shortcuts"]

@@ -336,7 +336,7 @@ impl Session {
                 .map_or_else(now_ms, |since| {
                     i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
                 });
-            let name = FileName::recovered(Stamp::local(created_ms));
+            let name = FileName::recovered_movie(Stamp::local(created_ms), &movie);
             let moved =
                 match move_to_free_name(&movie, &self.layout.files_dir(), |copy| name.nth(copy)) {
                     Ok(moved) => moved,
@@ -691,7 +691,8 @@ impl Session {
             .filter(|path| path.is_file())
             .unwrap_or_else(|| recording.movie.clone());
         let stamp = Stamp::local(recording.created_ms);
-        let movie_name = FileName::recording(stamp, false);
+        // Named for what was written: the Linux recorder may write WebM.
+        let movie_name = FileName::movie(stamp, &movie);
         let mut kind = Kind::Video;
         let (mut width, mut height) = (stop.width_px, stop.height_px);
         let gif = recording.output == RecordingOutput::Gif && how == Finish::Normal;

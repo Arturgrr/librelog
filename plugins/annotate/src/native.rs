@@ -4,7 +4,11 @@
 use anlg_annotate_macos::AnnotateError;
 use serde::Deserialize;
 
-/// `anlg_annotate_macos`'s calls. `start`, `stop`, `cancel`, `extract_frames` and
+/// The Linux layer's code for a start the user cancelled in the desktop's
+/// screen-sharing dialog.
+pub const CANCELLED: &str = "cancelled";
+
+/// `anlg_annotate_macos`'s calls, or the Linux layer's. `start`, `stop`, `cancel`, `extract_frames` and
 /// `probe_screen_recording` block and must run on a worker thread.
 pub trait Native: Send + Sync + 'static {
     fn probe_screen_recording(&self) -> Result<String, AnnotateError>;

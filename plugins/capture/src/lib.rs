@@ -3,13 +3,16 @@
 //! screenshot shortcuts off. This plugin owns names and destinations, the
 //! index of recent captures, thumbnails, GIF conversion, copying, cards and
 //! the native event poll; the frontend maps shortcuts and settings to its
-//! commands. The native layer is `anlg_annotate_macos::capture`.
+//! commands. The native layer is `anlg_annotate_macos::capture` on macOS
+//! and [`linux`] (portals, GStreamer and Tauri windows) on Linux.
 
 mod commands;
 mod error;
 mod events;
 mod export;
 mod library;
+#[cfg(target_os = "linux")]
+mod linux;
 mod native;
 mod process;
 mod session;
@@ -22,6 +25,8 @@ use std::time::Duration;
 
 pub use error::*;
 pub use events::*;
+#[cfg(target_os = "linux")]
+pub use linux::recorder;
 pub use types::*;
 
 use anlg_capture_core::Layout;
@@ -47,6 +52,17 @@ pub async fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     session.shutdown(SHUTDOWN_WITHIN).await;
 }
 
+/// Stops every GStreamer pipeline Capture started (on Linux), for an app
+/// that is exiting: each is asked to finish, which finalizes a recording's
+/// file, and killed when it has not after `within`. Blocks for at most
+/// about `within`; nothing to do elsewhere.
+pub fn stop_pipelines(within: Duration) {
+    #[cfg(target_os = "linux")]
+    linux::stop_pipelines(within);
+    #[cfg(not(target_os = "linux"))]
+    let _ = within;
+}
+
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .plugin_name(PLUGIN_NAME)
@@ -67,8 +83,14 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::replace_system_shortcuts::<tauri::Wry>,
             commands::restore_system_shortcuts::<tauri::Wry>,
             export::export_png::<tauri::Wry>,
+            commands::card_stack::<tauri::Wry>,
+            commands::card_pressed::<tauri::Wry>,
+            commands::card_hovered::<tauri::Wry>,
+            commands::area_frame::<tauri::Wry>,
+            commands::area_chosen::<tauri::Wry>,
+            commands::forget_screen_choice::<tauri::Wry>,
         ])
-        .events(tauri_specta::collect_events![CaptureEvent])
+        .events(tauri_specta::collect_events![CaptureEvent, CaptureCards])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
 
@@ -86,8 +108,9 @@ pub fn init(root: Option<PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 None => app.path().app_data_dir()?.join("captures"),
             };
             let emitter = app.clone();
+            let native = native::system(app, &root);
             let session = Arc::new(Session::new(
-                Arc::new(native::System),
+                native,
                 Layout::new(root),
                 app.path().download_dir().ok(),
                 Arc::new(move |event: CaptureEvent| {

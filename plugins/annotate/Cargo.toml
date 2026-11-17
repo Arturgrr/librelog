@@ -33,6 +33,15 @@ tauri = { workspace = true, features = ["test"] }
 tauri-plugin-shortcut = { workspace = true }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Annotate records with Capture's Linux recorder.
+tauri-plugin-capture = { workspace = true }
+image = { workspace = true, features = ["png"] }
+# The overlay's input shape, set through GTK and confirmed with the X server.
+gtk = "0.18"
+raw-window-handle = "0.6"
+x11rb = { version = "0.13", features = ["shape"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 anlg-tcc = { workspace = true, optional = true }
 libc = "0.2"

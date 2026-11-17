@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-ask-desktop-again"
+description = "Enables the ask_desktop_again command without any pre-configured scope."
+commands.allow = ["ask_desktop_again"]
+
+[[permission]]
+identifier = "deny-ask-desktop-again"
+description = "Denies the ask_desktop_again command without any pre-configured scope."
+commands.deny = ["ask_desktop_again"]

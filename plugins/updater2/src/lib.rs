@@ -95,6 +95,11 @@ async fn check_and_download<R: tauri::Runtime>(
         }
     };
 
+    // The check has announced the version; RPM and deb installs stop there.
+    if !self_update_supported() {
+        return false;
+    }
+
     // A meeting may have started while the check was in flight.
     if updater2.meeting_active() {
         tracing::info!("automatic_update_deferred_meeting_active");

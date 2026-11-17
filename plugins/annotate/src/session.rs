@@ -38,7 +38,7 @@ pub enum Phase {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    /// False off macOS, where nothing records.
+    /// False off macOS and Linux, where nothing records.
     pub available: bool,
     pub phase: Phase,
     /// The recording that stopped and waits for `finalize` or `cancel`.
@@ -59,6 +59,9 @@ pub struct CapsuleLabels {
     pub discard_question: Option<String>,
     pub discard: Option<String>,
     pub keep: Option<String>,
+    /// The Linux capsule's pen and stop buttons.
+    pub draw: Option<String>,
+    pub stop: Option<String>,
 }
 
 struct Active {
@@ -199,7 +202,7 @@ impl Session {
             ),
         };
         Status {
-            available: cfg!(target_os = "macos"),
+            available: cfg!(any(target_os = "macos", target_os = "linux")),
             phase,
             stopped,
         }
@@ -253,6 +256,7 @@ impl Session {
             dir.join(anlg_annotate_core::AUDIO_FILE),
             self.clock.clone(),
         )?;
+        #[cfg(not(target_os = "linux"))]
         let request = anlg_annotate_macos::StartRequest {
             dir: dir.to_string_lossy().into_owned(),
             labels: labels.map(|labels| anlg_annotate_macos::Labels {
@@ -262,6 +266,15 @@ impl Session {
             }),
         }
         .to_json();
+        #[cfg(target_os = "linux")]
+        let request = serde_json::json!({
+            "dir": dir,
+            "labels": labels.map(|labels| serde_json::json!({
+                "discard_question": labels.discard_question, "discard": labels.discard,
+                "keep": labels.keep, "draw": labels.draw, "stop": labels.stop,
+            })),
+        })
+        .to_string();
         let native = self.native.clone();
         let reply = match blocking(move || native.start(&request)).await {
             Ok(Ok(reply)) => reply,
@@ -468,6 +481,7 @@ impl Session {
         tracing::warn!(%error, "annotate stop failed; finishing without the movie");
         // A movie whose writer never finished has no index and can't be read.
         let _ = std::fs::remove_file(dir.join(anlg_annotate_core::VIDEO_FILE));
+        let _ = std::fs::remove_file(dir.join(anlg_annotate_core::WEBM_VIDEO_FILE));
         let elapsed_ms = self.clock.now_ns().saturating_sub(start.started_host_ns) / 1_000_000;
         Some(StopResult {
             video_path: String::new(),
@@ -541,6 +555,8 @@ impl Session {
         enum Taken {
             Recording(Box<Active>),
             Stopped(PathBuf),
+            #[cfg(target_os = "linux")]
+            Starting,
         }
         let taken = {
             let mut state = self.lock();
@@ -548,6 +564,13 @@ impl Session {
                 State::Idle => return Ok(()),
                 State::Starting { .. } => {
                     *state = State::Starting { cancel: true };
+                    // On Linux the desktop's sharing dialog may be up: the
+                    // native layer takes it down.
+                    #[cfg(target_os = "linux")]
+                    {
+                        Taken::Starting
+                    }
+                    #[cfg(not(target_os = "linux"))]
                     return Ok(());
                 }
                 State::Recording(active) => {
@@ -569,6 +592,13 @@ impl Session {
             }
         };
         match taken {
+            #[cfg(target_os = "linux")]
+            Taken::Starting => {
+                let native = self.native.clone();
+                blocking(move || native.cancel())
+                    .await?
+                    .map_err(Error::from)
+            }
             Taken::Stopped(dir) => {
                 let _ = std::fs::remove_dir_all(dir);
                 Ok(())
@@ -1031,7 +1061,10 @@ mod tests {
         session.cancel().await.unwrap();
         assert!(matches!(starting.await.unwrap(), Err(Error::Cancelled)));
         assert_eq!(session.status().phase, Phase::Idle);
-        assert_eq!(fake.cancels.load(Ordering::SeqCst), 1);
+        // On Linux the cancel also reached the native layer while it started,
+        // to take the desktop's dialog down.
+        let while_starting = usize::from(cfg!(target_os = "linux"));
+        assert_eq!(fake.cancels.load(Ordering::SeqCst), 1 + while_starting);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
 

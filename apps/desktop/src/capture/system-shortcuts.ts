@@ -6,7 +6,7 @@ import {
 } from "@anlg/plugin-capture";
 import { commands as opener } from "@anlg/plugin-opener2";
 
-import { captureAvailable } from "./system";
+import { captureAvailable, captureOnLinux } from "./system";
 
 import { getStoredSettingValues, setSettingValues } from "~/settings/queries";
 import { SETTING_DEFINITIONS, type SettingValues } from "~/settings/schema";
@@ -43,6 +43,8 @@ export type SystemShortcutDeps = {
   };
   settings: () => Promise<Current>;
   save: (values: SettingValues) => Promise<void>;
+  /** Whether there are macOS shortcuts to replace; only on macOS. */
+  available?: () => boolean;
 };
 
 /** None of macOS's screenshot shortcuts is on any more. */
@@ -114,6 +116,10 @@ export function createSystemShortcutSwitch(deps: SystemShortcutDeps) {
    * be left without a screenshot shortcut.
    */
   async function disableCapture() {
+    if (deps.available?.() === false) {
+      await deps.save({ capture_enabled: false });
+      return;
+    }
     const current = await deps.settings();
     if (
       current.capture_replace_system_shortcuts ||
@@ -143,6 +149,7 @@ const appSwitch = createSystemShortcutSwitch({
   settings: async () =>
     resolveConfigValues(SETTING_KEYS, await getStoredSettingValues()),
   save: setSettingValues,
+  available: () => !captureOnLinux(),
 });
 
 const QUERY_KEY = ["capture-system-shortcuts"];
@@ -157,7 +164,7 @@ export function useSystemShortcuts() {
   const status = useQuery({
     queryKey: QUERY_KEY,
     queryFn: async () => unwrap(await capture.systemShortcuts()),
-    enabled: captureAvailable(),
+    enabled: captureAvailable() && !captureOnLinux(),
     refetchOnWindowFocus: true,
   });
   const onStatus = (next: SystemShortcuts) =>

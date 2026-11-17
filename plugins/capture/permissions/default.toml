@@ -17,4 +17,10 @@ permissions = [
   "allow-replace-system-shortcuts",
   "allow-restore-system-shortcuts",
   "allow-export-png",
+  "allow-card-stack",
+  "allow-card-pressed",
+  "allow-card-hovered",
+  "allow-area-frame",
+  "allow-area-chosen",
+  "allow-forget-screen-choice",
 ]

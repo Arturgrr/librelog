@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-card-stack"
+description = "Enables the card_stack command without any pre-configured scope."
+commands.allow = ["card_stack"]
+
+[[permission]]
+identifier = "deny-card-stack"
+description = "Denies the card_stack command without any pre-configured scope."
+commands.deny = ["card_stack"]

@@ -367,6 +367,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.2",
  "serde",
+ "serde_repr",
  "tokio",
  "zbus",
 ]
@@ -2933,7 +2934,9 @@ dependencies = [
  "chrono",
  "db-app",
  "db-core",
+ "desktop-portal",
  "dirs 6.0.0",
+ "gdk",
  "host",
  "intercept",
  "pico-args",
@@ -3007,6 +3010,17 @@ dependencies = [
  "tracing",
  "windows 0.62.2",
  "windows-registry 0.5.3",
+]
+
+[[package]]
+name = "desktop-portal"
+version = "0.1.0"
+dependencies = [
+ "ashpd",
+ "futures-util",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -12607,6 +12621,7 @@ dependencies = [
 name = "tauri-plugin-anlg-tray"
 version = "0.1.0"
 dependencies = [
+ "desktop-portal",
  "intercept",
  "libloading 0.8.9",
  "objc2",
@@ -12639,15 +12654,18 @@ dependencies = [
  "annotate-macos",
  "audio",
  "futures-util",
+ "gtk",
  "hound",
  "image",
  "libc",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "specta",
  "specta-typescript",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-capture",
  "tauri-plugin-shortcut",
  "tauri-specta",
  "tcc",
@@ -12656,6 +12674,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "x11rb",
 ]
 
 [[package]]
@@ -12692,9 +12711,14 @@ name = "tauri-plugin-capture"
 version = "0.1.0"
 dependencies = [
  "annotate-macos",
+ "ashpd",
  "base64 0.22.1",
  "capture-core",
+ "desktop-portal",
+ "futures-util",
+ "gif 0.14.2",
  "image",
+ "libc",
  "objc2-foundation",
  "plist",
  "serde",
@@ -12709,6 +12733,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "url",
+ "x11rb",
 ]
 
 [[package]]
@@ -12862,8 +12888,11 @@ dependencies = [
 name = "tauri-plugin-dictation"
 version = "0.1.0"
 dependencies = [
+ "arboard",
+ "ashpd",
  "atspi",
  "audio",
+ "desktop-portal",
  "dictation-ui-macos",
  "futures-util",
  "hound",
@@ -12888,6 +12917,7 @@ dependencies = [
  "tracing",
  "url",
  "windows 0.62.2",
+ "x11rb",
 ]
 
 [[package]]
@@ -13111,6 +13141,7 @@ dependencies = [
  "tauri-plugin-db",
  "tauri-plugin-settings",
  "tauri-specta",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -13414,6 +13445,7 @@ name = "tauri-plugin-shortcut"
 version = "0.1.0"
 dependencies = [
  "ashpd",
+ "desktop-portal",
  "futures-util",
  "serde",
  "serde_json",

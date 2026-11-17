@@ -319,6 +319,18 @@
           "markdownDescription": "Denies the cancel command without any pre-configured scope."
         },
         {
+          "description": "Enables the capsule_pressed command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-capsule-pressed",
+          "markdownDescription": "Enables the capsule_pressed command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the capsule_pressed command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-capsule-pressed",
+          "markdownDescription": "Denies the capsule_pressed command without any pre-configured scope."
+        },
+        {
           "description": "Enables the finalize command without any pre-configured scope.",
           "type": "string",
           "const": "allow-finalize",
@@ -329,6 +341,42 @@
           "type": "string",
           "const": "deny-finalize",
           "markdownDescription": "Denies the finalize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the forget_screen_choice command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-forget-screen-choice",
+          "markdownDescription": "Enables the forget_screen_choice command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the forget_screen_choice command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-forget-screen-choice",
+          "markdownDescription": "Denies the forget_screen_choice command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ink_escape command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ink-escape",
+          "markdownDescription": "Enables the ink_escape command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ink_escape command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ink-escape",
+          "markdownDescription": "Denies the ink_escape command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ink_pointer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ink-pointer",
+          "markdownDescription": "Enables the ink_pointer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ink_pointer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ink-pointer",
+          "markdownDescription": "Denies the ink_pointer command without any pre-configured scope."
         },
         {
           "description": "Enables the latest command without any pre-configured scope.",
@@ -439,10 +487,34 @@
           "markdownDescription": "Denies the stop command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`",
+          "description": "Enables the surface command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-surface",
+          "markdownDescription": "Enables the surface command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the surface command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-surface",
+          "markdownDescription": "Denies the surface command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the surface_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-surface-ready",
+          "markdownDescription": "Enables the surface_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the surface_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-surface-ready",
+          "markdownDescription": "Denies the surface_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`"
         }
       ]
     }

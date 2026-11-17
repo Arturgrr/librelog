@@ -231,6 +231,8 @@ pub struct TranscriptionParams {
     pub max_speakers: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_context: Option<String>,
+    #[serde(default)]
+    pub diarize_words: Vec<owhisper_interface::batch::Word>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -441,6 +443,7 @@ impl From<TranscriptionParams> for listener2::BatchParams {
             min_speakers: value.min_speakers,
             max_speakers: value.max_speakers,
             known_speakers: vec![],
+            diarize_words: value.diarize_words,
         }
     }
 }

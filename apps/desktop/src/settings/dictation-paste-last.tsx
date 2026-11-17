@@ -6,6 +6,7 @@ import { commands as shortcutCommands } from "@anlg/plugin-shortcut";
 import { Button } from "@anlg/ui/components/ui/button";
 import { Switch } from "@anlg/ui/components/ui/switch";
 
+import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import {
   ShortcutCapture,
   ShortcutCaptureHint,
@@ -106,6 +107,7 @@ export function DictationPasteLastSettings() {
             </div>
           )}
         </SettingRow>
+        {enabled && <DesktopShortcutsNote shortcuts={[shortcut]} />}
         {recorder.editing !== null && (
           <ShortcutCaptureHint id={hintId} doubleTap={false} />
         )}

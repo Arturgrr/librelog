@@ -20,6 +20,12 @@ Default permissions for the plugin
 - `allow-replace-system-shortcuts`
 - `allow-restore-system-shortcuts`
 - `allow-export-png`
+- `allow-card-stack`
+- `allow-card-pressed`
+- `allow-card-hovered`
+- `allow-area-frame`
+- `allow-area-chosen`
+- `allow-forget-screen-choice`
 
 ## Permission Table
 
@@ -29,6 +35,58 @@ Default permissions for the plugin
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`capture:allow-area-chosen`
+
+</td>
+<td>
+
+Enables the area_chosen command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-area-chosen`
+
+</td>
+<td>
+
+Denies the area_chosen command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-area-frame`
+
+</td>
+<td>
+
+Enables the area_frame command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-area-frame`
+
+</td>
+<td>
+
+Denies the area_frame command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -52,6 +110,84 @@ Enables the cancel_recording command without any pre-configured scope.
 <td>
 
 Denies the cancel_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-card-hovered`
+
+</td>
+<td>
+
+Enables the card_hovered command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-card-hovered`
+
+</td>
+<td>
+
+Denies the card_hovered command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-card-pressed`
+
+</td>
+<td>
+
+Enables the card_pressed command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-card-pressed`
+
+</td>
+<td>
+
+Denies the card_pressed command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-card-stack`
+
+</td>
+<td>
+
+Enables the card_stack command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-card-stack`
+
+</td>
+<td>
+
+Denies the card_stack command without any pre-configured scope.
 
 </td>
 </tr>
@@ -156,6 +292,32 @@ Enables the export_png command without any pre-configured scope.
 <td>
 
 Denies the export_png command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:allow-forget-screen-choice`
+
+</td>
+<td>
+
+Enables the forget_screen_choice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`capture:deny-forget-screen-choice`
+
+</td>
+<td>
+
+Denies the forget_screen_choice command without any pre-configured scope.
 
 </td>
 </tr>

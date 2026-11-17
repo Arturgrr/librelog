@@ -26,7 +26,6 @@ type ToastRegistryParams = {
   activeDownloads: DownloadProgress[];
   localSttStatus: ServerStatus | null;
   isLocalSttModel: boolean;
-  needsSpeakerSeparationModel: boolean;
   update: DesktopUpdateControl;
   onOpenLLMSettings: () => void;
   onOpenSTTSettings: () => void;
@@ -50,7 +49,6 @@ export function createToastRegistry({
   activeDownloads,
   localSttStatus,
   isLocalSttModel,
-  needsSpeakerSeparationModel,
   update,
   onOpenLLMSettings,
   onOpenSTTSettings,
@@ -145,23 +143,6 @@ export function createToastRegistry({
       },
       condition: () =>
         hasSttConfigured && !hasLLMConfigured && !isAiIntelligenceTabActive,
-    },
-    {
-      toast: {
-        id: "speaker-separation-needs-batch-model",
-        description: t`Separating speakers after meetings needs Parakeet Batch`,
-        detail: t`Until it is downloaded, everyone heard through your computer stays one speaker.`,
-        primaryAction: {
-          label: t`Settings`,
-          onClick: onOpenSTTSettings,
-        },
-        lifecycle: { type: "persistent", dismissal: "permanent" },
-      },
-      condition: () =>
-        needsSpeakerSeparationModel &&
-        !isLiveMeetingActive &&
-        !hasActiveDownload &&
-        !isAiTranscriptionTabActive,
     },
   ];
 }

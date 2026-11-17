@@ -41,7 +41,7 @@ The app only talks to the AI provider you select, Hugging Face when you download
 
 Librelog is in public beta. Download `Librelog_<version>_aarch64.dmg` from [GitHub Releases](https://github.com/Arturgrr/librelog/releases/latest). It needs a Mac with Apple silicon (M1 or later) and macOS 15 Sequoia or later; Intel Macs are not supported.
 
-Linux and Windows builds are not published yet; build from source (below).
+On Linux x86_64, download the RPM (Fedora), deb (Ubuntu 24.04 or later, Debian) or AppImage from the same release; see [Install on Linux](docs/install-linux.mdx) for requirements, how updates work there, and what is not available on Linux yet. Windows and Linux ARM64 builds are not published; build from source (below).
 
 Librelog has its own bundle identifier (`com.arturgrr.librelog`), data folder, and keychain entries. It does not read or import data from an installed Anarlog or Hyprnote app, and both can be installed side by side.
 
@@ -101,7 +101,7 @@ Librelog checks GitHub Releases for new versions. With **Settings â†’ General â†
 
 ## Build from source
 
-You need Node.js 22 or later, pnpm 11.1.1, Rust 1.94.0 (pinned in `rust-toolchain.toml`), and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/). Apple Silicon Macs also need Xcode with its Metal Toolchain component (`xcodebuild -downloadComponent MetalToolchain` on Xcode 26 and later). On Debian or Ubuntu, `bash scripts/setup-linux.sh` installs the toolchains and system packages. On-device transcription builds transcribe.cpp with CMake; on other Linux distributions also install the Vulkan headers and loader, `glslc` and the SPIR-V headers, and on Windows x86_64 install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) and the SPIR-V headers (for example `vcpkg install spirv-headers:x64-windows`, with that prefix in `CMAKE_PREFIX_PATH`). Without a usable GPU the app transcribes on the CPU; on Linux it still needs the Vulkan loader (`libvulkan1`) installed. On x86_64, local models need a processor with AVX2, FMA and F16C. The GPU paths (Metal, Vulkan) have not been exercised on real hardware yet.
+You need Node.js 22 or later, pnpm 11.1.1, Rust 1.94.0 (pinned in `rust-toolchain.toml`), and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/). Apple Silicon Macs also need Xcode with its Metal Toolchain component (`xcodebuild -downloadComponent MetalToolchain` on Xcode 26 and later). On Debian, Ubuntu or Fedora, `bash scripts/setup-linux.sh` installs the toolchains and system packages. On-device transcription builds transcribe.cpp with CMake; on other Linux distributions also install the Vulkan headers and loader, `glslc` and the SPIR-V headers, and on Windows x86_64 install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) and the SPIR-V headers (for example `vcpkg install spirv-headers:x64-windows`, with that prefix in `CMAKE_PREFIX_PATH`). Without a usable GPU the app transcribes on the CPU; on Linux it still needs the Vulkan loader (`libvulkan1`) installed. On x86_64, local models need a processor with AVX2, FMA and F16C. The GPU paths (Metal, Vulkan) have not been exercised on real hardware yet.
 
 ```bash
 git clone https://github.com/Arturgrr/librelog.git

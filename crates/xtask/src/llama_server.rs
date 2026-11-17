@@ -1,7 +1,9 @@
 //! Builds the llama-server the app bundles as `librelog-llama-server`: one
 //! statically linked executable from llama.cpp at a pinned commit, with the
-//! Metal shaders embedded, the web UI, RPC, HTTPS and subprocess support
-//! left out.
+//! web UI, RPC, HTTPS and subprocess support left out. On macOS it embeds the
+//! Metal shaders; on Linux x86-64 it carries the Vulkan backend, links only
+//! glibc and the system's Vulkan loader, and runs on the CPU when no Vulkan
+//! GPU is usable.
 
 use anyhow::{Context, Result, bail, ensure};
 use std::{fs, path::Path};
@@ -12,10 +14,17 @@ const REPOSITORY: &str = "https://github.com/ggml-org/llama.cpp";
 const TAG: &str = "b12110";
 const COMMIT: &str = "cd959bae99ff4bed22bef2604f45241c09bbb8c8";
 
-/// Built-in models ship only for Apple silicon outside the App Store.
-const SHIPPED_TRIPLE: &str = "aarch64-apple-darwin";
+/// Built-in models ship for Apple silicon outside the App Store and for Linux
+/// on x86-64.
+fn configure(triple: &str) -> Option<&'static [&'static str]> {
+    match triple {
+        "aarch64-apple-darwin" => Some(MACOS_CONFIGURE),
+        "x86_64-unknown-linux-gnu" => Some(LINUX_X86_64_CONFIGURE),
+        _ => None,
+    }
+}
 
-const CONFIGURE: &[&str] = &[
+const MACOS_CONFIGURE: &[&str] = &[
     "-DCMAKE_BUILD_TYPE=Release",
     "-DBUILD_SHARED_LIBS=OFF",
     "-DLLAMA_BUILD_SERVER=ON",
@@ -37,24 +46,47 @@ const CONFIGURE: &[&str] = &[
     "-DCMAKE_OSX_ARCHITECTURES=arm64",
 ];
 
+const LINUX_X86_64_CONFIGURE: &[&str] = &[
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=OFF",
+    "-DLLAMA_BUILD_SERVER=ON",
+    "-DLLAMA_BUILD_TOOLS=ON",
+    "-DLLAMA_BUILD_TESTS=OFF",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_APP=OFF",
+    "-DGGML_VULKAN=ON",
+    // AVX2, FMA, F16C and BMI2, the floor transcription already requires;
+    // the plugin refuses CPUs below it instead of crashing.
+    "-DGGML_NATIVE=OFF",
+    // ggml's own thread pool, so libgomp need not be installed.
+    "-DGGML_OPENMP=OFF",
+    "-DGGML_RPC=OFF",
+    "-DLLAMA_CONNECT=OFF",
+    "-DLLAMA_OPENSSL=OFF",
+    "-DLLAMA_BUILD_UI=OFF",
+    "-DLLAMA_USE_PREBUILT_UI=OFF",
+    "-DLLAMA_SUBPROCESS=OFF",
+    "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc -s",
+];
+
 pub(crate) fn prepare(
     sh: &Shell,
     triple: &str,
     work_dir: &Path,
     binaries_dir: &Path,
 ) -> Result<()> {
-    if triple != SHIPPED_TRIPLE {
+    let Some(configure) = configure(triple) else {
         println!(
-            "prepare-binaries: skipping librelog-llama-server: built-in models ship only for {SHIPPED_TRIPLE}"
+            "prepare-binaries: skipping librelog-llama-server: built-in models do not ship for {triple}"
         );
         return Ok(());
-    }
+    };
 
     let source = work_dir.join(format!("llama.cpp-{TAG}"));
     let build = source.join("build-librelog");
     let dst = binaries_dir.join(format!("librelog-llama-server-{triple}"));
     let stamp = build.join("librelog-stamp");
-    let expected_stamp = format!("{COMMIT}\n{}\n", CONFIGURE.join("\n"));
+    let expected_stamp = format!("{COMMIT}\n{}\n", configure.join("\n"));
     if dst.is_file() && fs::read_to_string(&stamp).ok().as_deref() == Some(&expected_stamp) {
         println!("prepare-binaries: binaries/librelog-llama-server-{triple} is up to date");
         return Ok(());
@@ -79,7 +111,7 @@ pub(crate) fn prepare(
     let short_commit = &COMMIT[..8];
     cmd!(
         sh,
-        "cmake -S {source} -B {build} {CONFIGURE...} -DLLAMA_BUILD_NUMBER={build_number} -DLLAMA_BUILD_COMMIT={short_commit}"
+        "cmake -S {source} -B {build} {configure...} -DLLAMA_BUILD_NUMBER={build_number} -DLLAMA_BUILD_COMMIT={short_commit}"
     )
     .run()?;
     let jobs = std::thread::available_parallelism()
@@ -105,6 +137,9 @@ pub(crate) fn prepare(
 /// The app bundles one file, so the server must not load llama.cpp or ggml
 /// libraries from next to itself.
 fn check_system_libraries_only(sh: &Shell, binary: &Path) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return check_linux_libraries(sh, binary);
+    }
     let linked = cmd!(sh, "otool -L {binary}").read()?;
     let foreign: Vec<&str> = linked
         .lines()
@@ -119,5 +154,45 @@ fn check_system_libraries_only(sh: &Shell, binary: &Path) -> Result<()> {
             foreign.join(", ")
         );
     }
+    Ok(())
+}
+
+/// glibc's own libraries and the Vulkan loader, which the packages depend on
+/// (`libvulkan1`, `vulkan-loader`) and an AppImage takes from the system.
+const LINUX_SYSTEM_LIBRARIES: &[&str] = &[
+    "libc.so.6",
+    "libm.so.6",
+    "libpthread.so.0",
+    "libdl.so.2",
+    "librt.so.1",
+    "ld-linux-x86-64.so.2",
+    "libvulkan.so.1",
+];
+
+fn check_linux_libraries(sh: &Shell, binary: &Path) -> Result<()> {
+    let dynamic = cmd!(sh, "readelf -d {binary}").read()?;
+    let foreign: Vec<&str> = dynamic
+        .lines()
+        .filter(|line| line.contains("(NEEDED)"))
+        .filter_map(|line| {
+            line.split_once('[')?
+                .1
+                .split_once(']')
+                .map(|(name, _)| name)
+        })
+        .filter(|name| !LINUX_SYSTEM_LIBRARIES.contains(name))
+        .collect();
+    if !foreign.is_empty() {
+        bail!(
+            "{} links libraries outside glibc and the Vulkan loader: {}",
+            binary.display(),
+            foreign.join(", ")
+        );
+    }
+    ensure!(
+        !dynamic.contains("(RPATH)") && !dynamic.contains("(RUNPATH)"),
+        "{} has an RPATH and could load libraries from next to itself",
+        binary.display()
+    );
     Ok(())
 }

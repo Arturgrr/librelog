@@ -5,8 +5,10 @@ use anlg_model_downloader::DownloadStatus;
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
     /// Built-in models ship only in the macOS Apple silicon build outside
-    /// the App Store.
+    /// the App Store and the Linux x86-64 build.
     UnsupportedPlatform,
+    /// The Linux server needs AVX2, FMA, F16C and BMI2.
+    UnsupportedCpu,
     /// The build has no llama-server next to the app.
     MissingBinary,
 }

@@ -37,6 +37,9 @@ fn mark_exit_flush_complete() {
 fn start_exit_hard_fallback() {
     std::thread::spawn(|| {
         std::thread::sleep(EXIT_HARD_FALLBACK_TIMEOUT);
+        // A recording's encoder must not outlive the app.
+        #[cfg(not(feature = "app-store"))]
+        tauri_plugin_capture::stop_pipelines(std::time::Duration::from_secs(1));
         std::process::exit(0);
     });
 }
@@ -65,6 +68,7 @@ fn create_audio_provider(_bundle_id: &str) -> std::sync::Arc<dyn anlg_audio_actu
 
 pub fn main() {
     startup::apply_linux_webkit_workarounds();
+    startup::apply_linux_display_backend();
 
     // Keep a process-wide Tokio runtime for Tauri plugins, but leave it before
     // Builder::build(). tauri-plugin-single-instance's Linux setup uses zbus's
@@ -78,6 +82,20 @@ pub fn main() {
 
     let context = tauri::generate_context!();
     let identifier = context.config().identifier.clone();
+
+    #[cfg(target_os = "linux")]
+    {
+        let product_name = context.config().product_name.clone().unwrap_or_default();
+        if let Some(message) = anlg_desktop_portal::prepare_app_id(&identifier, &product_name) {
+            eprintln!("{message}");
+        }
+        // Registers before the first portal request, which waits for it.
+        runtime.spawn(async {
+            if let Err(error) = anlg_desktop_portal::connection().await {
+                tracing::warn!(%error, "the desktop portals are unreachable");
+            }
+        });
+    }
 
     // The single-instance plugin only starts with the builder, which is too
     // late to keep a second launch from racing an in-flight startup migration.
@@ -219,7 +237,12 @@ pub fn main() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(tauri_plugin_windows::persisted_window_state_flags())
-                .with_denylist(&["composer", "dictation-overlay"])
+                .with_denylist(&[
+                    "composer",
+                    "dictation-overlay",
+                    "capture-cards",
+                    "capture-area",
+                ])
                 .build(),
         )
         .plugin(tauri_plugin_transcription::init())
@@ -234,7 +257,8 @@ pub fn main() {
         ));
 
     // Annotate posts keystrokes to paste and is experimental: left out of the
-    // sandboxed App Store build. Off macOS every command says it is unavailable.
+    // sandboxed App Store build. It records on macOS and Linux; elsewhere every
+    // command says it is unavailable.
     #[cfg(not(feature = "app-store"))]
     {
         builder = builder.plugin(tauri_plugin_annotate::init(
@@ -501,6 +525,10 @@ pub fn main() {
 
             app.dictation()
                 .shutdown_environment(std::time::Duration::from_secs(2));
+            // Normally finished by the capture shutdown already; any pipeline
+            // left is asked to finalize its file, then killed.
+            #[cfg(not(feature = "app-store"))]
+            tauri_plugin_capture::stop_pipelines(std::time::Duration::from_secs(3));
 
             anlg_host::kill_processes_by_matcher(anlg_host::ProcessMatcher::Sidecar);
         }

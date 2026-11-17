@@ -1,13 +1,17 @@
 //! Annotate: record the screen while drawing over it in red and talking,
 //! then turn it into a bundle a coding agent reads (`anlg_annotate_core`). This
 //! plugin owns the recording session and the narration; the frontend drives
-//! it and transcribes the narration in between `stop` and `finalize`.
+//! it and transcribes the narration in between `stop` and `finalize`. The
+//! native layer is `anlg_annotate_macos` on macOS and [`linux`] (Capture's
+//! recorder, Tauri windows for the ink and the capsule, GStreamer) on Linux.
 
 mod audio;
 mod bundle;
 mod commands;
 mod error;
 mod events;
+#[cfg(target_os = "linux")]
+mod linux;
 mod native;
 mod session;
 
@@ -65,9 +69,38 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::set_retention::<tauri::Wry>,
             commands::annotations_dir::<tauri::Wry>,
             commands::latest::<tauri::Wry>,
+            commands::surface::<tauri::Wry>,
+            commands::ink_pointer::<tauri::Wry>,
+            commands::ink_escape::<tauri::Wry>,
+            commands::capsule_pressed::<tauri::Wry>,
+            commands::surface_ready::<tauri::Wry>,
+            commands::forget_screen_choice::<tauri::Wry>,
         ])
-        .events(tauri_specta::collect_events![AnnotateEvent])
+        .events(tauri_specta::collect_events![
+            AnnotateEvent,
+            AnnotateSurface
+        ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
+}
+
+#[cfg(target_os = "linux")]
+fn system(app: &tauri::AppHandle<tauri::Wry>, root: &std::path::Path) -> Arc<dyn native::Native> {
+    match linux::Linux::desktop(app.clone(), root) {
+        Ok(linux) => {
+            let linux = Arc::new(linux);
+            app.manage(linux.clone());
+            linux
+        }
+        Err(error) => {
+            tracing::warn!(%error, "annotate on Linux");
+            Arc::new(native::System)
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn system(_app: &tauri::AppHandle<tauri::Wry>, _root: &std::path::Path) -> Arc<dyn native::Native> {
+    Arc::new(native::System)
 }
 
 /// `root` holds the annotations, one folder each; without one they go in
@@ -97,7 +130,7 @@ pub fn init(root: Option<PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 }
             });
             let session = Arc::new(Session::new(
-                Arc::new(native::System),
+                system(app, &root),
                 Arc::new(audio::HostClock),
                 root,
                 Arc::new(move |event: AnnotateEvent| {

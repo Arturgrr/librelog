@@ -9,17 +9,28 @@ NODE_MAJOR=22
 RUST_VERSION=1.94.0
 PNPM_VERSION=11.1.1
 
+node_major() {
+  local version=0
+  if command -v node &> /dev/null; then
+    version="$(node --version)"
+    version="${version#v}"
+    version="${version%%.*}"
+  fi
+  echo "$version"
+}
+
 setup_toolchains() {
-  if ! command -v apt-get &> /dev/null || [[ ! -f /etc/os-release ]]; then
-    echo "Error: Linux setup currently supports Debian and Ubuntu." >&2
+  if [[ ! -f /etc/os-release ]]; then
+    echo "Error: Linux setup supports Debian, Ubuntu and Fedora." >&2
     exit 1
   fi
 
   . /etc/os-release
   case "${ID:-}" in
-    debian | ubuntu) ;;
+    debian | ubuntu) PACKAGE_MANAGER=apt ;;
+    fedora) PACKAGE_MANAGER=dnf ;;
     *)
-      echo "Error: Linux setup currently supports Debian and Ubuntu, not ${ID:-unknown}." >&2
+      echo "Error: Linux setup supports Debian, Ubuntu and Fedora, not ${ID:-unknown}." >&2
       exit 1
       ;;
   esac
@@ -32,23 +43,29 @@ setup_toolchains() {
       ;;
   esac
 
-  sudo apt-get update
-  sudo apt-get install -y ca-certificates curl libatomic1
-
-  local installed_node_major=0
-  if command -v node &> /dev/null; then
-    installed_node_major="$(node --version)"
-    installed_node_major="${installed_node_major#v}"
-    installed_node_major="${installed_node_major%%.*}"
+  if [[ "$PACKAGE_MANAGER" == dnf ]]; then
+    sudo dnf install -y ca-certificates curl libatomic
+  else
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates curl libatomic1
   fi
 
-  if ((installed_node_major < NODE_MAJOR)); then
-    local nodesource_setup
-    nodesource_setup="$(mktemp)"
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" -o "$nodesource_setup"
-    sudo -E bash "$nodesource_setup"
-    rm -f "$nodesource_setup"
-    sudo apt-get install -y nodejs
+  if (($(node_major) < NODE_MAJOR)); then
+    if [[ "$PACKAGE_MANAGER" == dnf ]]; then
+      # Fedora 41 and later ship Node.js 22 or newer as their default.
+      sudo dnf install -y nodejs npm
+    else
+      local nodesource_setup
+      nodesource_setup="$(mktemp)"
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" -o "$nodesource_setup"
+      sudo -E bash "$nodesource_setup"
+      rm -f "$nodesource_setup"
+      sudo apt-get install -y nodejs
+    fi
+  fi
+  if (($(node_major) < NODE_MAJOR)); then
+    echo "Error: Node.js $NODE_MAJOR or later is required; install it and run this script again." >&2
+    exit 1
   fi
 
   local cargo_home="${CARGO_HOME:-$HOME/.cargo}"

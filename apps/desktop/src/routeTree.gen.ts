@@ -15,6 +15,8 @@ import { Route as AppOnboardingRouteImport } from './routes/app/onboarding'
 import { Route as AppLiveCaptionRouteImport } from './routes/app/live-caption'
 import { Route as AppFloatingBarRouteImport } from './routes/app/floating-bar'
 import { Route as AppComposerRouteImport } from './routes/app/composer'
+import { Route as AppCaptureCardsRouteImport } from './routes/app/capture-cards'
+import { Route as AppCaptureAreaRouteImport } from './routes/app/capture-area'
 import { Route as AppNoteSessionIdRouteImport } from './routes/app/note.$sessionId'
 import { Route as AppMainLayoutRouteImport } from './routes/app/main/_layout'
 import { Route as AppCaptureEditorIdRouteImport } from './routes/app/capture-editor.$id'
@@ -50,6 +52,16 @@ const AppComposerRoute = AppComposerRouteImport.update({
   path: '/composer',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppCaptureCardsRoute = AppCaptureCardsRouteImport.update({
+  id: '/capture-cards',
+  path: '/capture-cards',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppCaptureAreaRoute = AppCaptureAreaRouteImport.update({
+  id: '/capture-area',
+  path: '/capture-area',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppNoteSessionIdRoute = AppNoteSessionIdRouteImport.update({
   id: '/note/$sessionId',
   path: '/note/$sessionId',
@@ -73,6 +85,8 @@ const AppMainLayoutIndexRoute = AppMainLayoutIndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/app': typeof AppRouteRouteWithChildren
+  '/app/capture-area': typeof AppCaptureAreaRoute
+  '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
   '/app/floating-bar': typeof AppFloatingBarRoute
   '/app/live-caption': typeof AppLiveCaptionRoute
@@ -84,6 +98,8 @@ export interface FileRoutesByFullPath {
   '/app/main/': typeof AppMainLayoutIndexRoute
 }
 export interface FileRoutesByTo {
+  '/app/capture-area': typeof AppCaptureAreaRoute
+  '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
   '/app/floating-bar': typeof AppFloatingBarRoute
   '/app/live-caption': typeof AppLiveCaptionRoute
@@ -96,6 +112,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/app': typeof AppRouteRouteWithChildren
+  '/app/capture-area': typeof AppCaptureAreaRoute
+  '/app/capture-cards': typeof AppCaptureCardsRoute
   '/app/composer': typeof AppComposerRoute
   '/app/floating-bar': typeof AppFloatingBarRoute
   '/app/live-caption': typeof AppLiveCaptionRoute
@@ -110,6 +128,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/app'
+    | '/app/capture-area'
+    | '/app/capture-cards'
     | '/app/composer'
     | '/app/floating-bar'
     | '/app/live-caption'
@@ -121,6 +141,8 @@ export interface FileRouteTypes {
     | '/app/main/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/app/capture-area'
+    | '/app/capture-cards'
     | '/app/composer'
     | '/app/floating-bar'
     | '/app/live-caption'
@@ -132,6 +154,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/app'
+    | '/app/capture-area'
+    | '/app/capture-cards'
     | '/app/composer'
     | '/app/floating-bar'
     | '/app/live-caption'
@@ -191,6 +215,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppComposerRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/capture-cards': {
+      id: '/app/capture-cards'
+      path: '/capture-cards'
+      fullPath: '/app/capture-cards'
+      preLoaderRoute: typeof AppCaptureCardsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/capture-area': {
+      id: '/app/capture-area'
+      path: '/capture-area'
+      fullPath: '/app/capture-area'
+      preLoaderRoute: typeof AppCaptureAreaRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/note/$sessionId': {
       id: '/app/note/$sessionId'
       path: '/note/$sessionId'
@@ -235,6 +273,8 @@ const AppMainLayoutRouteWithChildren = AppMainLayoutRoute._addFileChildren(
 )
 
 interface AppRouteRouteChildren {
+  AppCaptureAreaRoute: typeof AppCaptureAreaRoute
+  AppCaptureCardsRoute: typeof AppCaptureCardsRoute
   AppComposerRoute: typeof AppComposerRoute
   AppFloatingBarRoute: typeof AppFloatingBarRoute
   AppLiveCaptionRoute: typeof AppLiveCaptionRoute
@@ -246,6 +286,8 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppCaptureAreaRoute: AppCaptureAreaRoute,
+  AppCaptureCardsRoute: AppCaptureCardsRoute,
   AppComposerRoute: AppComposerRoute,
   AppFloatingBarRoute: AppFloatingBarRoute,
   AppLiveCaptionRoute: AppLiveCaptionRoute,
