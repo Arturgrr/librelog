@@ -12,7 +12,7 @@ use local_llm::{LaunchRequest, ServerConfig, ServerError, ServerManager, ServerS
 // It logs its startup to stderr, as llama-server does, so a failed start
 // quotes how far it got.
 const STAND_IN: &str = r#"
-import http.server, json, os, socketserver, sys, time
+import http.server, json, os, socket, socketserver, sys, time
 started = time.monotonic()
 def log(message):
     print(f"stand-in {os.getpid()} +{time.monotonic() - started:.2f}s: {message}", file=sys.stderr, flush=True)
@@ -52,8 +52,19 @@ class Server(http.server.HTTPServer):
     def server_bind(self):
         socketserver.TCPServer.server_bind(self)
         self.server_name, self.server_port = "127.0.0.1", port
+if mode == "taken-once" and sum(1 for _ in open(count)) == 1:
+    blocker = socket.socket()
+    blocker.bind(("127.0.0.1", port))
+    blocker.listen()
 server = Server(("127.0.0.1", port), Handler, bind_and_activate=False)
-server.server_bind()
+# Another test's stand-in can take the port between the supervisor finding
+# it free and this bind. llama-server then says it couldn't bind and the
+# supervisor picks another port, so the stand-in says the same.
+try:
+    server.server_bind()
+except OSError:
+    print(f"main: couldn't bind HTTP server socket, hostname: 127.0.0.1, port: {port}", file=sys.stderr)
+    sys.exit(1)
 server.server_activate()
 log(f"listening on {port}")
 server.serve_forever()
@@ -152,6 +163,23 @@ async fn three_failed_starts_stop_retries_until_stopped() {
     assert_eq!(manager.state(), ServerState::Stopped);
     let _ = manager.ensure(request("qwen3-4b")).await.unwrap_err();
     assert_eq!(stand_in.starts(), 4);
+}
+
+// The port is chosen before the server starts, so something else can take it
+// in between. That must cost a second start, not a failed one.
+#[tokio::test]
+async fn a_port_taken_before_the_server_binds_is_tried_again() {
+    let stand_in = StandIn::new();
+    let manager = stand_in.manager("taken-once", Duration::from_secs(300));
+
+    manager
+        .ensure(request("qwen3-4b"))
+        .await
+        .unwrap_or_else(|error| panic!("{error} (stand-in: {})", python3().display()));
+    assert!(matches!(manager.state(), ServerState::Ready { .. }));
+    assert_eq!(stand_in.starts(), 2);
+
+    manager.stop().await;
 }
 
 // A Vulkan driver that aborts the server must not keep Linux users from
