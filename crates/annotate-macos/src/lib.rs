@@ -108,6 +108,21 @@ pub fn set_ink_mode(mode: &str) -> Result<(), AnnotateError> {
     reply::parse(&sys::set_ink_mode(mode)).map(drop)
 }
 
+/// Turns drawing on or off as the capsule's pen does. Only while
+/// recording.
+pub fn toggle_pen() -> Result<(), AnnotateError> {
+    reply::parse(&sys::toggle_pen()).map(drop)
+}
+
+/// What the capsule shows once the recording stopped. It turns to
+/// `"processing"` by itself when a recording is stopped (not cancelled);
+/// the host then sends `"ready"` once the annotation can be pasted,
+/// `"failed"` when it could not be finished, or `"hidden"` when it was
+/// thrown away. Ready and failed show briefly, then the capsule goes.
+pub fn capsule(stage: &str) -> Result<(), AnnotateError> {
+    reply::parse(&sys::capsule(stage)).map(drop)
+}
+
 /// The capsule's and the safety timers' events since the last call, as a
 /// JSON array (`[{"type":"stop"}]`).
 pub fn poll_events() -> Result<String, AnnotateError> {
@@ -137,6 +152,8 @@ mod sys {
     swift!(fn _annotate_stop() -> SRString);
     swift!(fn _annotate_cancel() -> SRString);
     swift!(fn _annotate_set_ink_mode(mode: &SRString) -> SRString);
+    swift!(fn _annotate_toggle_pen() -> SRString);
+    swift!(fn _annotate_capsule(stage: &SRString) -> SRString);
     swift!(fn _annotate_poll_events() -> SRString);
     swift!(fn _annotate_status() -> SRString);
     swift!(fn _annotate_extract_frames(request: &SRString) -> SRString);
@@ -167,6 +184,14 @@ mod sys {
 
     pub fn set_ink_mode(mode: &str) -> String {
         unsafe { _annotate_set_ink_mode(&SRString::from(mode)) }.to_string()
+    }
+
+    pub fn toggle_pen() -> String {
+        unsafe { _annotate_toggle_pen() }.to_string()
+    }
+
+    pub fn capsule(stage: &str) -> String {
+        unsafe { _annotate_capsule(&SRString::from(stage)) }.to_string()
     }
 
     pub fn poll_events() -> String {
@@ -212,6 +237,14 @@ mod sys {
     }
 
     pub fn set_ink_mode(_mode: &str) -> String {
+        UNSUPPORTED.to_owned()
+    }
+
+    pub fn toggle_pen() -> String {
+        UNSUPPORTED.to_owned()
+    }
+
+    pub fn capsule(_stage: &str) -> String {
         UNSUPPORTED.to_owned()
     }
 

@@ -46,7 +46,7 @@ private final class AnnotateCurrent {
   let dir: URL
   let front: AnnotateFrontApp
   let ink: AnnotateInkPanel
-  let capsule: AnnotateCapsulePanel
+  let pill: AnnotatePill
   var recorder: AnnotateRecorder?
   var anchorTicks: UInt64 = 0
   var wallMs: Int64 = 0
@@ -55,13 +55,16 @@ private final class AnnotateCurrent {
   var strokes: AnnotateStrokeRecorder
   var lastMouse: CGPoint?
   var animating = true
+  /// A scroll going through the overlay, and the window it is for.
+  var scroll = AnnotateScrollPass()
+  var scrollTarget: AnnotateWindowInfo?
 
   init(screen: AnnotateScreen, dir: URL, front: AnnotateFrontApp, labels: AnnotateLabels) {
     self.screen = screen
     self.dir = dir
     self.front = front
     ink = AnnotateInkPanel(screen: screen)
-    capsule = AnnotateCapsulePanel(screen: screen, labels: labels)
+    pill = AnnotatePill(screen: screen, labels: labels)
     strokes = AnnotateStrokeRecorder(size: screen.frame.size)
   }
 }
@@ -89,6 +92,9 @@ final class AnnotateSession {
   // Main thread only.
   private var machine = AnnotateMachine()
   private var current: AnnotateCurrent?
+  /// The capsule of the recording that stopped last, while it shows the
+  /// annotation being prepared, then ready or failed.
+  private var lingering: AnnotatePill?
   private var timer: Timer?
   private var monitors: [Any] = []
 
@@ -114,6 +120,33 @@ final class AnnotateSession {
       return .failure(AnnotateFailure(.notRecording, "nothing is recording"))
     }
     DispatchQueue.main.async { self.applyHostInk(mode) }
+    return .success(AnnotateNothing())
+  }
+
+  /// The pen shortcut: as the capsule's pen.
+  func togglePen() -> Result<AnnotateNothing, AnnotateFailure> {
+    guard mailbox.get().status.phase == .recording else {
+      return .failure(AnnotateFailure(.notRecording, "nothing is recording"))
+    }
+    DispatchQueue.main.async { self.capsuleAction(.pen) }
+    return .success(AnnotateNothing())
+  }
+
+  /// How the stopped recording's annotation came out: `processing`,
+  /// `ready`, `failed`, or `hidden` when it was thrown away.
+  func capsule(_ name: String) -> Result<AnnotateNothing, AnnotateFailure> {
+    let stage: AnnotatePillStage?
+    switch name {
+    case "processing": stage = .processing
+    case "ready": stage = .ready
+    case "failed": stage = .failed
+    case "hidden": stage = nil
+    default:
+      return .failure(
+        AnnotateFailure(
+          .invalidArgument, "the capsule shows processing, ready, failed or hidden, not \(name)"))
+    }
+    DispatchQueue.main.async { self.showOutcome(stage) }
     return .success(AnnotateNothing())
   }
 
@@ -211,7 +244,7 @@ final class AnnotateSession {
       return .failure(AnnotateFailure(.noDisplay, "the display under the pointer is gone"))
     }
     let ownWindows = annotateOnMain {
-      Set([current.ink.windowNumber, current.capsule.windowNumber])
+      Set([current.ink.windowNumber, current.pill.windowNumber])
     }
     let pid = ProcessInfo.processInfo.processIdentifier
     // This app's chrome (panels, HUDs: anything above the normal level) and
@@ -366,8 +399,10 @@ final class AnnotateSession {
     guard machine.reserve() else {
       return .failure(AnnotateFailure(.busy, "a recording is \(machine.phase.rawValue)"))
     }
-    // A stop or discard left from the last recording is not this one's.
+    // A stop or discard left from the last recording is not this one's,
+    // nor is its capsule.
     mailbox.update { mailbox in mailbox.events.removeAll() }
+    lingering?.close()
     let screens = NSScreen.screens.compactMap { AnnotateScreen($0) }
     guard let screen = AnnotateGeometry.screen(under: NSEvent.mouseLocation, in: screens) else {
       machine.reset()
@@ -378,7 +413,7 @@ final class AnnotateSession {
       screen: screen, dir: dir, front: AnnotateFront.read(), labels: labels)
     // On screen before the filter is built, so it can leave them out.
     current.ink.orderFrontRegardless()
-    current.capsule.orderFrontRegardless()
+    current.pill.show()
     self.current = current
     flush()
     return .success(current)
@@ -398,7 +433,8 @@ final class AnnotateSession {
     let now = timebase.seconds(current.anchorTicks)
     machine.started(now: now)
     current.ink.inkView.onMouse = { [weak self] kind, point in self?.mouse(kind, point) }
-    current.capsule.capsuleView.onAction = { [weak self] target in self?.capsuleAction(target) }
+    current.ink.inkView.onPass = { [weak self] event in self?.passThrough(event) }
+    current.pill.onAction = { [weak self] target in self?.capsuleAction(target) }
     // Escape reaches a global monitor only while the app may monitor keys
     // (Accessibility); the local one covers the app's own windows.
     let onEscape: (NSEvent) -> Void = { [weak self] event in
@@ -413,6 +449,18 @@ final class AnnotateSession {
       return nil
     }
     if let local { monitors.append(local) }
+    // Where a scroll that went through the overlay is, to know when it ends;
+    // mouse events reach a global monitor without Accessibility.
+    let gestures: NSEvent.EventTypeMask = [.scrollWheel, .magnify, .rotate, .smartMagnify]
+    let watched = NSEvent.addGlobalMonitorForEvents(matching: gestures) { [weak self] event in
+      self?.scrolled(event)
+    }
+    if let watched { monitors.append(watched) }
+    let scrolls = NSEvent.addLocalMonitorForEvents(matching: gestures) { [weak self] event in
+      self?.scrolled(event)
+      return event
+    }
+    if let scrolls { monitors.append(scrolls) }
     let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
     RunLoop.main.add(timer, forMode: .common)
     self.timer = timer
@@ -447,7 +495,8 @@ final class AnnotateSession {
     let finishing = AnnotateFinishing(
       current: current, recorder: recorder, strokes: current.strokes.strokes,
       stopTicks: stopTicks, endedBy: endedBy)
-    tearDown()
+    // A stopped recording's capsule stays to show it being prepared.
+    tearDown(keepingPill: endedBy != "cancel")
     flush()
     return finishing
   }
@@ -464,23 +513,125 @@ final class AnnotateSession {
     }
   }
 
-  /// Every window and timer of the recording goes. Every way out of a
+  /// Every window and timer of the recording goes, but the capsule when it
+  /// is kept to show the annotation being prepared. Every way out of a
   /// recording comes through here.
-  private func tearDown() {
+  private func tearDown(keepingPill: Bool = false) {
     timer?.invalidate()
     timer = nil
     for monitor in monitors { NSEvent.removeMonitor(monitor) }
     monitors.removeAll()
     if let current {
       current.ink.inkView.onMouse = nil
-      current.capsule.capsuleView.onAction = nil
+      current.ink.inkView.onPass = nil
+      current.pill.onAction = nil
       current.ink.takesPointer(false)
       current.ink.orderOut(nil)
-      current.capsule.orderOut(nil)
       current.ink.close()
-      current.capsule.close()
+      if keepingPill {
+        linger(current.pill)
+      } else {
+        current.pill.close()
+      }
     }
     current = nil
+  }
+
+  /// The stopped recording's capsule shows processing until the host says
+  /// how the annotation came out, then goes by itself.
+  private func linger(_ pill: AnnotatePill) {
+    lingering?.close()
+    lingering = pill
+    pill.onGone = { [weak self, weak pill] in
+      guard let self, let pill, self.lingering === pill else { return }
+      self.lingering = nil
+    }
+    pill.set(.processing)
+  }
+
+  private func showOutcome(_ stage: AnnotatePillStage?) {
+    guard let pill = lingering else { return }
+    if let stage {
+      pill.set(stage)
+    } else {
+      pill.hide()
+    }
+  }
+
+  /// A scroll or pinch reached the overlay while ink is on: the pointer
+  /// goes through until it is over, and this event goes to the window
+  /// under the pointer.
+  private func passThrough(_ event: NSEvent) {
+    guard let current, machine.phase == .recording, machine.ink != .off else { return }
+    let (phase, momentum) = Self.phases(event)
+    let now = nowTicks().seconds
+    let began = !current.scroll.passing
+    let drawing = machine.ink == .drag && current.strokes.live != nil
+    let passes = current.scroll.reachedOverlay(
+      phase: phase, momentum: momentum, now: now, drawing: drawing)
+    guard passes else { return }
+    machine.pointerMoved(now: now)
+    current.ink.passesPointer(true)
+    if began || current.scrollTarget == nil {
+      let own = Set([current.ink.windowNumber, current.pill.windowNumber])
+      let point = event.cgEvent?.location ?? .zero
+      current.scrollTarget = AnnotateScrollTarget.window(
+        at: point, in: Self.windows(), own: own)
+    }
+    if let target = current.scrollTarget {
+      Self.forward(event, to: target)
+    }
+  }
+
+  /// A scroll seen anywhere, for when one that went through ends.
+  private func scrolled(_ event: NSEvent) {
+    guard let current, current.scroll.passing else { return }
+    let (phase, momentum) = Self.phases(event)
+    current.scroll.observe(phase: phase, momentum: momentum, now: nowTicks().seconds)
+  }
+
+  /// An event's phases, read only where AppKit keeps them.
+  private static func phases(_ event: NSEvent) -> (AnnotateGesturePhase, AnnotateGesturePhase) {
+    switch event.type {
+    case .scrollWheel:
+      return (AnnotateGesturePhase(event.phase), AnnotateGesturePhase(event.momentumPhase))
+    case .magnify, .rotate:
+      return (AnnotateGesturePhase(event.phase), .unphased)
+    default:
+      return (.unphased, .unphased)
+    }
+  }
+
+  /// The on-screen windows, front to back.
+  private static func windows() -> [AnnotateWindowInfo] {
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
+    else { return [] }
+    return list.compactMap { info in
+      guard let number = info[kCGWindowNumber as String] as? Int,
+        let pid = info[kCGWindowOwnerPID as String] as? Int32,
+        let layer = info[kCGWindowLayer as String] as? Int,
+        let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+        let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary)
+      else { return nil }
+      let alpha = info[kCGWindowAlpha as String] as? Double ?? 1
+      return AnnotateWindowInfo(number: number, pid: pid, layer: layer, alpha: alpha, bounds: rect)
+    }
+  }
+
+  /// Hands a copy of `event` to `target`'s app, addressed to that window.
+  /// Like any synthetic event it needs Accessibility, which pasting a
+  /// dictation already asks for; without it this one is lost and the rest
+  /// of the scroll still goes through.
+  private static func forward(_ event: NSEvent, to target: AnnotateWindowInfo) {
+    guard let copy = event.cgEvent?.copy() else { return }
+    // `kCGMouseEventWindowUnderMousePointer` and its `ThatCanHandleThisEvent`.
+    for raw: UInt32 in [91, 92] {
+      if let field = CGEventField(rawValue: raw) {
+        copy.setIntegerValueField(field, value: Int64(target.number))
+      }
+    }
+    copy.postToPid(target.pid)
   }
 
   private func nowTicks() -> (ticks: UInt64, seconds: Double) {
@@ -512,7 +663,11 @@ final class AnnotateSession {
     let t = tMs(current, ticks)
     current.strokes.end(tMs: t)
     current.ink.takesPointer(machine.ink != .off)
-    current.capsule.capsuleView.penOn = machine.ink == .drag
+    if machine.ink == .off {
+      current.scroll.reset()
+      current.ink.passesPointer(false)
+    }
+    current.pill.penOn = machine.ink == .drag
     if machine.ink == .hover { hover(NSEvent.mouseLocation, current, t) }
     current.animating = true
   }
@@ -560,7 +715,7 @@ final class AnnotateSession {
     let ink = machine.ink
     machine.capsule(action, now: now.seconds)
     if machine.ink != ink { inkChanged(at: now.ticks) }
-    current?.capsule.capsuleView.asking = machine.asking
+    current?.pill.asking = machine.asking
     flush()
   }
 
@@ -586,7 +741,7 @@ final class AnnotateSession {
       case .inkOff:
         inkChanged(at: now.ticks)
       case .questionClosed:
-        current.capsule.capsuleView.asking = false
+        current.pill.asking = false
       case .maxDuration:
         finishByItself(reason: "max_duration")
         return
@@ -602,8 +757,11 @@ final class AnnotateSession {
       current.ink.inkView.needsDisplay = true
     }
     current.animating = animating
+    if current.scroll.tick(now: now.seconds) {
+      current.ink.passesPointer(false)
+    }
     let elapsed = machine.elapsedMs(now: now.seconds)
-    current.capsule.capsuleView.clock = AnnotateMachine.clock(ms: elapsed)
+    current.pill.clock = AnnotateMachine.clock(ms: elapsed)
     flush()
   }
 
