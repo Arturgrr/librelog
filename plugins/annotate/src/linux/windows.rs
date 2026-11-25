@@ -21,9 +21,11 @@ use crate::events::AnnotateSurface;
 
 pub const INK_LABEL: &str = "annotate-ink";
 pub const CAPSULE_LABEL: &str = "annotate-capsule";
-/// The capsule, in logical pixels, as on macOS.
-const CAPSULE: (f64, f64) = (216.0, 36.0);
-const CAPSULE_TOP: f64 = 8.0;
+/// The capsule's window, in logical pixels: the dictation HUD's 26 px plate
+/// at its widest, with room for its shadow, the plate 6 px under the panels
+/// as the HUD's is.
+const CAPSULE: (f64, f64) = (216.0, 38.0);
+const CAPSULE_TOP: f64 = 0.0;
 /// Around the capsule, the overlay never takes the pointer.
 const CAPSULE_MARGIN: f64 = 4.0;
 /// A main thread this busy gets the windows closed instead.
