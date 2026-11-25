@@ -7,9 +7,15 @@ final class HudRenderer {
   /// Built once, off the main thread when prewarmed.
   static let shared: HudRenderer? = HudRenderer()
 
+  /// Waits on the GPU this long or longer are logged, to tell a busy GPU
+  /// from a scope that stops on its own.
+  private static let stallLog: Double = 0.25
+
   let device: MTLDevice
   private let queue: MTLCommandQueue
   private let pipeline: MTLRenderPipelineState
+  /// Main thread only, as `draw`.
+  private var pacer = HudFramePacer()
 
   private init?() {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
@@ -31,8 +37,17 @@ final class HudRenderer {
     self.queue = queue
   }
 
+  /// Draws one frame, or none while the last is still on the GPU.
   func draw(into layer: CAMetalLayer, uniforms: HudUniforms, lines: [SIMD2<Float>]) {
-    guard let drawable = layer.nextDrawable(), let commands = queue.makeCommandBuffer() else {
+    guard pacer.begin(now: CACurrentMediaTime()) else { return }
+    let asked = CACurrentMediaTime()
+    let next = layer.nextDrawable()
+    let waited = CACurrentMediaTime() - asked
+    if waited >= Self.stallLog {
+      NSLog("Dictation HUD: waited %.0f ms for a drawable", waited * 1000)
+    }
+    guard let drawable = next, let commands = queue.makeCommandBuffer() else {
+      finish()
       return
     }
     let pass = MTLRenderPassDescriptor()
@@ -40,7 +55,10 @@ final class HudRenderer {
     pass.colorAttachments[0].loadAction = .clear
     pass.colorAttachments[0].storeAction = .store
     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-    guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return }
+    guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else {
+      finish()
+      return
+    }
     encoder.setRenderPipelineState(pipeline)
     var uniforms = uniforms
     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<HudUniforms>.stride, index: 0)
@@ -51,8 +69,45 @@ final class HudRenderer {
     }
     encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     encoder.endEncoding()
+    commands.addCompletedHandler { _ in
+      DispatchQueue.main.async { self.finish() }
+    }
     commands.present(drawable)
     commands.commit()
+  }
+
+  private func finish() {
+    if let held = pacer.finish(now: CACurrentMediaTime()), held >= Self.stallLog {
+      NSLog("Dictation HUD: the GPU held the scope's frames back for %.0f ms", held * 1000)
+    }
+  }
+}
+
+/// Whether the scope may hand the GPU another frame: only once the last one
+/// has finished. Asking for a drawable while the GPU still holds them blocks
+/// the main thread up to a second a frame; with every step capped at 1/20 s,
+/// the traces then crawl as if frozen while the meter keeps arriving, until
+/// the GPU frees up (a local transcription model running on it, say).
+struct HudFramePacer {
+  private var pending = false
+  private var heldSince: Double?
+
+  /// Starts a frame at `now`, or returns false while the last is pending.
+  mutating func begin(now: Double) -> Bool {
+    guard !pending else {
+      heldSince = heldSince ?? now
+      return false
+    }
+    pending = true
+    return true
+  }
+
+  /// The pending frame finished at `now`, or was never sent. Returns how long
+  /// frames were held back for it, if any were.
+  mutating func finish(now: Double) -> Double? {
+    defer { heldSince = nil }
+    pending = false
+    return heldSince.map { now - $0 }
   }
 }
 
