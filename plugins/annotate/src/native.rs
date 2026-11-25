@@ -18,6 +18,11 @@ pub trait Native: Send + Sync + 'static {
     fn stop(&self) -> Result<String, AnnotateError>;
     fn cancel(&self) -> Result<(), AnnotateError>;
     fn set_ink_mode(&self, mode: &str) -> Result<(), AnnotateError>;
+    /// The capsule's pen.
+    fn toggle_pen(&self) -> Result<(), AnnotateError>;
+    /// What the capsule shows after the recording: `ready`, `failed` or
+    /// `hidden` (it shows `processing` by itself from the stop on).
+    fn capsule(&self, stage: &str) -> Result<(), AnnotateError>;
     fn poll_events(&self) -> Result<String, AnnotateError>;
     fn extract_frames(&self, request: &str) -> Result<String, AnnotateError>;
 }
@@ -62,6 +67,14 @@ impl Native for System {
 
     fn set_ink_mode(&self, mode: &str) -> Result<(), AnnotateError> {
         anlg_annotate_macos::set_ink_mode(mode)
+    }
+
+    fn toggle_pen(&self) -> Result<(), AnnotateError> {
+        anlg_annotate_macos::toggle_pen()
+    }
+
+    fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
+        anlg_annotate_macos::capsule(stage)
     }
 
     fn poll_events(&self) -> Result<String, AnnotateError> {

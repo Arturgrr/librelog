@@ -271,7 +271,7 @@ impl Handler {
             Action::Capture(action) if pressed => {
                 let _ = CaptureShortcutEvent { action }.emit(app);
             }
-            Action::Capture(_) | Action::Cancel => {}
+            Action::Capture(_) | Action::Cancel | Action::AnnotatePen => {}
         }
     }
 

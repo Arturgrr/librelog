@@ -136,11 +136,15 @@ export const commands = {
    * Registers Annotate's shortcut, which starts, stops and inks, and its
    * paste-last-annotation shortcut, replacing the previous ones; `None`
    * leaves one out. Each needs a key with modifiers. If one cannot be
-   * registered, neither stays registered.
+   * registered, neither stays registered. `pen` turns drawing on and off and
+   * is held only while a recording runs; Shift with a key is enough. The
+   * Wayland portal binds its shortcuts once, for good, so there the pen is
+   * left to the capsule.
    */
   async configureAnnotate(
     shortcut: string | null,
     paste: string | null,
+    pen: string | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -148,6 +152,7 @@ export const commands = {
         data: await TAURI_INVOKE("plugin:shortcut|configure_annotate", {
           shortcut,
           paste,
+          pen,
         }),
       };
     } catch (e) {
@@ -291,7 +296,12 @@ export type AnnotateShortcutEvent =
   /**
    * Escape while ink is on.
    */
-  | { type: "escape" };
+  | { type: "escape" }
+  /**
+   * The pen shortcut, held only while a recording runs: drawing on or
+   * off.
+   */
+  | { type: "pen" };
 /**
  * What a Capture shortcut, or its menu bar item, asks for.
  */

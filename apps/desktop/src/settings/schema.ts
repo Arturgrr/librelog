@@ -116,6 +116,12 @@ export const SETTING_DEFINITIONS = {
     path: ["annotate", "paste_shortcut"],
     default: "Alt+Shift+KeyA" as string,
   },
+  // Held only while an annotation records, so Shift alone is enough.
+  annotate_pen_shortcut: {
+    type: "string",
+    path: ["annotate", "pen_shortcut"],
+    default: "Shift+KeyC" as string,
+  },
   // "week" | "month" | "forever"; see `anlg_annotate_core::retention::Preset`.
   annotate_retention: {
     type: "string",

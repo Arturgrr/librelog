@@ -227,6 +227,10 @@ fn events(rig: &Rig) -> Vec<String> {
         .collect()
 }
 
+fn last_stage(rig: &Rig) -> CapsuleStage {
+    rig.surfaces.published.lock().unwrap().last().unwrap().stage
+}
+
 fn stop(rig: &Rig) -> Value {
     serde_json::from_str(&rig.linux.stop().unwrap()).unwrap()
 }
@@ -255,7 +259,9 @@ fn a_recording_draws_on_the_monitor_shared_and_ends_with_its_strokes_and_frames(
 
     rig.screen.duration_ms.store(2_000, Ordering::SeqCst);
     let stopped = stop(&rig);
-    assert!(rig.surfaces.closed.load(Ordering::SeqCst) >= 2);
+    // The overlay goes; the capsule stays to show the annotation being prepared.
+    assert_eq!(rig.surfaces.ink_closed.load(Ordering::SeqCst), 1);
+    assert_eq!(last_stage(&rig), CapsuleStage::Processing);
     assert!(rig.linux.surface().is_none());
     assert_eq!(stopped["ended_by"], "stop");
     assert_eq!(stopped["duration_ms"], 2_000);
@@ -476,7 +482,9 @@ fn a_stream_the_desktop_ends_closes_the_windows_at_once_and_waits_for_stop() {
         .unwrap()
         .push(json!({ "type": "record_stopped", "reason": "stream_error" }));
     assert_eq!(events(&rig), ["stopped:stream_error"]);
-    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed + 1);
+    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed);
+    assert_eq!(rig.surfaces.ink_closed.load(Ordering::SeqCst), 1);
+    assert_eq!(last_stage(&rig), CapsuleStage::Processing);
     assert!(rig.linux.surface().is_none());
     assert!(rig.linux.set_ink_mode("hover").is_err());
     rig.linux.press("pen");
@@ -689,4 +697,29 @@ fn the_pointer_is_let_go_through_x_whenever_gtk_does_not_confirm_it() {
     assert_eq!(server.unmapped.load(Ordering::SeqCst), 0);
     x11::closed(None, Some(7), &server);
     assert_eq!(server.unmapped.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_ready_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() {
+    let rig = rig();
+    start(&rig);
+    stop(&rig);
+    let closed = rig.surfaces.closed.load(Ordering::SeqCst);
+    rig.linux.capsule("ready").unwrap();
+    assert_eq!(last_stage(&rig), CapsuleStage::Ready);
+    std::thread::sleep(READY_FOR + Duration::from_millis(300));
+    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed + 1);
+
+    // Ready again, then a new recording starts before the capsule goes.
+    std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
+    start(&rig);
+    stop(&rig);
+    rig.linux.capsule("failed").unwrap();
+    assert_eq!(last_stage(&rig), CapsuleStage::Failed);
+    std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
+    start(&rig);
+    let closed = rig.surfaces.closed.load(Ordering::SeqCst);
+    std::thread::sleep(FAILED_FOR + Duration::from_millis(300));
+    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed);
+    assert!(rig.linux.surface().is_some());
 }

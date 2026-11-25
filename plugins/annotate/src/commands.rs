@@ -125,6 +125,13 @@ pub(crate) async fn set_ink_mode<R: tauri::Runtime>(
     session(&app).set_ink_mode(mode).map_err(text)
 }
 
+/// Drawing on or off, as the capsule's pen: what the pen shortcut does.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn toggle_pen<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<()> {
+    session(&app).toggle_pen().map_err(text)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn status<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Status> {

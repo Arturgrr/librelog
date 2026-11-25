@@ -123,6 +123,20 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * Drawing on or off, as the capsule's pen: what the pen shortcut does.
+   */
+  async togglePen(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|toggle_pen"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async status(): Promise<Result<Status, string>> {
     try {
       return {
@@ -311,6 +325,7 @@ export type AnnotateEvent =
  * What the ink overlay and the capsule show while recording on Linux.
  */
 export type AnnotateSurface = {
+  stage: CapsuleStage;
   ink: InkMode;
   penOn: boolean;
   /**
@@ -337,6 +352,18 @@ export type CapsuleLabels = {
   draw: string | null;
   stop: string | null;
 };
+/**
+ * What the capsule shows: the recording, then, once it stopped, that the
+ * annotation is being prepared, and whether it came out.
+ */
+export type CapsuleStage =
+  | "recording"
+  | "processing"
+  /**
+   * Its summary and contact sheet are ready to paste.
+   */
+  | "ready"
+  | "failed";
 /**
  * What a finished annotation offers the frontend.
  */

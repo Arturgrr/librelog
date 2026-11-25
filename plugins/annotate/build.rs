@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "finalize",
     "cancel",
     "set_ink_mode",
+    "toggle_pen",
     "status",
     "set_retention",
     "annotations_dir",

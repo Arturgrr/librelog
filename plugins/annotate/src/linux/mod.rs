@@ -8,10 +8,12 @@
 //! on, and never covers the capsule. Ink goes off with a right click on the
 //! overlay, a click while the held shortcut inks, the shortcut's release,
 //! the capsule's pen, 8 s after the shortcut last said it is held, and 30 s
-//! after the pen's last stroke. Both windows close on stop, cancel, the
-//! stream ending by itself and before every start. An overlay the X server
-//! doesn't show ignoring the pointer is closed, and the recording goes on
-//! without ink.
+//! after the pen's last stroke. The overlay closes on stop, cancel, the
+//! stream ending by itself and before every start; the capsule stays after a
+//! stop to show the annotation being prepared, then ready or failed for a
+//! moment, as the dictation HUD does, and closes on cancel and before every
+//! start. An overlay the X server doesn't show ignoring the pointer is
+//! closed, and the recording goes on without ink.
 
 mod frames;
 mod ink;
@@ -35,7 +37,7 @@ use tauri_plugin_capture::recorder::{
 use crate::audio::{Clock, HostClock};
 use crate::bundle::CANDIDATES_DIR;
 use crate::commands::InkMode;
-use crate::events::AnnotateSurface;
+use crate::events::{AnnotateSurface, CapsuleStage};
 use crate::native::{CANCELLED, Native};
 use crate::session::CapsuleLabels;
 
@@ -47,6 +49,9 @@ const FPS: u32 = 30;
 const TOKEN_FILE: &str = "screencast-token";
 /// A recording stops by itself after 20 minutes, as on macOS.
 const MAX_DURATION_S: u32 = 20 * 60;
+/// How long the capsule shows ready, and a failure, before it goes.
+pub(crate) const READY_FOR: Duration = Duration::from_millis(900);
+pub(crate) const FAILED_FOR: Duration = Duration::from_millis(2_500);
 
 const NO_PLACING: &str = "Librelog runs as a native Wayland app here, where it can't keep a window over the screen, so this annotation has no ink and no capsule. Start Librelog without LIBRELOG_WAYLAND=1 to draw.";
 const NO_MONITOR: &str = "Librelog could not tell which screen the desktop shared, so this annotation has no ink and no capsule.";
@@ -187,6 +192,14 @@ enum State {
     Recording(Box<Current>),
 }
 
+/// The capsule after its recording stopped, and which one it shows: a close
+/// that comes late never takes a newer recording's windows.
+#[derive(Default)]
+struct After {
+    generation: u64,
+    surface: Option<AnnotateSurface>,
+}
+
 pub struct Linux {
     screen: Arc<dyn Screen>,
     decoder: Arc<dyn Decoder>,
@@ -196,6 +209,7 @@ pub struct Linux {
     /// The portal's token for the screen shared last.
     token_file: PathBuf,
     state: Mutex<State>,
+    after: Arc<Mutex<After>>,
     /// The last stopped movie, for its key frames.
     movie: Mutex<Option<Movie>>,
 }
@@ -245,8 +259,36 @@ impl Linux {
             placeable,
             token_file,
             state: Mutex::new(State::Idle),
+            after: Arc::default(),
             movie: Mutex::new(None),
         }
+    }
+
+    fn after(&self) -> std::sync::MutexGuard<'_, After> {
+        self.after.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Both windows go, a stopped recording's capsule included.
+    fn close_all(&self) {
+        let mut after = self.after();
+        after.generation += 1;
+        after.surface = None;
+        self.surfaces.close();
+    }
+
+    /// The recording stopped: the overlay goes, and the capsule shows the
+    /// annotation being prepared until the session says how it came out.
+    fn processing(&self, current: &Current) {
+        self.surfaces.close_ink();
+        let mut surface = Self::surface_of(current);
+        surface.stage = CapsuleStage::Processing;
+        surface.asking = false;
+        surface.pen_on = false;
+        surface.ink = InkMode::Off;
+        self.surfaces.publish(&surface);
+        let mut after = self.after();
+        after.generation += 1;
+        after.surface = Some(surface);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -264,6 +306,7 @@ impl Linux {
     fn surface_of(current: &Current) -> AnnotateSurface {
         let ink = current.machine.ink();
         AnnotateSurface {
+            stage: CapsuleStage::Recording,
             ink,
             pen_on: ink == InkMode::Drag,
             drawable: current.ink,
@@ -302,7 +345,7 @@ impl Linux {
     }
 
     fn begin(&self, request: &StartRequest) -> Result<String, AnnotateError> {
-        self.surfaces.close();
+        self.close_all();
         *self.movie() = None;
         let video = request.dir.join(anlg_annotate_core::VIDEO_FILE);
         if video.exists() {
@@ -403,7 +446,7 @@ impl Linux {
         let mut state = self.lock();
         if matches!(*state, State::Starting { cancelled: true }) {
             drop(state);
-            self.surfaces.close();
+            self.close_all();
             let _ = self.screen.cancel();
             return Err(fail(
                 CANCELLED,
@@ -541,7 +584,7 @@ impl Native for Linux {
         let started = self.begin(&request);
         if started.is_err() {
             *self.lock() = State::Idle;
-            self.surfaces.close();
+            self.close_all();
         }
         started
     }
@@ -557,7 +600,9 @@ impl Native for Linux {
                 }
             }
         };
-        self.surfaces.close();
+        if !current.ended {
+            self.processing(&current);
+        }
         let Current {
             dir,
             zero_ns,
@@ -629,7 +674,7 @@ impl Native for Linux {
                 State::Idle => None,
             }
         };
-        self.surfaces.close();
+        self.close_all();
         // Also takes down the desktop's dialog while it is up.
         let cancelled = self.screen.cancel();
         if let Some(dir) = dir {
@@ -676,8 +721,8 @@ impl Native for Linux {
             if event["type"] == "record_stopped" && !current.ended {
                 current.ended = true;
                 current.strokes.end();
-                self.surfaces.close();
                 current.ink = false;
+                self.processing(current);
                 current.machine.stopped(match event["reason"].as_str() {
                     Some("cap") => "max_duration",
                     _ => "stream_error",
@@ -694,6 +739,56 @@ impl Native for Linux {
             }
         }
         Ok(Value::Array(current.machine.drain()).to_string())
+    }
+
+    fn toggle_pen(&self) -> Result<(), AnnotateError> {
+        self.press("pen");
+        Ok(())
+    }
+
+    fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
+        let (stage, linger) = match stage {
+            "processing" => (CapsuleStage::Processing, None),
+            "ready" => (CapsuleStage::Ready, Some(READY_FOR)),
+            "failed" => (CapsuleStage::Failed, Some(FAILED_FOR)),
+            "hidden" => {
+                let mut after = self.after();
+                if after.surface.take().is_some() {
+                    after.generation += 1;
+                    self.surfaces.close();
+                }
+                return Ok(());
+            }
+            other => {
+                return Err(fail(
+                    codes::INVALID_ARGUMENT,
+                    format!("no capsule stage {other}"),
+                ));
+            }
+        };
+        let (generation, surface) = {
+            let mut after = self.after();
+            let generation = after.generation;
+            let Some(surface) = after.surface.as_mut() else {
+                return Ok(());
+            };
+            surface.stage = stage;
+            (generation, surface.clone())
+        };
+        self.surfaces.publish(&surface);
+        if let Some(linger) = linger {
+            let (after, surfaces) = (self.after.clone(), self.surfaces.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(linger);
+                // Held while closing, so a start waits for it.
+                let mut after = after.lock().unwrap_or_else(|e| e.into_inner());
+                if after.generation == generation && after.surface.take().is_some() {
+                    after.generation += 1;
+                    surfaces.close();
+                }
+            });
+        }
+        Ok(())
     }
 
     fn extract_frames(&self, request: &str) -> Result<String, AnnotateError> {

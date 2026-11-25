@@ -12,6 +12,7 @@ Default permissions for the plugin
 - `allow-finalize`
 - `allow-cancel`
 - `allow-set-ink-mode`
+- `allow-toggle-pen`
 - `allow-status`
 - `allow-set-retention`
 - `allow-annotations-dir`
@@ -496,6 +497,32 @@ Enables the surface_ready command without any pre-configured scope.
 <td>
 
 Denies the surface_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-toggle-pen`
+
+</td>
+<td>
+
+Enables the toggle_pen command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-toggle-pen`
+
+</td>
+<td>
+
+Denies the toggle_pen command without any pre-configured scope.
 
 </td>
 </tr>

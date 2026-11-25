@@ -9,6 +9,7 @@ permissions = [
   "allow-finalize",
   "allow-cancel",
   "allow-set-ink-mode",
+  "allow-toggle-pen",
   "allow-status",
   "allow-set-retention",
   "allow-annotations-dir",

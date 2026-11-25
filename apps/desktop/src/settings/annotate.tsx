@@ -43,7 +43,13 @@ import {
 import { useConfigValue } from "~/shared/config";
 
 const RETENTIONS = ["week", "month", "forever"] as const;
-type Slot = "annotate" | "paste";
+type Slot = "annotate" | "paste" | "pen";
+
+const SLOT_KEYS = {
+  annotate: "annotate_shortcut",
+  paste: "annotate_paste_shortcut",
+  pen: "annotate_pen_shortcut",
+} as const;
 
 function unwrap<T>(
   result: { status: "ok"; data: T } | { status: "error"; error: string },
@@ -224,15 +230,19 @@ function AnnotateShortcutSettings() {
   const hintId = useId();
   const shortcut = useConfigValue("annotate_shortcut");
   const paste = useConfigValue("annotate_paste_shortcut");
+  const pen = useConfigValue("annotate_pen_shortcut");
   const dictation = useConfigValue("dictation_shortcuts");
   const pasteLastDictation = useConfigValue("dictation_paste_last_shortcut");
   const captureShortcuts = useCaptureShortcuts();
   const recorder = useShortcutRecorder<Slot>({
     validate: async (value, slot) => {
+      const own = { annotate: shortcut, paste, pen };
       const taken = [
         ...dictation,
         pasteLastDictation,
-        slot === "annotate" ? paste : shortcut,
+        ...(Object.keys(own) as Slot[])
+          .filter((other) => other !== slot)
+          .map((other) => own[other]),
         ...captureShortcuts,
       ];
       const result = await shortcutCommands.validateAnnotate(value, taken);
@@ -240,11 +250,7 @@ function AnnotateShortcutSettings() {
         ? localizeExternalMessage(result.error)
         : null;
     },
-    persist: (value, slot) =>
-      setSettingValue(
-        slot === "annotate" ? "annotate_shortcut" : "annotate_paste_shortcut",
-        value,
-      ),
+    persist: (value, slot) => setSettingValue(SLOT_KEYS[slot], value),
   });
   const rows: {
     slot: Slot;
@@ -284,6 +290,25 @@ function AnnotateShortcutSettings() {
         </Trans>
       ),
       captureLabel: t`New Paste last annotation shortcut`,
+    },
+    {
+      slot: "pen",
+      value: pen,
+      title: <Trans>Pen shortcut</Trans>,
+      description: annotateOnLinux() ? (
+        <Trans>
+          While recording, press it to turn drawing on or off, as the capsule's
+          pen does. It is held only while recording, so it types as usual the
+          rest of the time. On Wayland, use the capsule's pen instead.
+        </Trans>
+      ) : (
+        <Trans>
+          While recording, press it to turn drawing on or off, as the capsule's
+          pen does; scrolling still reaches the app under the pointer. It is
+          held only while recording, so it types as usual the rest of the time.
+        </Trans>
+      ),
+      captureLabel: t`New Pen shortcut`,
     },
   ];
 

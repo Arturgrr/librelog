@@ -28,6 +28,8 @@ export type AnnotateDeps = {
     ) => Promise<Finalized>;
     cancel: () => Promise<void>;
     setInkMode: (mode: "off" | "hover") => Promise<void>;
+    /** Drawing on or off, as the capsule's pen. */
+    togglePen: () => Promise<void>;
     latest: () => Promise<Finalized | null>;
   };
   microphoneAuthorized: () => Promise<boolean>;
@@ -48,6 +50,8 @@ export type AnnotateDeps = {
     /** The narration waits for another recording's local transcription. */
     transcriptionWaiting: () => void;
     nothingToPaste: () => void;
+    /** Paste last waited for the annotation being prepared and gave up. */
+    stillPreparing: () => void;
     error: (error: unknown) => void;
   };
   onPhase: (phase: AnnotatePhase) => void;
@@ -55,6 +59,12 @@ export type AnnotateDeps = {
 
 /** Hex pauses this long between the image path and the text. */
 export const PASTE_GAP_MS = 160;
+/**
+ * How long paste last waits for an annotation still being prepared, while
+ * the capsule shows it is: past this the user has likely moved on, and a
+ * late paste would land wherever the focus went.
+ */
+export const PASTE_WAIT_MS = 30_000;
 
 const NOT_RECORDING = "No annotation is recording.";
 const CANCELLED = "The annotation was cancelled.";
@@ -109,6 +119,27 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
   let stopWhenStarted = false;
   // The transcript of a recording whose finalize is retried once.
   let heard: { id: string; transcript: TranscriptInput | null } | null = null;
+  // The annotation being prepared, from its stop until it is finalized
+  // (null when it failed or was discarded), for paste last to wait on.
+  let preparing: {
+    done: Promise<Finalized | null>;
+    settle: (finalized: Finalized | null) => void;
+  } | null = null;
+
+  const beginPreparing = () => {
+    if (!preparing) {
+      let settle: (finalized: Finalized | null) => void = () => {};
+      const done = new Promise<Finalized | null>((resolve) => {
+        settle = resolve;
+      });
+      preparing = { done, settle };
+    }
+    return preparing;
+  };
+  const endPreparing = (finalized: Finalized | null) => {
+    preparing?.settle(finalized);
+    preparing = null;
+  };
 
   const set = (next: AnnotatePhase) => {
     phase = next;
@@ -118,6 +149,7 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     work.catch((error) => console.error("[annotate]", error));
 
   const toIdle = () => {
+    endPreparing(null);
     finishing = null;
     stopWhenStarted = false;
     set("idle");
@@ -189,6 +221,7 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
   async function finish(stopped: Stopped) {
     if (finishing === stopped.id) return;
     finishing = stopped.id;
+    beginPreparing();
     set("transcribing");
     void quietly(deps.setRecording(false));
     const transcript = await transcribe(stopped);
@@ -196,6 +229,7 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
       const finalized = await deps.plugin.finalize(stopped.id, transcript);
       heard = null;
       await quietly(deps.copy(finalized.summary));
+      endPreparing(finalized);
       deps.notify.ready(finalized);
       toIdle();
     } catch (error) {
@@ -220,6 +254,7 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     }
     if (phase !== "recording") return;
     set("finishing");
+    beginPreparing();
     let stopped: Stopped;
     try {
       stopped = await deps.plugin.stop();
@@ -272,8 +307,13 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     await quietly(deps.plugin.setInkMode(on ? "hover" : "off"));
   }
 
+  async function pen() {
+    if (phase !== "recording") return;
+    await quietly(deps.plugin.togglePen());
+  }
+
   async function onShortcut(
-    type: "start" | "stop" | "inkOn" | "inkOff" | "escape",
+    type: "start" | "stop" | "inkOn" | "inkOff" | "escape" | "pen",
   ) {
     switch (type) {
       case "start":
@@ -285,12 +325,39 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
       case "inkOff":
       case "escape":
         return ink(false);
+      case "pen":
+        return pen();
     }
   }
 
-  /** The newest annotation into the frontmost app: its image's path, then its text. */
+  /**
+   * The annotation being prepared, if any: also one the capsule stopped
+   * whose event has not arrived yet, which the plugin already finishes.
+   */
+  async function beingPrepared() {
+    if (preparing || phase !== "recording") return preparing;
+    const status = await deps.plugin.status();
+    return status.phase === "finishing" ? beginPreparing() : null;
+  }
+
+  /**
+   * The newest annotation into the frontmost app: its image's path, then
+   * its text. One still being prepared is waited for, never skipped for the
+   * one before it.
+   */
   async function pasteLast() {
     try {
+      const waiting = await beingPrepared();
+      if (waiting) {
+        const ready = await Promise.race([
+          waiting.done,
+          deps.sleep(PASTE_WAIT_MS).then(() => undefined),
+        ]);
+        if (ready === undefined) return deps.notify.stillPreparing();
+        // Its failure or discard was already told.
+        if (ready === null) return;
+        return await paste(ready);
+      }
       const latest = await deps.plugin.latest();
       if (!latest) return deps.notify.nothingToPaste();
       await paste(latest);

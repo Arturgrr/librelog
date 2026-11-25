@@ -65,6 +65,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::finalize::<tauri::Wry>,
             commands::cancel::<tauri::Wry>,
             commands::set_ink_mode::<tauri::Wry>,
+            commands::toggle_pen::<tauri::Wry>,
             commands::status::<tauri::Wry>,
             commands::set_retention::<tauri::Wry>,
             commands::annotations_dir::<tauri::Wry>,
@@ -129,6 +130,18 @@ pub fn init(root: Option<PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
                     }
                 }
             });
+            // So do the pen shortcut's, held only while recording.
+            let (pen, mut pens) = tokio::sync::mpsc::unbounded_channel::<bool>();
+            let shortcuts = app.clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(recording) = pens.recv().await {
+                    if let Err(error) =
+                        tauri_plugin_shortcut::set_annotate_pen(&shortcuts, recording).await
+                    {
+                        tracing::warn!(%error, "annotate pen shortcut");
+                    }
+                }
+            });
             let session = Arc::new(Session::new(
                 system(app, &root),
                 Arc::new(audio::HostClock),
@@ -138,6 +151,9 @@ pub fn init(root: Option<PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 }),
                 Arc::new(move |on| {
                     let _ = escape.send(on);
+                }),
+                Arc::new(move |recording| {
+                    let _ = pen.send(recording);
                 }),
             ));
             app.manage(session.clone());

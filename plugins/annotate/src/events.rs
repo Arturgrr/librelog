@@ -31,10 +31,24 @@ pub enum AnnotateEvent {
     Failed { message: String },
 }
 
+/// What the capsule shows: the recording, then, once it stopped, that the
+/// annotation is being prepared, and whether it came out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum CapsuleStage {
+    #[default]
+    Recording,
+    Processing,
+    /// Its summary and contact sheet are ready to paste.
+    Ready,
+    Failed,
+}
+
 /// What the ink overlay and the capsule show while recording on Linux.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotateSurface {
+    pub stage: CapsuleStage,
     pub ink: crate::commands::InkMode,
     pub pen_on: bool,
     /// The overlay is up: the pen can draw.
