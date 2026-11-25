@@ -99,6 +99,7 @@ struct FakeSurfaces {
     closed: AtomicUsize,
     ink_closed: AtomicUsize,
     published: Mutex<Vec<AnnotateSurface>>,
+    scrolled: Mutex<Vec<u8>>,
 }
 
 impl Surfaces for FakeSurfaces {
@@ -129,6 +130,10 @@ impl Surfaces for FakeSurfaces {
     }
     fn publish(&self, surface: &AnnotateSurface) {
         self.published.lock().unwrap().push(surface.clone());
+    }
+    fn scroll(&self, button: u8) -> Result<(), String> {
+        self.scrolled.lock().unwrap().push(button);
+        Ok(())
     }
     fn close_ink(&self) {
         self.ink_closed.fetch_add(1, Ordering::SeqCst);
@@ -673,6 +678,9 @@ impl x11::Shape for FakeServer {
         self.unmapped.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+    fn scroll(&self, _button: u8) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[test]
@@ -722,4 +730,32 @@ fn a_ready_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() 
     std::thread::sleep(FAILED_FOR + Duration::from_millis(300));
     assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed);
     assert!(rig.linux.surface().is_some());
+}
+
+#[test]
+fn a_scroll_on_the_pen_goes_through_to_the_app_and_the_pen_takes_the_pointer_back_after() {
+    let rig = rig();
+    start(&rig);
+    // Ink off: the overlay never sees the wheel, and asks nothing.
+    rig.linux.scroll(0.0, 40.0);
+    rig.linux.press("pen");
+    rig.clock.at_ms(1_000);
+    rig.linux.scroll(0.0, 40.0);
+    rig.linux.scroll(0.0, -40.0);
+    assert_eq!(*rig.surfaces.scrolled.lock().unwrap(), [5, 4]);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
+    rig.clock.at_ms(1_500);
+    events(&rig);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
+    rig.clock.at_ms(1_700);
+    events(&rig);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false, true]);
+    assert_eq!(rig.linux.surface().unwrap().ink, InkMode::Drag);
+
+    // A stroke being drawn keeps the pointer.
+    rig.linux.pointer("down", 10.0, 10.0);
+    rig.linux.scroll(30.0, 0.0);
+    assert_eq!(rig.surfaces.scrolled.lock().unwrap().len(), 2);
+    assert_eq!(x11::wheel_button(-30.0, 2.0), Some(6));
+    assert_eq!(x11::wheel_button(0.0, 0.0), None);
 }

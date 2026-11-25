@@ -17,6 +17,7 @@ permissions = [
   "allow-surface",
   "allow-ink-pointer",
   "allow-ink-escape",
+  "allow-ink-scroll",
   "allow-capsule-pressed",
   "allow-surface-ready",
   "allow-forget-screen-choice",

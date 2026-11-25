@@ -242,6 +242,21 @@ export const commands = {
     }
   },
   /**
+   * A scroll by `(dx, dy)` on the Linux ink overlay: it goes through to the
+   * app underneath.
+   */
+  async inkScroll(dx: number, dy: number): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:annotate|ink_scroll", { dx, dy }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
    * A button of the Linux capsule: `pen`, `stop`, `discard`,
    * `confirm_discard` or `keep`.
    */

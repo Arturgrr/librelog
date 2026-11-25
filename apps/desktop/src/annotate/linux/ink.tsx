@@ -78,6 +78,15 @@ async function report(kind: PointerKind, point: Point) {
   }
 }
 
+/** The plugin lets a scroll through to the app underneath and replays it. */
+async function scrollThrough(event: WheelEvent) {
+  try {
+    await annotate.inkScroll(event.deltaX, event.deltaY);
+  } catch (error) {
+    console.error("[annotate] ink", error);
+  }
+}
+
 async function stopDrawing() {
   try {
     await annotate.inkEscape();
@@ -172,6 +181,11 @@ export function AnnotateInkScreen() {
       [window, "pointermove", pointer("move") as EventListener],
       [window, "pointerdown", pointer("down") as EventListener],
       [window, "pointerup", pointer("up") as EventListener],
+      [
+        window,
+        "wheel",
+        ((event: WheelEvent) => void scrollThrough(event)) as EventListener,
+      ],
       [
         document.documentElement,
         "pointerleave",

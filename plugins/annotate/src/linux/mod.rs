@@ -5,7 +5,11 @@
 //! capsule over it, and GStreamer children read the movie back.
 //!
 //! Failing safe comes first: the overlay ignores the pointer unless ink is
-//! on, and never covers the capsule. Ink goes off with a right click on the
+//! on, and never covers the capsule. A scroll that reaches it while ink is
+//! on lets the pointer through for `SCROLL_QUIET_MS` after the last one it
+//! caught, and is replayed through XTest, so the wheel keeps scrolling the
+//! app underneath; X can't let the wheel alone through, nor tell when a
+//! scroll that went through ends. Ink goes off with a right click on the
 //! overlay, a click while the held shortcut inks, the shortcut's release,
 //! the capsule's pen, 8 s after the shortcut last said it is held, and 30 s
 //! after the pen's last stroke. The overlay closes on stop, cancel, the
@@ -52,6 +56,10 @@ const MAX_DURATION_S: u32 = 20 * 60;
 /// How long the capsule shows ready, and a failure, before it goes.
 pub(crate) const READY_FOR: Duration = Duration::from_millis(900);
 pub(crate) const FAILED_FOR: Duration = Duration::from_millis(2_500);
+/// The pointer goes back to the pen this long after the overlay last caught
+/// a scroll: a scroll still going then reaches it again and goes through
+/// again.
+const SCROLL_QUIET_MS: u64 = 600;
 
 const NO_PLACING: &str = "Librelog runs as a native Wayland app here, where it can't keep a window over the screen, so this annotation has no ink and no capsule. Start Librelog without LIBRELOG_WAYLAND=1 to draw.";
 const NO_MONITOR: &str = "Librelog could not tell which screen the desktop shared, so this annotation has no ink and no capsule.";
@@ -184,6 +192,8 @@ struct Current {
     warnings: Vec<String>,
     /// The recorder stopped by itself; `stop` collects it.
     ended: bool,
+    /// When the overlay last let a scroll through, while it does.
+    scrolled: Option<u64>,
 }
 
 enum State {
@@ -329,6 +339,7 @@ impl Linux {
     /// pointer leaves ink off; one that can't give it back is closed.
     fn ink_changed(&self, current: &mut Current) {
         current.strokes.end();
+        current.scrolled = None;
         if current.ink {
             let takes = current.machine.ink() != InkMode::Off;
             if let Err(error) = self.surfaces.takes_pointer(takes) {
@@ -442,6 +453,7 @@ impl Linux {
             labels,
             warnings,
             ended: false,
+            scrolled: None,
         };
         let mut state = self.lock();
         if matches!(*state, State::Starting { cancelled: true }) {
@@ -498,6 +510,37 @@ impl Linux {
                 strokes.end();
             }
             _ => {}
+        }
+    }
+
+    /// A scroll by `(dx, dy)` reached the overlay while ink is on: the
+    /// pointer goes through to the app underneath and the scroll is
+    /// replayed there. A stroke being drawn keeps the pointer.
+    pub fn scroll(&self, dx: f64, dy: f64) {
+        let mut state = self.lock();
+        let State::Recording(current) = &mut *state else {
+            return;
+        };
+        let ink = current.machine.ink();
+        let drawing = ink == InkMode::Drag && current.strokes.live();
+        if !current.ink || current.ended || ink == InkMode::Off || drawing {
+            return;
+        }
+        let Some(button) = x11::wheel_button(dx, dy) else {
+            return;
+        };
+        let now = self.now(current);
+        current.machine.stroked(now);
+        if current.scrolled.is_none()
+            && let Err(error) = self.surfaces.takes_pointer(false)
+        {
+            // It may still hold the pointer: nothing to replay through.
+            tracing::warn!(%error, "annotate: letting a scroll through");
+            return;
+        }
+        current.scrolled = Some(now);
+        if let Err(error) = self.surfaces.scroll(button) {
+            tracing::warn!(%error, "annotate: replaying a scroll");
         }
     }
 
@@ -731,6 +774,18 @@ impl Native for Linux {
         }
         if !current.ended {
             let now = self.now(current);
+            if let Some(at) = current.scrolled
+                && now.saturating_sub(at) >= SCROLL_QUIET_MS
+            {
+                current.scrolled = None;
+                if current.machine.ink() != InkMode::Off
+                    && let Err(error) = self.surfaces.takes_pointer(true)
+                {
+                    tracing::warn!(%error, "annotate: taking the pointer back after a scroll");
+                    current.machine.escape();
+                    self.ink_changed(current);
+                }
+            }
             let effects = current.machine.tick(now);
             if effects.ink_off {
                 self.ink_changed(current);

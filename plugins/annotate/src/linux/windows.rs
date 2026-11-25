@@ -115,6 +115,8 @@ pub trait Surfaces: Send + Sync {
     /// Ok only once the X server shows the change.
     fn takes_pointer(&self, takes: bool) -> Result<(), String>;
     fn publish(&self, surface: &AnnotateSurface);
+    /// Replays one click of wheel `button` to whatever is under the pointer.
+    fn scroll(&self, button: u8) -> Result<(), String>;
     fn close_ink(&self);
     fn close(&self);
 }
@@ -521,6 +523,10 @@ impl Surfaces for Windows {
         if let Err(error) = surface.clone().emit(&self.app) {
             tracing::warn!(%error, "annotate surface");
         }
+    }
+
+    fn scroll(&self, button: u8) -> Result<(), String> {
+        self.x11.scroll(button)
     }
 
     fn close_ink(&self) {

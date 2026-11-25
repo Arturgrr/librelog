@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "surface",
     "ink_pointer",
     "ink_escape",
+    "ink_scroll",
     "capsule_pressed",
     "surface_ready",
     "forget_screen_choice",

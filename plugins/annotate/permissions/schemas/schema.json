@@ -379,6 +379,18 @@
           "markdownDescription": "Denies the ink_pointer command without any pre-configured scope."
         },
         {
+          "description": "Enables the ink_scroll command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ink-scroll",
+          "markdownDescription": "Enables the ink_scroll command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ink_scroll command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ink-scroll",
+          "markdownDescription": "Denies the ink_scroll command without any pre-configured scope."
+        },
+        {
           "description": "Enables the latest command without any pre-configured scope.",
           "type": "string",
           "const": "allow-latest",
@@ -523,10 +535,10 @@
           "markdownDescription": "Denies the toggle_pen command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-toggle-pen`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-toggle-pen`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-ink-scroll`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-toggle-pen`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-screen-recording`\n- `allow-request-screen-recording`\n- `allow-open-screen-recording-settings`\n- `allow-start`\n- `allow-stop`\n- `allow-finalize`\n- `allow-cancel`\n- `allow-set-ink-mode`\n- `allow-toggle-pen`\n- `allow-status`\n- `allow-set-retention`\n- `allow-annotations-dir`\n- `allow-latest`\n- `allow-surface`\n- `allow-ink-pointer`\n- `allow-ink-escape`\n- `allow-ink-scroll`\n- `allow-capsule-pressed`\n- `allow-surface-ready`\n- `allow-forget-screen-choice`"
         }
       ]
     }

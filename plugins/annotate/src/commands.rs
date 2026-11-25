@@ -257,6 +257,27 @@ pub(crate) async fn ink_pointer<R: tauri::Runtime>(
     Ok(())
 }
 
+/// A scroll by `(dx, dy)` on the Linux ink overlay: it goes through to the
+/// app underneath.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_scroll<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    dx: f64,
+    dy: f64,
+) -> Result<()> {
+    from(&window, &[INK])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        tauri::async_runtime::spawn_blocking(move || linux.scroll(dx, dy))
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    let _ = (app, dx, dy);
+    Ok(())
+}
+
 /// A right click on the Linux ink overlay: drawing stops.
 #[tauri::command]
 #[specta::specta]

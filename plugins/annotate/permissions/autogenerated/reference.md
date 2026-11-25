@@ -20,6 +20,7 @@ Default permissions for the plugin
 - `allow-surface`
 - `allow-ink-pointer`
 - `allow-ink-escape`
+- `allow-ink-scroll`
 - `allow-capsule-pressed`
 - `allow-surface-ready`
 - `allow-forget-screen-choice`
@@ -211,6 +212,32 @@ Enables the ink_pointer command without any pre-configured scope.
 <td>
 
 Denies the ink_pointer command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-ink-scroll`
+
+</td>
+<td>
+
+Enables the ink_scroll command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-ink-scroll`
+
+</td>
+<td>
+
+Denies the ink_scroll command without any pre-configured scope.
 
 </td>
 </tr>
