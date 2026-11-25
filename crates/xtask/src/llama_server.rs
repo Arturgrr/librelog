@@ -92,7 +92,13 @@ pub(crate) fn prepare(
         return Ok(());
     }
 
-    if !source.join(".git").is_dir() {
+    // A CI cache can bring back the directory without a working checkout;
+    // git then answers for the repository around it. Start over from a
+    // fresh clone whenever the checkout is not the pinned one.
+    if source.exists() && checkout_head(sh, &source).as_deref() != Some(COMMIT) {
+        fs::remove_dir_all(&source).context("remove a stale llama.cpp checkout")?;
+    }
+    if !source.exists() {
         fs::create_dir_all(work_dir).context("create llama.cpp work directory")?;
         cmd!(
             sh,
@@ -100,7 +106,7 @@ pub(crate) fn prepare(
         )
         .run()?;
     }
-    let head = cmd!(sh, "git -C {source} rev-parse HEAD").read()?;
+    let head = checkout_head(sh, &source).unwrap_or_default();
     ensure!(
         head.trim() == COMMIT,
         "llama.cpp {TAG} resolved to {head}, not the pinned {COMMIT}; delete {} and check the tag",
@@ -136,6 +142,25 @@ pub(crate) fn prepare(
 
 /// The app bundles one file, so the server must not load llama.cpp or ggml
 /// libraries from next to itself.
+/// The commit checked out at `source`, if `source` is itself a git checkout
+/// and not a directory inside another repository.
+fn checkout_head(sh: &Shell, source: &Path) -> Option<String> {
+    let top = cmd!(sh, "git -C {source} rev-parse --show-toplevel")
+        .quiet()
+        .ignore_stderr()
+        .read()
+        .ok()?;
+    if fs::canonicalize(top.trim()).ok()? != fs::canonicalize(source).ok()? {
+        return None;
+    }
+    cmd!(sh, "git -C {source} rev-parse HEAD")
+        .quiet()
+        .ignore_stderr()
+        .read()
+        .ok()
+        .map(|head| head.trim().to_string())
+}
+
 fn check_system_libraries_only(sh: &Shell, binary: &Path) -> Result<()> {
     if cfg!(target_os = "linux") {
         return check_linux_libraries(sh, binary);
