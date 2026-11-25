@@ -299,7 +299,8 @@ function AnnotateShortcutSettings() {
         <Trans>
           While recording, press it to turn drawing on or off, as the capsule's
           pen does. It is held only while recording, so it types as usual the
-          rest of the time. On Wayland, use the capsule's pen instead.
+          rest of the time. It isn't available on Wayland, where your desktop
+          would keep those keys for good.
         </Trans>
       ) : (
         <Trans>

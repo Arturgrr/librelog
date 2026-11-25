@@ -422,8 +422,9 @@ impl Keys {
         if self.annotate_pen_held == wanted {
             return Ok(());
         }
-        if let Some(held) = self.annotate_pen_held.take() {
+        if let Some(held) = self.annotate_pen_held {
             backend.unregister(held)?;
+            self.annotate_pen_held = None;
         }
         if let Some(key) = wanted {
             backend.register(key, Action::AnnotatePen).map_err(|e| {
@@ -734,7 +735,10 @@ pub async fn configure_annotate(
             .map(|shortcut| paste_last_key(shortcut, global_available))
             .transpose()
     };
-    let (annotate_key, paste_key, pen_key) = (key(&shortcut)?, key(&paste)?, key(&pen)?);
+    let (annotate_key, paste_key) = (key(&shortcut)?, key(&paste)?);
+    // A pen shortcut that doesn't parse is reported, but never keeps the
+    // other two from registering.
+    let pen_key = key(&pen);
     #[cfg(target_os = "linux")]
     for (key, shortcut) in [(annotate_key, &shortcut), (paste_key, &paste)] {
         if let (Some(key), Some(shortcut)) = (key, shortcut) {
@@ -758,7 +762,7 @@ pub async fn configure_annotate(
         return result;
     }
     let Some(global) = global(&app, &state) else {
-        return if annotate.is_none() && paste.is_none() && pen_key.is_none() {
+        return if annotate.is_none() && paste.is_none() && !matches!(pen_key, Ok(Some(_))) {
             Ok(())
         } else {
             Err(UNAVAILABLE.into())
@@ -768,7 +772,7 @@ pub async fn configure_annotate(
     if result.is_err() {
         let _ = registration.keys.set_annotate(&global, None, None);
     }
-    let pen = registration.keys.set_annotate_pen(&global, pen_key);
+    let pen = pen_key.and_then(|key| registration.keys.set_annotate_pen(&global, key));
     if pen.is_err() {
         let _ = registration.keys.set_annotate_pen(&global, None);
     }

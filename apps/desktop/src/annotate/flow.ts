@@ -275,6 +275,8 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     try {
       const status = await deps.plugin.status();
       if (status.phase === "recording") {
+        // Nothing is being prepared: paste last must not wait on it.
+        endPreparing(null);
         set("recording");
         await quietly(deps.setRecording(true));
       } else if (status.phase === "finishing" && status.stopped) {
