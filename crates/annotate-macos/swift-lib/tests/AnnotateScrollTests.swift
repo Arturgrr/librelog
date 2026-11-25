@@ -29,6 +29,19 @@ final class AnnotateScrollTests: XCTestCase {
     XCTAssertTrue(pass.tick(now: 0.9 + AnnotateScrollPass.quiet + 0.01))
   }
 
+  func testAFingerStoppingTheMomentumOrAClickGivesThePenThePointerAtOnce() {
+    var pass = AnnotateScrollPass()
+    XCTAssertTrue(pass.reachedOverlay(phase: .ended, momentum: .unphased, now: 0, drawing: false))
+    pass.observe(phase: .unphased, momentum: .began, now: 0.05)
+    pass.observe(phase: .unphased, momentum: .cancelled, now: 0.1)
+    XCTAssertTrue(pass.tick(now: 0.11))
+
+    XCTAssertTrue(pass.reachedOverlay(phase: .began, momentum: .unphased, now: 1, drawing: false))
+    XCTAssertTrue(pass.mouseDown())
+    XCTAssertFalse(pass.passing)
+    XCTAssertFalse(pass.mouseDown())
+  }
+
   func testAStrokeBeingDrawnKeepsThePointer() {
     var pass = AnnotateScrollPass()
     XCTAssertFalse(pass.reachedOverlay(phase: .began, momentum: .unphased, now: 0, drawing: true))
@@ -51,9 +64,10 @@ final class AnnotateScrollTests: XCTestCase {
     let corner = CGRect(x: 900, y: 0, width: 100, height: 100)
     let app = CGRect(x: 0, y: 0, width: 800, height: 600)
     let windows = [
-      // The ink overlay and the capsule.
+      // The ink overlay, the capsule and Librelog's own window.
       AnnotateWindowInfo(number: 1, pid: 9, layer: 26, alpha: 1, bounds: screen),
       AnnotateWindowInfo(number: 2, pid: 9, layer: 27, alpha: 1, bounds: screen),
+      AnnotateWindowInfo(number: 8, pid: 9, layer: 0, alpha: 1, bounds: screen),
       // The menu bar's level, an invisible window, one elsewhere.
       AnnotateWindowInfo(number: 3, pid: 4, layer: 25, alpha: 1, bounds: screen),
       AnnotateWindowInfo(number: 4, pid: 5, layer: 0, alpha: 0, bounds: screen),
@@ -61,8 +75,8 @@ final class AnnotateScrollTests: XCTestCase {
       AnnotateWindowInfo(number: 6, pid: 7, layer: 0, alpha: 1, bounds: app),
       AnnotateWindowInfo(number: 7, pid: 8, layer: 0, alpha: 1, bounds: screen),
     ]
-    let target = AnnotateScrollTarget.window(at: point, in: windows, own: [1, 2])
+    let target = AnnotateScrollTarget.window(at: point, in: windows, own: 9)
     XCTAssertEqual(target?.number, 6)
-    XCTAssertNil(AnnotateScrollTarget.window(at: point, in: Array(windows.prefix(4)), own: [1, 2]))
+    XCTAssertNil(AnnotateScrollTarget.window(at: point, in: Array(windows.prefix(5)), own: 9))
   }
 }

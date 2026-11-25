@@ -6,6 +6,7 @@
 // sit behind a lock, so polling never waits on the main thread.
 
 import AppKit
+import ApplicationServices
 import Foundation
 import ScreenCaptureKit
 
@@ -97,6 +98,8 @@ final class AnnotateSession {
   private var lingering: AnnotatePill?
   private var timer: Timer?
   private var monitors: [Any] = []
+  /// Told once that scrolls can't go through the pen without Accessibility.
+  private var toldAccessibility = false
 
   private var timebase: AnnotateTimebase { AnnotateHostClock.timebase }
 
@@ -449,9 +452,12 @@ final class AnnotateSession {
       return nil
     }
     if let local { monitors.append(local) }
-    // Where a scroll that went through the overlay is, to know when it ends;
-    // mouse events reach a global monitor without Accessibility.
-    let gestures: NSEvent.EventTypeMask = [.scrollWheel, .magnify, .rotate, .smartMagnify]
+    // Where a scroll that went through the overlay is, to know when it ends,
+    // and a click, which means to draw; mouse events reach a global monitor
+    // without Accessibility.
+    let gestures: NSEvent.EventTypeMask = [
+      .scrollWheel, .magnify, .rotate, .smartMagnify, .leftMouseDown,
+    ]
     let watched = NSEvent.addGlobalMonitorForEvents(matching: gestures) { [weak self] event in
       self?.scrolled(event)
     }
@@ -560,12 +566,21 @@ final class AnnotateSession {
 
   /// A scroll or pinch reached the overlay while ink is on: the pointer
   /// goes through until it is over, and this event goes to the window
-  /// under the pointer.
+  /// under the pointer. Handing it on needs Accessibility; without it the
+  /// pen keeps the wheel, as before, since a gesture the system keeps
+  /// sending to the overlay would otherwise be lost whole.
   private func passThrough(_ event: NSEvent) {
     guard let current, machine.phase == .recording, machine.ink != .off else { return }
     let (phase, momentum) = Self.phases(event)
     let now = nowTicks().seconds
     let began = !current.scroll.passing
+    if began && !AXIsProcessTrusted() {
+      if !toldAccessibility {
+        toldAccessibility = true
+        NSLog("Annotate: scrolling under the pen needs Accessibility; the pen keeps the wheel")
+      }
+      return
+    }
     let drawing = machine.ink == .drag && current.strokes.live != nil
     let passes = current.scroll.reachedOverlay(
       phase: phase, momentum: momentum, now: now, drawing: drawing)
@@ -573,7 +588,7 @@ final class AnnotateSession {
     machine.pointerMoved(now: now)
     current.ink.passesPointer(true)
     if began || current.scrollTarget == nil {
-      let own = Set([current.ink.windowNumber, current.pill.windowNumber])
+      let own = ProcessInfo.processInfo.processIdentifier
       let point = event.cgEvent?.location ?? .zero
       current.scrollTarget = AnnotateScrollTarget.window(
         at: point, in: Self.windows(), own: own)
@@ -583,9 +598,16 @@ final class AnnotateSession {
     }
   }
 
-  /// A scroll seen anywhere, for when one that went through ends.
+  /// A scroll seen anywhere, for when one that went through ends, or a
+  /// click, after which the pen takes the pointer back at once. That click
+  /// itself already went to the app underneath: a monitor sees it only
+  /// after.
   private func scrolled(_ event: NSEvent) {
     guard let current, current.scroll.passing else { return }
+    if event.type == .leftMouseDown {
+      if current.scroll.mouseDown() { current.ink.passesPointer(false) }
+      return
+    }
     let (phase, momentum) = Self.phases(event)
     current.scroll.observe(phase: phase, momentum: momentum, now: nowTicks().seconds)
   }
@@ -621,8 +643,7 @@ final class AnnotateSession {
 
   /// Hands a copy of `event` to `target`'s app, addressed to that window.
   /// Like any synthetic event it needs Accessibility, which pasting a
-  /// dictation already asks for; without it this one is lost and the rest
-  /// of the scroll still goes through.
+  /// dictation already asks for; `passThrough` checks it first.
   private static func forward(_ event: NSEvent, to target: AnnotateWindowInfo) {
     guard let copy = event.cgEvent?.copy() else { return }
     // `kCGMouseEventWindowUnderMousePointer` and its `ThatCanHandleThisEvent`.

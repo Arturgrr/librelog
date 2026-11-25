@@ -34,7 +34,7 @@ final class AnnotatePillView: NSView {
   }()
 
   /// What shows now, the question measured in the plate's font.
-  var layout: AnnotatePillLayout {
+  var controls: AnnotatePillLayout {
     guard asking else { return AnnotatePillLayout.make(asking: false) }
     return AnnotatePillLayout.make(
       asking: true,
@@ -55,19 +55,19 @@ final class AnnotatePillView: NSView {
 
   /// Where the controls start: centred at their own width, so they keep
   /// still while the plate springs to it.
-  private func origin(_ layout: AnnotatePillLayout) -> CGPoint {
+  private func origin(_ parts: AnnotatePillLayout) -> CGPoint {
     CGPoint(
-      x: (bounds.midX - layout.width / 2).rounded(),
+      x: (bounds.midX - parts.width / 2).rounded(),
       y: bounds.midY - AnnotatePillLook.height / 2)
   }
 
   override func mouseDown(with event: NSEvent) {
     guard stage == .recording, pose.opacity > 0.5 else { return }
     let point = convert(event.locationInWindow, from: nil)
-    let layout = self.layout
-    let start = origin(layout)
+    let parts = controls
+    let start = origin(parts)
     let local = CGPoint(x: point.x - start.x, y: point.y - start.y)
-    if let target = layout.target(at: local) {
+    if let target = parts.target(at: local) {
       onAction?(target)
     }
   }
@@ -125,14 +125,14 @@ final class AnnotatePillView: NSView {
   }
 
   private func drawControls(text: NSColor) {
-    let layout = self.layout
-    let start = origin(layout)
+    let parts = controls
+    let start = origin(parts)
     func place(_ rect: CGRect) -> NSRect {
       rect.offsetBy(dx: start.x, dy: start.y)
     }
     if asking {
-      label(labels.discardQuestion, in: place(layout.question), color: text, center: false)
-      for (target, rect) in layout.targets {
+      label(labels.discardQuestion, in: place(parts.question), color: text, center: false)
+      for (target, rect) in parts.targets {
         let frame = place(rect)
         let confirm = target == .confirmDiscard
         let round = frame.height / 2
@@ -145,11 +145,11 @@ final class AnnotatePillView: NSView {
       return
     }
     Self.red.setFill()
-    NSBezierPath(ovalIn: place(layout.dot)).fill()
-    label(clock, in: place(layout.clock), color: text, center: false)
+    NSBezierPath(ovalIn: place(parts.dot)).fill()
+    label(clock, in: place(parts.clock), color: text, center: false)
     text.withAlphaComponent(0.2).setFill()
-    place(layout.divider).fill()
-    for (target, rect) in layout.targets {
+    place(parts.divider).fill()
+    for (target, rect) in parts.targets {
       let frame = place(rect)
       switch target {
       case .pen:
@@ -293,7 +293,7 @@ final class AnnotatePill {
   func show() {
     view.dark = Self.systemDark()
     view.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    model.contentWidth = view.layout.width
+    model.contentWidth = view.controls.width
     model.show(now: CACurrentMediaTime(), reduceMotion: view.reduceMotion)
     panel.orderFrontRegardless()
     startTimer()
@@ -328,7 +328,7 @@ final class AnnotatePill {
     view.clock = clock
     view.penOn = penOn
     view.asking = asking
-    model.contentWidth = view.layout.width
+    model.contentWidth = view.controls.width
     view.needsDisplay = true
   }
 

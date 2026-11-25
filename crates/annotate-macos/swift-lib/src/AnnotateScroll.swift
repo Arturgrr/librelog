@@ -6,7 +6,8 @@
 // pointer as the system routes them. What still reaches the overlay (the
 // first event, and a gesture the system keeps sending to the window it
 // began in) is handed to the window under the pointer. A stroke being drawn
-// keeps the pointer. Plain decisions here; `AnnotateSession` applies them.
+// keeps the pointer, and a finger stopping the momentum or a click takes it
+// back at once. Plain decisions here; `AnnotateSession` applies them.
 
 import CoreGraphics
 import Foundation
@@ -37,6 +38,8 @@ struct AnnotateScrollPass {
   private var touching = false
   /// The momentum after they lifted.
   private var coasting = false
+  /// A finger stopped the momentum: the pen gets the pointer back at once.
+  private var stopped = false
   private var last: Double = 0
 
   /// A scroll reached the overlay. Returns whether to let the pointer
@@ -65,16 +68,28 @@ struct AnnotateScrollPass {
     case .mayBegin, .began, .changed, .stationary:
       touching = false
       coasting = true
-    case .ended, .cancelled: coasting = false
+    case .ended: coasting = false
+    case .cancelled:
+      coasting = false
+      stopped = true
     case .unphased: break
     }
+  }
+
+  /// A click while passing, which means to draw: the pen takes the pointer
+  /// back now. Returns whether it was passing.
+  mutating func mouseDown() -> Bool {
+    guard passing else { return false }
+    reset()
+    return true
   }
 
   /// True once the overlay should take the pointer back.
   mutating func tick(now: Double) -> Bool {
     guard passing else { return false }
     let idle = now - last
-    guard (!touching && !coasting && idle >= Self.quiet) || idle >= Self.lost else { return false }
+    let quiet = !touching && !coasting && idle >= Self.quiet
+    guard stopped || quiet || idle >= Self.lost else { return false }
     reset()
     return true
   }
@@ -83,6 +98,7 @@ struct AnnotateScrollPass {
     passing = false
     touching = false
     coasting = false
+    stopped = false
   }
 }
 
@@ -102,12 +118,13 @@ enum AnnotateScrollTarget {
   static let topLayer = 25
 
   /// The frontmost window under `point` that a scroll is for: shown, below
-  /// the menu bar's level, and none of `own`.
+  /// the menu bar's level, and another app's (`own` is this process): a
+  /// scroll handed to Librelog itself could come back to the overlay.
   static func window(
-    at point: CGPoint, in windows: [AnnotateWindowInfo], own: Set<Int>
+    at point: CGPoint, in windows: [AnnotateWindowInfo], own: Int32
   ) -> AnnotateWindowInfo? {
     windows.first { window in
-      !own.contains(window.number) && window.layer < topLayer && window.alpha > 0
+      window.pid != own && window.layer < topLayer && window.alpha > 0
         && window.bounds.contains(point)
     }
   }
