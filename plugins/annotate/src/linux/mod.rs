@@ -9,7 +9,9 @@
 //! on lets the pointer through for `SCROLL_QUIET_MS` after the last one it
 //! caught, and is replayed through XTest, so the wheel keeps scrolling the
 //! app underneath; X can't let the wheel alone through, nor tell when a
-//! scroll that went through ends. Ink goes off with a right click on the
+//! scroll that went through ends. Under XWayland the replay reaches only X
+//! apps; a native Wayland app under the pen gets the rest of the scroll,
+//! not the event the overlay caught. Ink goes off with a right click on the
 //! overlay, a click while the held shortcut inks, the shortcut's release,
 //! the capsule's pen, 8 s after the shortcut last said it is held, and 30 s
 //! after the pen's last stroke. The overlay closes on stop, cancel, the
@@ -53,13 +55,31 @@ const FPS: u32 = 30;
 const TOKEN_FILE: &str = "screencast-token";
 /// A recording stops by itself after 20 minutes, as on macOS.
 const MAX_DURATION_S: u32 = 20 * 60;
-/// How long the capsule shows ready, and a failure, before it goes.
-pub(crate) const READY_FOR: Duration = Duration::from_millis(900);
-pub(crate) const FAILED_FOR: Duration = Duration::from_millis(2_500);
+/// How long the capsule shows ready, a failure, and at most the annotation
+/// being prepared (when the session never says how it came out), as on
+/// macOS.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Lingers {
+    pub ready: Duration,
+    pub failed: Duration,
+    pub processing: Duration,
+}
+
+impl Default for Lingers {
+    fn default() -> Self {
+        Self {
+            ready: Duration::from_millis(900),
+            failed: Duration::from_millis(2_500),
+            processing: Duration::from_secs(10 * 60),
+        }
+    }
+}
 /// The pointer goes back to the pen this long after the overlay last caught
 /// a scroll: a scroll still going then reaches it again and goes through
 /// again.
 const SCROLL_QUIET_MS: u64 = 600;
+/// The most wheel clicks one scroll event replays.
+const MAX_REPLAYED: f64 = 3.0;
 
 const NO_PLACING: &str = "Librelog runs as a native Wayland app here, where it can't keep a window over the screen, so this annotation has no ink and no capsule. Start Librelog without LIBRELOG_WAYLAND=1 to draw.";
 const NO_MONITOR: &str = "Librelog could not tell which screen the desktop shared, so this annotation has no ink and no capsule.";
@@ -220,6 +240,7 @@ pub struct Linux {
     token_file: PathBuf,
     state: Mutex<State>,
     after: Arc<Mutex<After>>,
+    lingers: Lingers,
     /// The last stopped movie, for its key frames.
     movie: Mutex<Option<Movie>>,
 }
@@ -270,6 +291,7 @@ impl Linux {
             token_file,
             state: Mutex::new(State::Idle),
             after: Arc::default(),
+            lingers: Lingers::default(),
             movie: Mutex::new(None),
         }
     }
@@ -296,9 +318,28 @@ impl Linux {
         surface.pen_on = false;
         surface.ink = InkMode::Off;
         self.surfaces.publish(&surface);
-        let mut after = self.after();
-        after.generation += 1;
-        after.surface = Some(surface);
+        let generation = {
+            let mut after = self.after();
+            after.generation += 1;
+            after.surface = Some(surface);
+            after.generation
+        };
+        self.close_after(generation, self.lingers.processing);
+    }
+
+    /// Closes the stopped recording's capsule after `linger`, unless a newer
+    /// one, a start or a close came meanwhile.
+    fn close_after(&self, generation: u64, linger: Duration) {
+        let (after, surfaces) = (self.after.clone(), self.surfaces.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(linger);
+            // Held while closing, so a start waits for it.
+            let mut after = after.lock().unwrap_or_else(|e| e.into_inner());
+            if after.generation == generation && after.surface.take().is_some() {
+                after.generation += 1;
+                surfaces.close();
+            }
+        });
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -513,9 +554,11 @@ impl Linux {
         }
     }
 
-    /// A scroll by `(dx, dy)` reached the overlay while ink is on: the
-    /// pointer goes through to the app underneath and the scroll is
-    /// replayed there. A stroke being drawn keeps the pointer.
+    /// A scroll reached the overlay while ink is on: the pointer goes
+    /// through to the app underneath, and `(dx, dy)` whole wheel clicks
+    /// (what the overlay gathered of it, at most `MAX_REPLAYED` along its
+    /// longer axis) are replayed there. A stroke being drawn keeps the
+    /// pointer.
     pub fn scroll(&self, dx: f64, dy: f64) {
         let mut state = self.lock();
         let State::Recording(current) = &mut *state else {
@@ -526,9 +569,6 @@ impl Linux {
         if !current.ink || current.ended || ink == InkMode::Off || drawing {
             return;
         }
-        let Some(button) = x11::wheel_button(dx, dy) else {
-            return;
-        };
         let now = self.now(current);
         current.machine.stroked(now);
         if current.scrolled.is_none()
@@ -539,8 +579,15 @@ impl Linux {
             return;
         }
         current.scrolled = Some(now);
-        if let Err(error) = self.surfaces.scroll(button) {
-            tracing::warn!(%error, "annotate: replaying a scroll");
+        let Some(button) = x11::wheel_button(dx, dy) else {
+            return;
+        };
+        let clicks = dx.abs().max(dy.abs()).round().clamp(1.0, MAX_REPLAYED);
+        for _ in 0..clicks as u32 {
+            if let Err(error) = self.surfaces.scroll(button) {
+                tracing::warn!(%error, "annotate: replaying a scroll");
+                return;
+            }
         }
     }
 
@@ -804,8 +851,8 @@ impl Native for Linux {
     fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
         let (stage, linger) = match stage {
             "processing" => (CapsuleStage::Processing, None),
-            "ready" => (CapsuleStage::Ready, Some(READY_FOR)),
-            "failed" => (CapsuleStage::Failed, Some(FAILED_FOR)),
+            "ready" => (CapsuleStage::Ready, Some(self.lingers.ready)),
+            "failed" => (CapsuleStage::Failed, Some(self.lingers.failed)),
             "hidden" => {
                 let mut after = self.after();
                 if after.surface.take().is_some() {
@@ -832,16 +879,16 @@ impl Native for Linux {
         };
         self.surfaces.publish(&surface);
         if let Some(linger) = linger {
-            let (after, surfaces) = (self.after.clone(), self.surfaces.clone());
-            std::thread::spawn(move || {
-                std::thread::sleep(linger);
-                // Held while closing, so a start waits for it.
-                let mut after = after.lock().unwrap_or_else(|e| e.into_inner());
-                if after.generation == generation && after.surface.take().is_some() {
-                    after.generation += 1;
-                    surfaces.close();
+            // Ready or failed replaces the processing limit's close.
+            let generation = {
+                let mut after = self.after();
+                if after.generation != generation {
+                    return Ok(());
                 }
-            });
+                after.generation += 1;
+                after.generation
+            };
+            self.close_after(generation, linger);
         }
         Ok(())
     }

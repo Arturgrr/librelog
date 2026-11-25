@@ -242,7 +242,8 @@ export const commands = {
     }
   },
   /**
-   * A scroll by `(dx, dy)` on the Linux ink overlay: it goes through to the
+   * A scroll on the Linux ink overlay, as whole wheel clicks along each axis
+   * (0 while the overlay gathers a smooth scroll): it goes through to the
    * app underneath.
    */
   async inkScroll(dx: number, dy: number): Promise<Result<null, string>> {

@@ -708,17 +708,26 @@ fn the_pointer_is_let_go_through_x_whenever_gtk_does_not_confirm_it() {
 }
 
 #[test]
-fn a_ready_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() {
-    let rig = rig();
+fn a_stopped_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() {
+    let mut rig = rig();
+    let short = Duration::from_millis(50);
+    rig.linux.lingers = Lingers {
+        ready: short,
+        failed: short,
+        processing: Duration::from_millis(400),
+    };
+    let margin = Duration::from_secs(1);
+    let closed = || rig.surfaces.closed.load(Ordering::SeqCst);
     start(&rig);
     stop(&rig);
-    let closed = rig.surfaces.closed.load(Ordering::SeqCst);
+    let before = closed();
     rig.linux.capsule("ready").unwrap();
     assert_eq!(last_stage(&rig), CapsuleStage::Ready);
-    std::thread::sleep(READY_FOR + Duration::from_millis(300));
-    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed + 1);
+    std::thread::sleep(short + margin);
+    // Ready closed it once; the processing limit that was pending did not.
+    assert_eq!(closed(), before + 1);
 
-    // Ready again, then a new recording starts before the capsule goes.
+    // A failure, then a new recording before the capsule goes.
     std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
     start(&rig);
     stop(&rig);
@@ -726,10 +735,16 @@ fn a_ready_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() 
     assert_eq!(last_stage(&rig), CapsuleStage::Failed);
     std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
     start(&rig);
-    let closed = rig.surfaces.closed.load(Ordering::SeqCst);
-    std::thread::sleep(FAILED_FOR + Duration::from_millis(300));
-    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed);
+    let before = closed();
+    std::thread::sleep(Duration::from_millis(400) + margin);
+    assert_eq!(closed(), before);
     assert!(rig.linux.surface().is_some());
+
+    // Nobody says how it came out: the processing limit closes it.
+    stop(&rig);
+    let before = closed();
+    std::thread::sleep(Duration::from_millis(400) + margin);
+    assert_eq!(closed(), before + 1);
 }
 
 #[test]
@@ -737,12 +752,15 @@ fn a_scroll_on_the_pen_goes_through_to_the_app_and_the_pen_takes_the_pointer_bac
     let rig = rig();
     start(&rig);
     // Ink off: the overlay never sees the wheel, and asks nothing.
-    rig.linux.scroll(0.0, 40.0);
+    rig.linux.scroll(0.0, 1.0);
     rig.linux.press("pen");
     rig.clock.at_ms(1_000);
+    // A part click lets the pointer through without replaying anything; a
+    // burst replays at most three clicks.
+    rig.linux.scroll(0.0, 0.0);
     rig.linux.scroll(0.0, 40.0);
-    rig.linux.scroll(0.0, -40.0);
-    assert_eq!(*rig.surfaces.scrolled.lock().unwrap(), [5, 4]);
+    rig.linux.scroll(0.0, -1.0);
+    assert_eq!(*rig.surfaces.scrolled.lock().unwrap(), [5, 5, 5, 4]);
     assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
     rig.clock.at_ms(1_500);
     events(&rig);
@@ -754,8 +772,8 @@ fn a_scroll_on_the_pen_goes_through_to_the_app_and_the_pen_takes_the_pointer_bac
 
     // A stroke being drawn keeps the pointer.
     rig.linux.pointer("down", 10.0, 10.0);
-    rig.linux.scroll(30.0, 0.0);
-    assert_eq!(rig.surfaces.scrolled.lock().unwrap().len(), 2);
+    rig.linux.scroll(1.0, 0.0);
+    assert_eq!(rig.surfaces.scrolled.lock().unwrap().len(), 4);
     assert_eq!(x11::wheel_button(-30.0, 2.0), Some(6));
     assert_eq!(x11::wheel_button(0.0, 0.0), None);
 }

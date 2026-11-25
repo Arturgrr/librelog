@@ -257,7 +257,8 @@ pub(crate) async fn ink_pointer<R: tauri::Runtime>(
     Ok(())
 }
 
-/// A scroll by `(dx, dy)` on the Linux ink overlay: it goes through to the
+/// A scroll on the Linux ink overlay, as whole wheel clicks along each axis
+/// (0 while the overlay gathers a smooth scroll): it goes through to the
 /// app underneath.
 #[tauri::command]
 #[specta::specta]
