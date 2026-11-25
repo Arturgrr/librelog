@@ -40,13 +40,16 @@ pub enum HudPosition {
     Notch,
 }
 
-/// RMS of a buffer of samples, the level the HUD's scope follows.
+/// RMS of a buffer of samples, the level the HUD's scope follows. Samples
+/// that are not finite count as silence: the HUD's auto level keeps what it
+/// heard across dictations, and one NaN would stay in it for good.
 pub(crate) fn rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
         return 0.0;
     }
     let sum: f64 = samples
         .iter()
+        .filter(|sample| sample.is_finite())
         .map(|sample| f64::from(*sample).powi(2))
         .sum();
     (sum / samples.len() as f64).sqrt() as f32
@@ -55,6 +58,14 @@ pub(crate) fn rms(samples: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A NaN or infinite sample made the meter NaN, which latched the HUD's
+    /// auto level, and so its traces, at silence until the app restarted.
+    #[test]
+    fn a_non_finite_sample_meters_as_silence() {
+        let level = rms(&[0.5, f32::NAN, f32::INFINITY, -0.5]);
+        assert!((level - 0.125_f32.sqrt()).abs() < 1e-6, "{level}");
+    }
 
     /// A build that predates the setting sends `{"type":"started"}`; the HUD
     /// must still start, at the top.
