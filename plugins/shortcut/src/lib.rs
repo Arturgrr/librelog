@@ -10,7 +10,7 @@ mod press;
 pub use error::*;
 pub use events::*;
 pub use ext::*;
-pub use global::set_annotate_escape;
+pub use global::{set_annotate_escape, set_annotate_pen};
 
 use handler::Handler;
 use tauri::Manager;

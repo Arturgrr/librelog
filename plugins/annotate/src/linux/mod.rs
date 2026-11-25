@@ -5,13 +5,21 @@
 //! capsule over it, and GStreamer children read the movie back.
 //!
 //! Failing safe comes first: the overlay ignores the pointer unless ink is
-//! on, and never covers the capsule. Ink goes off with a right click on the
+//! on, and never covers the capsule. A scroll that reaches it while ink is
+//! on lets the pointer through for `SCROLL_QUIET_MS` after the last one it
+//! caught, and is replayed through XTest, so the wheel keeps scrolling the
+//! app underneath; X can't let the wheel alone through, nor tell when a
+//! scroll that went through ends. Under XWayland the replay reaches only X
+//! apps; a native Wayland app under the pen gets the rest of the scroll,
+//! not the event the overlay caught. Ink goes off with a right click on the
 //! overlay, a click while the held shortcut inks, the shortcut's release,
 //! the capsule's pen, 8 s after the shortcut last said it is held, and 30 s
-//! after the pen's last stroke. Both windows close on stop, cancel, the
-//! stream ending by itself and before every start. An overlay the X server
-//! doesn't show ignoring the pointer is closed, and the recording goes on
-//! without ink.
+//! after the pen's last stroke. The overlay closes on stop, cancel, the
+//! stream ending by itself and before every start; the capsule stays after a
+//! stop to show the annotation being prepared, then ready or failed for a
+//! moment, as the dictation HUD does, and closes on cancel and before every
+//! start. An overlay the X server doesn't show ignoring the pointer is
+//! closed, and the recording goes on without ink.
 
 mod frames;
 mod ink;
@@ -35,7 +43,7 @@ use tauri_plugin_capture::recorder::{
 use crate::audio::{Clock, HostClock};
 use crate::bundle::CANDIDATES_DIR;
 use crate::commands::InkMode;
-use crate::events::AnnotateSurface;
+use crate::events::{AnnotateSurface, CapsuleStage};
 use crate::native::{CANCELLED, Native};
 use crate::session::CapsuleLabels;
 
@@ -47,6 +55,31 @@ const FPS: u32 = 30;
 const TOKEN_FILE: &str = "screencast-token";
 /// A recording stops by itself after 20 minutes, as on macOS.
 const MAX_DURATION_S: u32 = 20 * 60;
+/// How long the capsule shows ready, a failure, and at most the annotation
+/// being prepared (when the session never says how it came out), as on
+/// macOS.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Lingers {
+    pub ready: Duration,
+    pub failed: Duration,
+    pub processing: Duration,
+}
+
+impl Default for Lingers {
+    fn default() -> Self {
+        Self {
+            ready: Duration::from_millis(900),
+            failed: Duration::from_millis(2_500),
+            processing: Duration::from_secs(10 * 60),
+        }
+    }
+}
+/// The pointer goes back to the pen this long after the overlay last caught
+/// a scroll: a scroll still going then reaches it again and goes through
+/// again.
+const SCROLL_QUIET_MS: u64 = 600;
+/// The most wheel clicks one scroll event replays.
+const MAX_REPLAYED: f64 = 3.0;
 
 const NO_PLACING: &str = "Librelog runs as a native Wayland app here, where it can't keep a window over the screen, so this annotation has no ink and no capsule. Start Librelog without LIBRELOG_WAYLAND=1 to draw.";
 const NO_MONITOR: &str = "Librelog could not tell which screen the desktop shared, so this annotation has no ink and no capsule.";
@@ -179,12 +212,22 @@ struct Current {
     warnings: Vec<String>,
     /// The recorder stopped by itself; `stop` collects it.
     ended: bool,
+    /// When the overlay last let a scroll through, while it does.
+    scrolled: Option<u64>,
 }
 
 enum State {
     Idle,
     Starting { cancelled: bool },
     Recording(Box<Current>),
+}
+
+/// The capsule after its recording stopped, and which one it shows: a close
+/// that comes late never takes a newer recording's windows.
+#[derive(Default)]
+struct After {
+    generation: u64,
+    surface: Option<AnnotateSurface>,
 }
 
 pub struct Linux {
@@ -196,6 +239,8 @@ pub struct Linux {
     /// The portal's token for the screen shared last.
     token_file: PathBuf,
     state: Mutex<State>,
+    after: Arc<Mutex<After>>,
+    lingers: Lingers,
     /// The last stopped movie, for its key frames.
     movie: Mutex<Option<Movie>>,
 }
@@ -245,8 +290,56 @@ impl Linux {
             placeable,
             token_file,
             state: Mutex::new(State::Idle),
+            after: Arc::default(),
+            lingers: Lingers::default(),
             movie: Mutex::new(None),
         }
+    }
+
+    fn after(&self) -> std::sync::MutexGuard<'_, After> {
+        self.after.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Both windows go, a stopped recording's capsule included.
+    fn close_all(&self) {
+        let mut after = self.after();
+        after.generation += 1;
+        after.surface = None;
+        self.surfaces.close();
+    }
+
+    /// The recording stopped: the overlay goes, and the capsule shows the
+    /// annotation being prepared until the session says how it came out.
+    fn processing(&self, current: &Current) {
+        self.surfaces.close_ink();
+        let mut surface = Self::surface_of(current);
+        surface.stage = CapsuleStage::Processing;
+        surface.asking = false;
+        surface.pen_on = false;
+        surface.ink = InkMode::Off;
+        self.surfaces.publish(&surface);
+        let generation = {
+            let mut after = self.after();
+            after.generation += 1;
+            after.surface = Some(surface);
+            after.generation
+        };
+        self.close_after(generation, self.lingers.processing);
+    }
+
+    /// Closes the stopped recording's capsule after `linger`, unless a newer
+    /// one, a start or a close came meanwhile.
+    fn close_after(&self, generation: u64, linger: Duration) {
+        let (after, surfaces) = (self.after.clone(), self.surfaces.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(linger);
+            // Held while closing, so a start waits for it.
+            let mut after = after.lock().unwrap_or_else(|e| e.into_inner());
+            if after.generation == generation && after.surface.take().is_some() {
+                after.generation += 1;
+                surfaces.close();
+            }
+        });
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -264,6 +357,7 @@ impl Linux {
     fn surface_of(current: &Current) -> AnnotateSurface {
         let ink = current.machine.ink();
         AnnotateSurface {
+            stage: CapsuleStage::Recording,
             ink,
             pen_on: ink == InkMode::Drag,
             drawable: current.ink,
@@ -286,6 +380,7 @@ impl Linux {
     /// pointer leaves ink off; one that can't give it back is closed.
     fn ink_changed(&self, current: &mut Current) {
         current.strokes.end();
+        current.scrolled = None;
         if current.ink {
             let takes = current.machine.ink() != InkMode::Off;
             if let Err(error) = self.surfaces.takes_pointer(takes) {
@@ -302,7 +397,7 @@ impl Linux {
     }
 
     fn begin(&self, request: &StartRequest) -> Result<String, AnnotateError> {
-        self.surfaces.close();
+        self.close_all();
         *self.movie() = None;
         let video = request.dir.join(anlg_annotate_core::VIDEO_FILE);
         if video.exists() {
@@ -399,11 +494,12 @@ impl Linux {
             labels,
             warnings,
             ended: false,
+            scrolled: None,
         };
         let mut state = self.lock();
         if matches!(*state, State::Starting { cancelled: true }) {
             drop(state);
-            self.surfaces.close();
+            self.close_all();
             let _ = self.screen.cancel();
             return Err(fail(
                 CANCELLED,
@@ -455,6 +551,43 @@ impl Linux {
                 strokes.end();
             }
             _ => {}
+        }
+    }
+
+    /// A scroll reached the overlay while ink is on: the pointer goes
+    /// through to the app underneath, and `(dx, dy)` whole wheel clicks
+    /// (what the overlay gathered of it, at most `MAX_REPLAYED` along its
+    /// longer axis) are replayed there. A stroke being drawn keeps the
+    /// pointer.
+    pub fn scroll(&self, dx: f64, dy: f64) {
+        let mut state = self.lock();
+        let State::Recording(current) = &mut *state else {
+            return;
+        };
+        let ink = current.machine.ink();
+        let drawing = ink == InkMode::Drag && current.strokes.live();
+        if !current.ink || current.ended || ink == InkMode::Off || drawing {
+            return;
+        }
+        let now = self.now(current);
+        current.machine.stroked(now);
+        if current.scrolled.is_none()
+            && let Err(error) = self.surfaces.takes_pointer(false)
+        {
+            // It may still hold the pointer: nothing to replay through.
+            tracing::warn!(%error, "annotate: letting a scroll through");
+            return;
+        }
+        current.scrolled = Some(now);
+        let Some(button) = x11::wheel_button(dx, dy) else {
+            return;
+        };
+        let clicks = dx.abs().max(dy.abs()).round().clamp(1.0, MAX_REPLAYED);
+        for _ in 0..clicks as u32 {
+            if let Err(error) = self.surfaces.scroll(button) {
+                tracing::warn!(%error, "annotate: replaying a scroll");
+                return;
+            }
         }
     }
 
@@ -541,7 +674,7 @@ impl Native for Linux {
         let started = self.begin(&request);
         if started.is_err() {
             *self.lock() = State::Idle;
-            self.surfaces.close();
+            self.close_all();
         }
         started
     }
@@ -557,7 +690,9 @@ impl Native for Linux {
                 }
             }
         };
-        self.surfaces.close();
+        if !current.ended {
+            self.processing(&current);
+        }
         let Current {
             dir,
             zero_ns,
@@ -629,7 +764,7 @@ impl Native for Linux {
                 State::Idle => None,
             }
         };
-        self.surfaces.close();
+        self.close_all();
         // Also takes down the desktop's dialog while it is up.
         let cancelled = self.screen.cancel();
         if let Some(dir) = dir {
@@ -676,8 +811,8 @@ impl Native for Linux {
             if event["type"] == "record_stopped" && !current.ended {
                 current.ended = true;
                 current.strokes.end();
-                self.surfaces.close();
                 current.ink = false;
+                self.processing(current);
                 current.machine.stopped(match event["reason"].as_str() {
                     Some("cap") => "max_duration",
                     _ => "stream_error",
@@ -686,6 +821,18 @@ impl Native for Linux {
         }
         if !current.ended {
             let now = self.now(current);
+            if let Some(at) = current.scrolled
+                && now.saturating_sub(at) >= SCROLL_QUIET_MS
+            {
+                current.scrolled = None;
+                if current.machine.ink() != InkMode::Off
+                    && let Err(error) = self.surfaces.takes_pointer(true)
+                {
+                    tracing::warn!(%error, "annotate: taking the pointer back after a scroll");
+                    current.machine.escape();
+                    self.ink_changed(current);
+                }
+            }
             let effects = current.machine.tick(now);
             if effects.ink_off {
                 self.ink_changed(current);
@@ -694,6 +841,56 @@ impl Native for Linux {
             }
         }
         Ok(Value::Array(current.machine.drain()).to_string())
+    }
+
+    fn toggle_pen(&self) -> Result<(), AnnotateError> {
+        self.press("pen");
+        Ok(())
+    }
+
+    fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
+        let (stage, linger) = match stage {
+            "processing" => (CapsuleStage::Processing, None),
+            "ready" => (CapsuleStage::Ready, Some(self.lingers.ready)),
+            "failed" => (CapsuleStage::Failed, Some(self.lingers.failed)),
+            "hidden" => {
+                let mut after = self.after();
+                if after.surface.take().is_some() {
+                    after.generation += 1;
+                    self.surfaces.close();
+                }
+                return Ok(());
+            }
+            other => {
+                return Err(fail(
+                    codes::INVALID_ARGUMENT,
+                    format!("no capsule stage {other}"),
+                ));
+            }
+        };
+        let (generation, surface) = {
+            let mut after = self.after();
+            let generation = after.generation;
+            let Some(surface) = after.surface.as_mut() else {
+                return Ok(());
+            };
+            surface.stage = stage;
+            (generation, surface.clone())
+        };
+        self.surfaces.publish(&surface);
+        if let Some(linger) = linger {
+            // Ready or failed replaces the processing limit's close.
+            let generation = {
+                let mut after = self.after();
+                if after.generation != generation {
+                    return Ok(());
+                }
+                after.generation += 1;
+                after.generation
+            };
+            self.close_after(generation, linger);
+        }
+        Ok(())
     }
 
     fn extract_frames(&self, request: &str) -> Result<String, AnnotateError> {

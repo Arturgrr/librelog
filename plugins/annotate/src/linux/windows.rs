@@ -21,9 +21,11 @@ use crate::events::AnnotateSurface;
 
 pub const INK_LABEL: &str = "annotate-ink";
 pub const CAPSULE_LABEL: &str = "annotate-capsule";
-/// The capsule, in logical pixels, as on macOS.
-const CAPSULE: (f64, f64) = (216.0, 36.0);
-const CAPSULE_TOP: f64 = 8.0;
+/// The capsule's window, in logical pixels: the dictation HUD's 26 px plate
+/// at its widest, with room for its shadow, the plate 6 px under the panels
+/// as the HUD's is.
+const CAPSULE: (f64, f64) = (216.0, 38.0);
+const CAPSULE_TOP: f64 = 0.0;
 /// Around the capsule, the overlay never takes the pointer.
 const CAPSULE_MARGIN: f64 = 4.0;
 /// A main thread this busy gets the windows closed instead.
@@ -113,6 +115,8 @@ pub trait Surfaces: Send + Sync {
     /// Ok only once the X server shows the change.
     fn takes_pointer(&self, takes: bool) -> Result<(), String>;
     fn publish(&self, surface: &AnnotateSurface);
+    /// Replays one click of wheel `button` to whatever is under the pointer.
+    fn scroll(&self, button: u8) -> Result<(), String>;
     fn close_ink(&self);
     fn close(&self);
 }
@@ -519,6 +523,10 @@ impl Surfaces for Windows {
         if let Err(error) = surface.clone().emit(&self.app) {
             tracing::warn!(%error, "annotate surface");
         }
+    }
+
+    fn scroll(&self, button: u8) -> Result<(), String> {
+        self.x11.scroll(button)
     }
 
     fn close_ink(&self) {

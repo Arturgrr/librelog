@@ -77,6 +77,9 @@ common_event_derives! {
         InkOff,
         /// Escape while ink is on.
         Escape,
+        /// The pen shortcut, held only while a recording runs: drawing on or
+        /// off.
+        Pen,
     }
 }
 

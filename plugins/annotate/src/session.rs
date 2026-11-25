@@ -23,7 +23,8 @@ const POLL: Duration = Duration::from_millis(100);
 pub type Emit = Arc<dyn Fn(AnnotateEvent) + Send + Sync>;
 /// Takes Escape from other apps (`true`) while ink is on, and gives it back.
 /// Called under the session's lock, so calls arrive in order; it must not
-/// block.
+/// block. The pen shortcut is handed over the same way: held from the
+/// moment the session records (`true`) until it stops or is discarded.
 pub type Escape = Arc<dyn Fn(bool) + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -111,6 +112,7 @@ pub struct Session {
     root: PathBuf,
     emit: Emit,
     escape: Escape,
+    pen: Escape,
     state: Mutex<State>,
     retention: Mutex<Option<Preset>>,
 }
@@ -162,6 +164,7 @@ impl Session {
         root: PathBuf,
         emit: Emit,
         escape: Escape,
+        pen: Escape,
     ) -> Self {
         Self {
             native,
@@ -169,6 +172,7 @@ impl Session {
             root,
             emit,
             escape,
+            pen,
             state: Mutex::new(State::Idle),
             retention: Mutex::new(None),
         }
@@ -188,6 +192,13 @@ impl Session {
 
     fn set_idle(&self) {
         *self.lock() = State::Idle;
+    }
+
+    /// What the capsule shows once the recording stopped; it never blocks.
+    fn capsule(&self, stage: &str) {
+        if let Err(error) = self.native.capsule(stage) {
+            tracing::warn!(%error, stage, "annotate capsule");
+        }
     }
 
     pub fn status(&self) -> Status {
@@ -311,6 +322,7 @@ impl Session {
                 Some(active)
             } else {
                 *state = State::Recording(active);
+                (self.pen)(true);
                 None
             }
         };
@@ -406,6 +418,7 @@ impl Session {
                 active.dir.clone(),
             )));
             (self.escape)(false);
+            (self.pen)(false);
             active
         };
         let Active {
@@ -433,6 +446,7 @@ impl Session {
                 None => {
                     let _ = std::fs::remove_dir_all(&dir);
                     self.set_idle();
+                    self.capsule("failed");
                     return Err(error);
                 }
             },
@@ -456,6 +470,7 @@ impl Session {
                 *state = State::Idle;
                 drop(state);
                 let _ = std::fs::remove_dir_all(&dir);
+                self.capsule("hidden");
                 return Err(Error::Cancelled);
             }
             finishing.stop = Some((result, stopped.clone()));
@@ -533,9 +548,11 @@ impl Session {
             *state = State::Idle;
             drop(state);
             let _ = std::fs::remove_dir_all(&dir);
+            self.capsule("hidden");
             return Err(Error::Cancelled);
         }
         match finalized {
+            // The capsule keeps showing it is processing through the retry.
             Err(error) if !finishing.retried => {
                 finishing.retried = true;
                 finishing.stop = Some((result, stopped));
@@ -543,6 +560,8 @@ impl Session {
             }
             finalized => {
                 *state = State::Idle;
+                drop(state);
+                self.capsule(if finalized.is_ok() { "ready" } else { "failed" });
                 finalized
             }
         }
@@ -579,6 +598,7 @@ impl Session {
                         active.dir.clone(),
                     )));
                     (self.escape)(false);
+                    (self.pen)(false);
                     Taken::Recording(active)
                 }
                 State::Finishing(finishing) if finishing.stop.is_some() => {
@@ -601,6 +621,7 @@ impl Session {
             }
             Taken::Stopped(dir) => {
                 let _ = std::fs::remove_dir_all(dir);
+                self.capsule("hidden");
                 Ok(())
             }
             Taken::Recording(active) => {
@@ -653,6 +674,15 @@ impl Session {
         Ok(())
     }
 
+    /// Drawing on or off, as the capsule's pen: the pen shortcut.
+    pub fn toggle_pen(&self) -> Result<(), Error> {
+        let state = self.lock();
+        if !matches!(&*state, State::Recording(_)) {
+            return Err(Error::NotRecording);
+        }
+        self.native.toggle_pen().map_err(Error::from)
+    }
+
     pub fn set_retention(&self, preset: Preset) {
         *self.retention.lock().unwrap_or_else(|e| e.into_inner()) = Some(preset);
     }
@@ -696,6 +726,9 @@ mod tests {
         stop_delay: Mutex<Option<Duration>>,
         cancels: AtomicUsize,
         extract: AtomicUsize,
+        /// What the host told the capsule after each stop.
+        capsules: Mutex<Vec<String>>,
+        pens: AtomicUsize,
     }
 
     impl Native for Fake {
@@ -740,6 +773,14 @@ mod tests {
             Ok(())
         }
         fn set_ink_mode(&self, _mode: &str) -> Result<(), AnnotateError> {
+            Ok(())
+        }
+        fn toggle_pen(&self) -> Result<(), AnnotateError> {
+            self.pens.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
+            self.capsules.lock().unwrap().push(stage.into());
             Ok(())
         }
         fn poll_events(&self) -> Result<String, AnnotateError> {
@@ -833,10 +874,11 @@ mod tests {
     fn session(
         root: &std::path::Path,
     ) -> (Arc<Session>, Arc<Fake>, Arc<Mutex<Vec<AnnotateEvent>>>) {
-        let (session, fake, events, _) = session_with_escape(root);
+        let (session, fake, events, _, _) = session_with_escape(root);
         (session, fake, events)
     }
 
+    /// Also what the session told Escape and the pen shortcut, in order.
     #[allow(clippy::type_complexity)]
     fn session_with_escape(
         root: &std::path::Path,
@@ -845,20 +887,24 @@ mod tests {
         Arc<Fake>,
         Arc<Mutex<Vec<AnnotateEvent>>>,
         Arc<Mutex<Vec<bool>>>,
+        Arc<Mutex<Vec<bool>>>,
     ) {
         let fake = Arc::new(Fake::default());
         let events = Arc::new(Mutex::new(Vec::new()));
         let escapes = Arc::new(Mutex::new(Vec::new()));
+        let pens = Arc::new(Mutex::new(Vec::new()));
         let sink = events.clone();
         let escape = escapes.clone();
+        let pen = pens.clone();
         let session = Arc::new(Session::new(
             fake.clone(),
             Arc::new(FixedClock),
             root.to_path_buf(),
             Arc::new(move |event| sink.lock().unwrap().push(event)),
             Arc::new(move |on| escape.lock().unwrap().push(on)),
+            Arc::new(move |on| pen.lock().unwrap().push(on)),
         ));
-        (session, fake, events, escapes)
+        (session, fake, events, escapes, pens)
     }
 
     async fn until(session: &Session, done: impl Fn(&Status) -> bool) {
@@ -1086,9 +1132,41 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn the_capsule_shows_ready_once_finalized_failed_when_finishing_fails_and_goes_on_discard()
+     {
+        let root = tempfile::tempdir().unwrap();
+        let (session, fake, _) = session(root.path());
+        let capsules = || fake.capsules.lock().unwrap().clone();
+        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.stop().await.unwrap();
+        // Processing from the stop on, which the native layer shows itself.
+        assert!(capsules().is_empty());
+        session.finalize(&started.id, None).await.unwrap();
+        assert_eq!(capsules(), ["ready"]);
+
+        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let stopped = session.stop().await.unwrap();
+        std::fs::write(
+            PathBuf::from(&stopped.dir).join(anlg_annotate_core::FRAMES_DIR),
+            b"",
+        )
+        .unwrap();
+        // The retry keeps it processing; giving up shows the failure.
+        assert!(session.finalize(&started.id, None).await.is_err());
+        assert_eq!(capsules(), ["ready"]);
+        assert!(session.finalize(&started.id, None).await.is_err());
+        assert_eq!(capsules(), ["ready", "failed"]);
+
+        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.stop().await.unwrap();
+        session.cancel().await.unwrap();
+        assert_eq!(capsules(), ["ready", "failed", "hidden"]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn escape_follows_the_ink_and_is_always_given_back_when_recording_ends() {
         let root = tempfile::tempdir().unwrap();
-        let (session, fake, _, escapes) = session_with_escape(root.path());
+        let (session, fake, _, escapes, pens) = session_with_escape(root.path());
         session.start(Arc::new(Mic), None, labels()).await.unwrap();
         session.set_ink_mode("hover").unwrap();
         assert_eq!(escapes.lock().unwrap().last(), Some(&true));
@@ -1097,11 +1175,21 @@ mod tests {
             .lock()
             .unwrap()
             .push(r#"{"type":"pen_on"}"#.into());
+        session.toggle_pen().unwrap();
+        assert_eq!(fake.pens.load(Ordering::SeqCst), 1);
         session.stop().await.unwrap();
         tokio::time::sleep(Duration::from_millis(250)).await;
         assert_eq!(escapes.lock().unwrap().last(), Some(&false));
         assert!(session.set_ink_mode("hover").is_err());
         assert_eq!(escapes.lock().unwrap().last(), Some(&false));
+
+        // The pen shortcut is held exactly while recording, and only then
+        // reaches the pen.
+        assert!(matches!(session.toggle_pen(), Err(Error::NotRecording)));
+        session.cancel().await.unwrap();
+        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.cancel().await.unwrap();
+        assert_eq!(*pens.lock().unwrap(), [true, false, true, false]);
     }
 
     #[cfg(unix)]

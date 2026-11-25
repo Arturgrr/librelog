@@ -1,10 +1,14 @@
 //! The overlay's input shape as the X server sees it, on a connection of
 //! our own: it confirms what GTK was asked to do, and it lets the pointer
-//! go when GTK's main thread does not answer.
+//! go when GTK's main thread does not answer. XTest replays a scroll the
+//! overlay caught, once it lets the pointer through.
 
 use x11rb::connection::Connection;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
-use x11rb::protocol::xproto::{ClipOrdering, ConnectionExt as _};
+use x11rb::protocol::xproto::{
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ClipOrdering, ConnectionExt as _,
+};
+use x11rb::protocol::xtest::ConnectionExt as _;
 
 /// The X server, behind a trait for tests.
 pub trait Shape: Send + Sync {
@@ -14,6 +18,24 @@ pub trait Shape: Send + Sync {
     /// Empties `xid`'s input shape.
     fn release(&self, xid: u32) -> Result<(), String>;
     fn unmap(&self, xid: u32) -> Result<(), String>;
+    /// One click of wheel `button` where the pointer is, as if from the
+    /// mouse.
+    fn scroll(&self, button: u8) -> Result<(), String>;
+}
+
+/// The X wheel button a scroll by `(dx, dy)` is, along its longer axis:
+/// 4 up, 5 down, 6 left, 7 right; none for no scroll.
+pub fn wheel_button(dx: f64, dy: f64) -> Option<u8> {
+    if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
+        return None;
+    }
+    Some(if dy.abs() >= dx.abs() {
+        if dy < 0.0 { 4 } else { 5 }
+    } else if dx < 0.0 {
+        6
+    } else {
+        7
+    })
 }
 
 const LATE: &str = "the app's windows did not answer in time";
@@ -88,6 +110,18 @@ impl Shape for Server {
             .map_err(text)?
             .check()
             .map_err(text)?;
+        connection.flush().map_err(text)
+    }
+
+    fn scroll(&self, button: u8) -> Result<(), String> {
+        let connection = connect()?;
+        for kind in [BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT] {
+            connection
+                .xtest_fake_input(kind, button, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)
+                .map_err(text)?
+                .check()
+                .map_err(text)?;
+        }
         connection.flush().map_err(text)
     }
 

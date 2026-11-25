@@ -125,6 +125,13 @@ pub(crate) async fn set_ink_mode<R: tauri::Runtime>(
     session(&app).set_ink_mode(mode).map_err(text)
 }
 
+/// Drawing on or off, as the capsule's pen: what the pen shortcut does.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn toggle_pen<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<()> {
+    session(&app).toggle_pen().map_err(text)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn status<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Status> {
@@ -247,6 +254,28 @@ pub(crate) async fn ink_pointer<R: tauri::Runtime>(
         linux.pointer(&kind, x, y);
     }
     let _ = (app, kind, x, y);
+    Ok(())
+}
+
+/// A scroll on the Linux ink overlay, as whole wheel clicks along each axis
+/// (0 while the overlay gathers a smooth scroll): it goes through to the
+/// app underneath.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn ink_scroll<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    dx: f64,
+    dy: f64,
+) -> Result<()> {
+    from(&window, &[INK])?;
+    #[cfg(target_os = "linux")]
+    if let Some(linux) = linux(&app) {
+        tauri::async_runtime::spawn_blocking(move || linux.scroll(dx, dy))
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    let _ = (app, dx, dy);
     Ok(())
 }
 

@@ -6,6 +6,7 @@ import {
   narrationMicrophone,
   NO_SPEECH,
   PASTE_GAP_MS,
+  PASTE_WAIT_MS,
   shellEscapePath,
   TRANSCRIPTION_BUSY,
   type AnnotateDeps,
@@ -37,6 +38,7 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
     transcriptionFailed: vi.fn(),
     transcriptionWaiting: vi.fn(),
     nothingToPaste: vi.fn(),
+    stillPreparing: vi.fn(),
     error: vi.fn(),
   };
   const plugin: AnnotateDeps["plugin"] = {
@@ -52,6 +54,7 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
     finalize: vi.fn(async () => finalized),
     cancel: vi.fn(async () => {}),
     setInkMode: vi.fn(async () => {}),
+    togglePen: vi.fn(async () => {}),
     latest: vi.fn(async () => finalized),
     ...overrides,
   };
@@ -164,6 +167,53 @@ describe("Annotate flow", () => {
     vi.mocked(plugin.latest).mockResolvedValue(null);
     await flow.pasteLast();
     expect(notify.nothingToPaste).toHaveBeenCalled();
+  });
+
+  it("pastes the annotation being prepared once it is ready, never the one before", async () => {
+    const previous = { ...finalized, id: "annotation-0", summary: "old" };
+    const { flow, deps, plugin, calls, notify } = setup({
+      latest: vi.fn(async () => previous),
+    });
+    let heard: (words: null) => void = () => {};
+    vi.mocked(deps.transcribe).mockReturnValue(
+      new Promise((resolve) => {
+        heard = resolve;
+      }),
+    );
+    // Paste last waits on its own clock; the paste's gap passes at once.
+    vi.mocked(deps.sleep).mockImplementation((ms) =>
+      ms === PASTE_WAIT_MS ? new Promise<void>(() => {}) : Promise.resolve(),
+    );
+    await flow.start();
+    const stopping = flow.stop();
+    const pasting = flow.pasteLast();
+    await Promise.resolve();
+    expect(calls).toEqual([]);
+    heard(null);
+    await Promise.all([stopping, pasting]);
+    expect(plugin.latest).not.toHaveBeenCalled();
+    expect(calls).toEqual([
+      `insert:${shellEscapePath(finalized.contactSheet)}`,
+      `insert:${finalized.summary}`,
+    ]);
+    expect(notify.stillPreparing).not.toHaveBeenCalled();
+  });
+
+  it("says the annotation is still being prepared when it takes longer than paste last waits", async () => {
+    const { flow, deps, plugin, calls, notify } = setup({
+      // The capsule's stop: the plugin finishes it before its event arrives.
+      status: vi.fn(async () => ({
+        available: true,
+        phase: "finishing" as const,
+        stopped: null,
+      })),
+    });
+    await flow.start();
+    await flow.pasteLast();
+    expect(deps.sleep).toHaveBeenCalledWith(PASTE_WAIT_MS);
+    expect(notify.stillPreparing).toHaveBeenCalled();
+    expect(plugin.latest).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.startsWith("insert:"))).toBe(false);
   });
 
   it("escapes a pasted path as Terminal's drag and drop does", () => {

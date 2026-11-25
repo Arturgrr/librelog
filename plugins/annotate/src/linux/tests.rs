@@ -99,6 +99,7 @@ struct FakeSurfaces {
     closed: AtomicUsize,
     ink_closed: AtomicUsize,
     published: Mutex<Vec<AnnotateSurface>>,
+    scrolled: Mutex<Vec<u8>>,
 }
 
 impl Surfaces for FakeSurfaces {
@@ -129,6 +130,10 @@ impl Surfaces for FakeSurfaces {
     }
     fn publish(&self, surface: &AnnotateSurface) {
         self.published.lock().unwrap().push(surface.clone());
+    }
+    fn scroll(&self, button: u8) -> Result<(), String> {
+        self.scrolled.lock().unwrap().push(button);
+        Ok(())
     }
     fn close_ink(&self) {
         self.ink_closed.fetch_add(1, Ordering::SeqCst);
@@ -227,6 +232,10 @@ fn events(rig: &Rig) -> Vec<String> {
         .collect()
 }
 
+fn last_stage(rig: &Rig) -> CapsuleStage {
+    rig.surfaces.published.lock().unwrap().last().unwrap().stage
+}
+
 fn stop(rig: &Rig) -> Value {
     serde_json::from_str(&rig.linux.stop().unwrap()).unwrap()
 }
@@ -255,7 +264,9 @@ fn a_recording_draws_on_the_monitor_shared_and_ends_with_its_strokes_and_frames(
 
     rig.screen.duration_ms.store(2_000, Ordering::SeqCst);
     let stopped = stop(&rig);
-    assert!(rig.surfaces.closed.load(Ordering::SeqCst) >= 2);
+    // The overlay goes; the capsule stays to show the annotation being prepared.
+    assert_eq!(rig.surfaces.ink_closed.load(Ordering::SeqCst), 1);
+    assert_eq!(last_stage(&rig), CapsuleStage::Processing);
     assert!(rig.linux.surface().is_none());
     assert_eq!(stopped["ended_by"], "stop");
     assert_eq!(stopped["duration_ms"], 2_000);
@@ -476,7 +487,9 @@ fn a_stream_the_desktop_ends_closes_the_windows_at_once_and_waits_for_stop() {
         .unwrap()
         .push(json!({ "type": "record_stopped", "reason": "stream_error" }));
     assert_eq!(events(&rig), ["stopped:stream_error"]);
-    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed + 1);
+    assert_eq!(rig.surfaces.closed.load(Ordering::SeqCst), closed);
+    assert_eq!(rig.surfaces.ink_closed.load(Ordering::SeqCst), 1);
+    assert_eq!(last_stage(&rig), CapsuleStage::Processing);
     assert!(rig.linux.surface().is_none());
     assert!(rig.linux.set_ink_mode("hover").is_err());
     rig.linux.press("pen");
@@ -665,6 +678,9 @@ impl x11::Shape for FakeServer {
         self.unmapped.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+    fn scroll(&self, _button: u8) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[test]
@@ -689,4 +705,75 @@ fn the_pointer_is_let_go_through_x_whenever_gtk_does_not_confirm_it() {
     assert_eq!(server.unmapped.load(Ordering::SeqCst), 0);
     x11::closed(None, Some(7), &server);
     assert_eq!(server.unmapped.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_stopped_capsule_goes_by_itself_but_never_takes_the_next_recordings_windows() {
+    let mut rig = rig();
+    let short = Duration::from_millis(50);
+    rig.linux.lingers = Lingers {
+        ready: short,
+        failed: short,
+        processing: Duration::from_millis(400),
+    };
+    let margin = Duration::from_secs(1);
+    let closed = || rig.surfaces.closed.load(Ordering::SeqCst);
+    start(&rig);
+    stop(&rig);
+    let before = closed();
+    rig.linux.capsule("ready").unwrap();
+    assert_eq!(last_stage(&rig), CapsuleStage::Ready);
+    std::thread::sleep(short + margin);
+    // Ready closed it once; the processing limit that was pending did not.
+    assert_eq!(closed(), before + 1);
+
+    // A failure, then a new recording before the capsule goes.
+    std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
+    start(&rig);
+    stop(&rig);
+    rig.linux.capsule("failed").unwrap();
+    assert_eq!(last_stage(&rig), CapsuleStage::Failed);
+    std::fs::remove_file(rig.dir.path().join("recording.mp4")).unwrap();
+    start(&rig);
+    let before = closed();
+    std::thread::sleep(Duration::from_millis(400) + margin);
+    assert_eq!(closed(), before);
+    assert!(rig.linux.surface().is_some());
+
+    // Nobody says how it came out: the processing limit closes it.
+    stop(&rig);
+    let before = closed();
+    std::thread::sleep(Duration::from_millis(400) + margin);
+    assert_eq!(closed(), before + 1);
+}
+
+#[test]
+fn a_scroll_on_the_pen_goes_through_to_the_app_and_the_pen_takes_the_pointer_back_after() {
+    let rig = rig();
+    start(&rig);
+    // Ink off: the overlay never sees the wheel, and asks nothing.
+    rig.linux.scroll(0.0, 1.0);
+    rig.linux.press("pen");
+    rig.clock.at_ms(1_000);
+    // A part click lets the pointer through without replaying anything; a
+    // burst replays at most three clicks.
+    rig.linux.scroll(0.0, 0.0);
+    rig.linux.scroll(0.0, 40.0);
+    rig.linux.scroll(0.0, -1.0);
+    assert_eq!(*rig.surfaces.scrolled.lock().unwrap(), [5, 5, 5, 4]);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
+    rig.clock.at_ms(1_500);
+    events(&rig);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
+    rig.clock.at_ms(1_700);
+    events(&rig);
+    assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false, true]);
+    assert_eq!(rig.linux.surface().unwrap().ink, InkMode::Drag);
+
+    // A stroke being drawn keeps the pointer.
+    rig.linux.pointer("down", 10.0, 10.0);
+    rig.linux.scroll(1.0, 0.0);
+    assert_eq!(rig.surfaces.scrolled.lock().unwrap().len(), 4);
+    assert_eq!(x11::wheel_button(-30.0, 2.0), Some(6));
+    assert_eq!(x11::wheel_button(0.0, 0.0), None);
 }

@@ -80,6 +80,17 @@ public func annotateSetInkMode(mode: SRString) -> SRString {
   }
 }
 
+@_cdecl("_annotate_toggle_pen")
+public func annotateTogglePen() -> SRString {
+  reply { AnnotateReply.from(AnnotateSession.shared.togglePen()) }
+}
+
+@_cdecl("_annotate_capsule")
+public func annotateCapsule(stage: SRString) -> SRString {
+  let name = stage.toString()
+  return reply { AnnotateReply.from(AnnotateSession.shared.capsule(name)) }
+}
+
 @_cdecl("_annotate_poll_events")
 public func annotatePollEvents() -> SRString {
   reply { AnnotateReply.ok(AnnotateSession.shared.drainEvents()) }

@@ -144,6 +144,12 @@ struct Keys {
     cancel_wanted: bool,
     /// Annotate's ink is on and takes Escape to turn it off.
     annotate_escape_wanted: bool,
+    /// The pen shortcut Settings chose; held only while a recording runs,
+    /// so its keys type as usual the rest of the time.
+    annotate_pen: Option<Shortcut>,
+    annotate_pen_held: Option<Shortcut>,
+    /// An Annotate recording runs.
+    annotate_recording: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +162,8 @@ enum Action {
     /// Annotate's start, stop and hold-to-ink key.
     Annotate,
     PasteLastAnnotation,
+    /// Annotate's pen, on and off, while a recording runs.
+    AnnotatePen,
     Capture(CaptureAction),
 }
 
@@ -202,6 +210,20 @@ impl Keys {
                 *slot = None;
                 tracing::warn!("an Annotate shortcut gave way to a dictation shortcut");
             }
+        }
+        self.yield_pen(backend, key)
+    }
+
+    /// The pen gives way to every other Librelog shortcut: it lets the key
+    /// go and stays unbound until Settings picks another.
+    fn yield_pen(&mut self, backend: &impl Backend, key: Shortcut) -> Result<(), String> {
+        if self.annotate_pen_held == Some(key) {
+            backend.unregister(key)?;
+            self.annotate_pen_held = None;
+        }
+        if self.annotate_pen == Some(key) {
+            self.annotate_pen = None;
+            tracing::warn!("the Annotate pen shortcut gave way to another Librelog shortcut");
         }
         Ok(())
     }
@@ -330,6 +352,7 @@ impl Keys {
                 return Err(TAKEN_BY_PASTE_LAST.into());
             }
             self.yield_capture(backend, key)?;
+            self.yield_pen(backend, key)?;
             backend.register(key, action).map_err(|e| {
                 format!(
                     "Could not register the Annotate shortcut. It may be used by another app: {e}"
@@ -353,6 +376,65 @@ impl Keys {
     fn remove_annotate_escape(&mut self, backend: &impl Backend) -> Result<(), String> {
         self.annotate_escape_wanted = false;
         self.sync_escape(backend)
+    }
+
+    /// Replaces the pen shortcut; `None` leaves it out. It may not be any
+    /// other Librelog shortcut. Held at once only while recording.
+    fn set_annotate_pen(
+        &mut self,
+        backend: &impl Backend,
+        key: Option<Shortcut>,
+    ) -> Result<(), String> {
+        self.annotate_pen = None;
+        self.sync_pen(backend)?;
+        if let Some(key) = key {
+            if self.dictation.contains(&key) {
+                return Err(TAKEN_BY_DICTATION.into());
+            }
+            if self.paste_last == Some(key) {
+                return Err(TAKEN_BY_PASTE_LAST.into());
+            }
+            if [self.annotate, self.annotate_paste].contains(&Some(key)) {
+                return Err(TAKEN.into());
+            }
+            if self.capture.iter().any(|(_, held)| *held == key) {
+                return Err(TAKEN_BY_CAPTURE.into());
+            }
+        }
+        self.annotate_pen = key;
+        self.sync_pen(backend)
+    }
+
+    /// A recording began (`true`) or ended: the pen's keys are held only in
+    /// between.
+    fn set_annotate_recording(
+        &mut self,
+        backend: &impl Backend,
+        recording: bool,
+    ) -> Result<(), String> {
+        self.annotate_recording = recording;
+        self.sync_pen(backend)
+    }
+
+    /// Holds the pen shortcut exactly while a recording runs.
+    fn sync_pen(&mut self, backend: &impl Backend) -> Result<(), String> {
+        let wanted = self.annotate_pen.filter(|_| self.annotate_recording);
+        if self.annotate_pen_held == wanted {
+            return Ok(());
+        }
+        if let Some(held) = self.annotate_pen_held {
+            backend.unregister(held)?;
+            self.annotate_pen_held = None;
+        }
+        if let Some(key) = wanted {
+            backend.register(key, Action::AnnotatePen).map_err(|e| {
+                format!(
+                    "Could not register the Annotate pen shortcut. It may be used by another app: {e}"
+                )
+            })?;
+            self.annotate_pen_held = Some(key);
+        }
+        Ok(())
     }
 }
 
@@ -379,7 +461,7 @@ impl Keys {
                 if self.paste_last == Some(key) {
                     return Err(TAKEN_BY_PASTE_LAST.to_string());
                 }
-                if self.annotate == Some(key) || self.annotate_paste == Some(key) {
+                if [self.annotate, self.annotate_paste, self.annotate_pen].contains(&Some(key)) {
                     return Err(TAKEN_BY_ANNOTATE.to_string());
                 }
                 if self.capture.iter().any(|(_, held)| *held == key) {
@@ -456,6 +538,11 @@ impl Backend for Global<'_> {
             Action::PasteLastAnnotation => self.shortcuts.on_shortcut(key, |app, _, event| {
                 if event.state == ShortcutState::Pressed {
                     let _ = PasteLastAnnotationEvent {}.emit(app);
+                }
+            }),
+            Action::AnnotatePen => self.shortcuts.on_shortcut(key, |app, _, event| {
+                if event.state == ShortcutState::Pressed {
+                    let _ = AnnotateShortcutEvent::Pen.emit(app);
                 }
             }),
             Action::PasteLast => self.shortcuts.on_shortcut(key, |app, _, event| {
@@ -629,13 +716,17 @@ pub async fn set_active(app: tauri::AppHandle, active: bool) -> Result<(), Strin
 /// Registers Annotate's shortcut, which starts, stops and inks, and its
 /// paste-last-annotation shortcut, replacing the previous ones; `None`
 /// leaves one out. Each needs a key with modifiers. If one cannot be
-/// registered, neither stays registered.
+/// registered, neither stays registered. `pen` turns drawing on and off and
+/// is held only while a recording runs; Shift with a key is enough. The
+/// Wayland portal binds its shortcuts once, for good, so there the pen is
+/// left to the capsule.
 #[tauri::command]
 #[specta::specta]
 pub async fn configure_annotate(
     app: tauri::AppHandle,
     shortcut: Option<String>,
     paste: Option<String>,
+    pen: Option<String>,
 ) -> Result<(), String> {
     let global_available = app.try_state::<GlobalShortcut>().is_some();
     let key = |shortcut: &Option<String>| {
@@ -645,6 +736,9 @@ pub async fn configure_annotate(
             .transpose()
     };
     let (annotate_key, paste_key) = (key(&shortcut)?, key(&paste)?);
+    // A pen shortcut that doesn't parse is reported, but never keeps the
+    // other two from registering.
+    let pen_key = key(&pen);
     #[cfg(target_os = "linux")]
     for (key, shortcut) in [(annotate_key, &shortcut), (paste_key, &paste)] {
         if let (Some(key), Some(shortcut)) = (key, shortcut) {
@@ -668,7 +762,7 @@ pub async fn configure_annotate(
         return result;
     }
     let Some(global) = global(&app, &state) else {
-        return if annotate.is_none() && paste.is_none() {
+        return if annotate.is_none() && paste.is_none() && !matches!(pen_key, Ok(Some(_))) {
             Ok(())
         } else {
             Err(UNAVAILABLE.into())
@@ -678,6 +772,11 @@ pub async fn configure_annotate(
     if result.is_err() {
         let _ = registration.keys.set_annotate(&global, None, None);
     }
+    let pen = pen_key.and_then(|key| registration.keys.set_annotate_pen(&global, key));
+    if pen.is_err() {
+        let _ = registration.keys.set_annotate_pen(&global, None);
+    }
+    result = result.and(pen);
     // Ink's Escape follows the shortcut's modifiers.
     if let Err(error) = registration.keys.sync_escape(&global) {
         result = result.and(Err(error));
@@ -724,6 +823,20 @@ pub async fn set_annotate_recording(app: tauri::AppHandle, recording: bool) -> R
     app.state::<annotate::AnnotateGesture>()
         .set_recording(recording);
     Ok(())
+}
+
+/// Holds the pen shortcut while an Annotate recording runs and lets it go
+/// when it ends, so it types as usual the rest of the time. The Annotate
+/// plugin calls this as its session starts and stops recording.
+pub async fn set_annotate_pen(app: &tauri::AppHandle, recording: bool) -> Result<(), String> {
+    let Some(state) = app.try_state::<GlobalState>() else {
+        return Ok(());
+    };
+    let mut registration = state.registration.lock().await;
+    let Some(global) = global(app, &state) else {
+        return Ok(());
+    };
+    registration.keys.set_annotate_recording(&global, recording)
 }
 
 /// Takes Escape from other apps while Annotate's ink is on, to turn it off.
@@ -1241,6 +1354,48 @@ mod registration_tests {
             validate_annotate_shortcut("Shift+Alt+KeyA", &["Alt+Shift+KeyA".into()], true),
             Err(TAKEN.into())
         );
+    }
+
+    #[test]
+    fn the_pen_shortcut_is_held_only_while_an_annotation_records() {
+        let key = |shortcut: &str| parse_shortcut(shortcut).unwrap();
+        let os = Os::default();
+        let held = || os.0.borrow().clone();
+        let mut keys = Keys::default();
+        keys.set_annotate(
+            &os,
+            Some(key("Alt+Shift+KeyS")),
+            Some(key("Alt+Shift+KeyA")),
+        )
+        .unwrap();
+        // Shift alone is enough of a modifier.
+        keys.set_annotate_pen(&os, Some(key("Shift+KeyC"))).unwrap();
+        assert!(!held().contains(&key("Shift+KeyC")));
+
+        keys.set_annotate_recording(&os, true).unwrap();
+        assert!(held().contains(&key("Shift+KeyC")));
+        // Settings changes it mid-recording: the new keys are held instead.
+        keys.set_annotate_pen(&os, Some(key("Shift+KeyD"))).unwrap();
+        assert!(held().contains(&key("Shift+KeyD")) && !held().contains(&key("Shift+KeyC")));
+        keys.set_annotate_recording(&os, false).unwrap();
+        assert_eq!(
+            held(),
+            HashSet::from([key("Alt+Shift+KeyS"), key("Alt+Shift+KeyA")])
+        );
+
+        // Never another Librelog shortcut, and dictation takes it back.
+        assert_eq!(
+            keys.set_annotate_pen(&os, Some(key("Shift+Alt+KeyA"))),
+            Err(TAKEN.into())
+        );
+        keys.set_annotate_pen(&os, Some(key("Shift+KeyC"))).unwrap();
+        keys.set_annotate_recording(&os, true).unwrap();
+        keys.add_dictation(&os, vec![(0, key("Shift+KeyC"))])
+            .unwrap();
+        keys.set_annotate_recording(&os, false).unwrap();
+        keys.set_annotate_recording(&os, true).unwrap();
+        assert_eq!(keys.annotate_pen_held, None);
+        assert!(held().contains(&key("Shift+KeyC")));
     }
 
     #[test]

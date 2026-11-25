@@ -29,5 +29,6 @@ export function useAnnotateShortcuts(): string[] {
   const enabled = useConfigValue("annotate_enabled");
   const shortcut = useConfigValue("annotate_shortcut");
   const paste = useConfigValue("annotate_paste_shortcut");
-  return enabled && annotateAvailable() ? [shortcut, paste] : [];
+  const pen = useConfigValue("annotate_pen_shortcut");
+  return enabled && annotateAvailable() ? [shortcut, paste, pen] : [];
 }

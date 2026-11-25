@@ -127,4 +127,18 @@ final class HudModelTests: XCTestCase {
       XCTAssertTrue(hud.handle(event))
     }
   }
+
+  /// A busy GPU froze the traces: each frame waited on the main thread for
+  /// a drawable the GPU still held. Frames now wait for the last one to
+  /// finish instead, and say how long they were held back.
+  func testTheScopeSkipsFramesWhileTheGpuHoldsTheLastOne() {
+    var pacer = HudFramePacer()
+    XCTAssertTrue(pacer.begin(now: 0))
+    XCTAssertFalse(pacer.begin(now: 0.01))
+    XCTAssertFalse(pacer.begin(now: 0.5))
+    XCTAssertEqual(pacer.finish(now: 0.8) ?? 0, 0.79, accuracy: 1e-9)
+    XCTAssertTrue(pacer.begin(now: 0.81))
+    XCTAssertNil(pacer.finish(now: 0.82), "a frame that held none back")
+    XCTAssertTrue(pacer.begin(now: 0.83))
+  }
 }

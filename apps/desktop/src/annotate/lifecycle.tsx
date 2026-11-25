@@ -83,6 +83,7 @@ type Flow = ReturnType<typeof createAnnotateFlow>;
 function ActiveAnnotate() {
   const shortcut = useConfigValue("annotate_shortcut");
   const paste = useConfigValue("annotate_paste_shortcut");
+  const pen = useConfigValue("annotate_pen_shortcut");
   const capturingShortcut = useDictationStatus(
     (state) => state.capturingShortcut,
   );
@@ -126,6 +127,9 @@ function ActiveAnnotate() {
         },
         setInkMode: async (mode) => {
           unwrap(await annotate.setInkMode(mode));
+        },
+        togglePen: async () => {
+          unwrap(await annotate.togglePen());
         },
         latest: async () => unwrap(await annotate.latest()),
       },
@@ -211,6 +215,10 @@ function ActiveAnnotate() {
               : t`Another recording is being transcribed on this Mac. The annotation will be ready when it finishes.`,
           }),
         nothingToPaste: () => toast(t`There's no annotation to paste yet.`),
+        stillPreparing: () =>
+          toast(t`The annotation is still being prepared.`, {
+            description: t`Paste it again once the capsule shows it is ready.`,
+          }),
         error: (error) => {
           if (!disposed) toast.error(describe(error));
         },
@@ -242,27 +250,31 @@ function ActiveAnnotate() {
   if (!flow || capturingShortcut) return null;
   return (
     <AnnotateShortcuts
-      key={`${shortcut}:${paste}`}
+      key={`${shortcut}:${paste}:${pen}`}
       shortcut={shortcut}
       paste={paste}
+      pen={pen}
     />
   );
 }
 
-// Registered again when either shortcut changes, and released while a
-// shortcut recorder listens for keys.
+// Registered again when any shortcut changes, and released while a
+// shortcut recorder listens for keys. The pen's is held only while a
+// recording runs.
 function AnnotateShortcuts({
   shortcut,
   paste,
+  pen,
 }: {
   shortcut: string;
   paste: string;
+  pen: string;
 }) {
   useMountEffect(() => {
     let disposed = false;
     chainRegistration(async () => {
       if (disposed) return;
-      unwrap(await shortcuts.configureAnnotate(shortcut, paste));
+      unwrap(await shortcuts.configureAnnotate(shortcut, paste, pen || null));
       useAnnotateStatus.setState({ error: null });
     }).catch((error) => {
       if (disposed) return;
@@ -274,7 +286,7 @@ function AnnotateShortcuts({
       disposed = true;
       useAnnotateStatus.setState({ error: null });
       chainRegistration(async () => {
-        unwrap(await shortcuts.configureAnnotate(null, null));
+        unwrap(await shortcuts.configureAnnotate(null, null, null));
       }).catch((error) => console.error("[annotate] unregister", error));
     };
   });

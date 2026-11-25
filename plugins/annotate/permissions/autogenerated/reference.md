@@ -12,6 +12,7 @@ Default permissions for the plugin
 - `allow-finalize`
 - `allow-cancel`
 - `allow-set-ink-mode`
+- `allow-toggle-pen`
 - `allow-status`
 - `allow-set-retention`
 - `allow-annotations-dir`
@@ -19,6 +20,7 @@ Default permissions for the plugin
 - `allow-surface`
 - `allow-ink-pointer`
 - `allow-ink-escape`
+- `allow-ink-scroll`
 - `allow-capsule-pressed`
 - `allow-surface-ready`
 - `allow-forget-screen-choice`
@@ -210,6 +212,32 @@ Enables the ink_pointer command without any pre-configured scope.
 <td>
 
 Denies the ink_pointer command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-ink-scroll`
+
+</td>
+<td>
+
+Enables the ink_scroll command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-ink-scroll`
+
+</td>
+<td>
+
+Denies the ink_scroll command without any pre-configured scope.
 
 </td>
 </tr>
@@ -496,6 +524,32 @@ Enables the surface_ready command without any pre-configured scope.
 <td>
 
 Denies the surface_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:allow-toggle-pen`
+
+</td>
+<td>
+
+Enables the toggle_pen command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`annotate:deny-toggle-pen`
+
+</td>
+<td>
+
+Denies the toggle_pen command without any pre-configured scope.
 
 </td>
 </tr>

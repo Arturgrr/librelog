@@ -75,7 +75,7 @@ impl Held {
             .borrow()
             .iter()
             .copied()
-            .filter(|(_, action)| !matches!(action, Action::Cancel))
+            .filter(|(_, action)| !matches!(action, Action::Cancel | Action::AnnotatePen))
             .collect();
         held.sort_by_key(|(_, action)| order(*action));
         let mut bindings = Vec::new();
@@ -104,7 +104,7 @@ impl Held {
                     "Paste the last Librelog annotation".into(),
                 ),
                 Action::Capture(capture) => capture_binding(*capture),
-                Action::Cancel => continue,
+                Action::Cancel | Action::AnnotatePen => continue,
             };
             let trigger = portal_trigger(*key)?;
             bindings.push(Binding {
@@ -146,6 +146,7 @@ fn order(action: Action) -> (u8, usize) {
         Action::Annotate => (3, 0),
         Action::PasteLastAnnotation => (4, 0),
         Action::Capture(capture) => (5, capture as usize),
+        Action::AnnotatePen => (6, 0),
     }
 }
 

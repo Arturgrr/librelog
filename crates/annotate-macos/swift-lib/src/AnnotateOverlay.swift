@@ -54,6 +54,27 @@ struct AnnotateInkScene {
   var isEmpty: Bool { strokes.isEmpty && glow <= 0 }
 }
 
+extension AnnotateGesturePhase {
+  /// The one phase that matters of AppKit's set: an end over a start.
+  init(_ phase: NSEvent.Phase) {
+    if phase.contains(.cancelled) {
+      self = .cancelled
+    } else if phase.contains(.ended) {
+      self = .ended
+    } else if phase.contains(.began) {
+      self = .began
+    } else if phase.contains(.changed) {
+      self = .changed
+    } else if phase.contains(.stationary) {
+      self = .stationary
+    } else if phase.contains(.mayBegin) {
+      self = .mayBegin
+    } else {
+      self = .unphased
+    }
+  }
+}
+
 enum AnnotateMouse {
   case down
   case dragged
@@ -64,6 +85,8 @@ final class AnnotateInkView: NSView {
   var scene = AnnotateInkScene()
   /// Mouse events in the display's top-left points.
   var onMouse: ((AnnotateMouse, CGPoint) -> Void)?
+  /// Scrolls and pinches, which belong to the app underneath.
+  var onPass: ((NSEvent) -> Void)?
 
   override var isFlipped: Bool { true }
   override var isOpaque: Bool { false }
@@ -80,6 +103,22 @@ final class AnnotateInkView: NSView {
 
   override func mouseUp(with event: NSEvent) {
     onMouse?(.up, convert(event.locationInWindow, from: nil))
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    onPass?(event)
+  }
+
+  override func magnify(with event: NSEvent) {
+    onPass?(event)
+  }
+
+  override func rotate(with event: NSEvent) {
+    onPass?(event)
+  }
+
+  override func smartMagnify(with event: NSEvent) {
+    onPass?(event)
   }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -128,9 +167,11 @@ final class AnnotateInkView: NSView {
 }
 
 /// The ink overlay: covers the recorded display, click-through unless ink
-/// is on.
+/// is on, and while a scroll goes through to the app underneath.
 final class AnnotateInkPanel: AnnotatePanel {
   let inkView: AnnotateInkView
+  private var takes = false
+  private var passing = false
 
   init(screen: AnnotateScreen) {
     inkView = AnnotateInkView(frame: NSRect(origin: .zero, size: screen.frame.size))
@@ -141,7 +182,14 @@ final class AnnotateInkPanel: AnnotatePanel {
 
   /// Ink takes the pointer, so clicks don't reach the app underneath.
   func takesPointer(_ takes: Bool) {
-    ignoresMouseEvents = !takes
+    self.takes = takes
+    ignoresMouseEvents = !takes || passing
+  }
+
+  /// A scroll is under way: the pointer goes through, ink on or not.
+  func passesPointer(_ passing: Bool) {
+    self.passing = passing
+    ignoresMouseEvents = !takes || passing
   }
 }
 

@@ -4567,6 +4567,10 @@ msgstr "Novo atalho para colar a última anotação"
 msgid "New paste last dictation shortcut"
 msgstr "Novo atalho para colar o último ditado"
 
+#: src/settings/annotate.tsx
+msgid "New Pen shortcut"
+msgstr "Novo atalho da caneta"
+
 #: src/settings/capture-shortcuts.tsx
 msgid "New Record GIF shortcut"
 msgstr "Novo atalho Gravar GIF"
@@ -5277,6 +5281,10 @@ msgstr "Cole uma **chave de API** para pagar pelo uso."
 msgid "Paste an API key from your Kimi Code membership."
 msgstr "Cole uma chave de API da sua assinatura do Kimi Code."
 
+#: src/annotate/lifecycle.tsx
+msgid "Paste it again once the capsule shows it is ready."
+msgstr "Cole de novo quando a cápsula mostrar que ela está pronta."
+
 #: src/settings/dictation-paste-last.tsx
 msgid "Paste it anywhere with ⌘V, without a shortcut. It replaces what was on the clipboard."
 msgstr "Cole-o em qualquer lugar com ⌘V, sem atalho. Ele substitui o que estava na área de transferência."
@@ -5362,6 +5370,10 @@ msgstr "Pausa o Música, o Spotify e o VLC se estiverem tocando e os retoma quan
 #: src/capture/editor/toolbar.tsx
 msgid "Pen"
 msgstr "Caneta"
+
+#: src/settings/annotate.tsx
+msgid "Pen shortcut"
+msgstr "Atalho da caneta"
 
 #: src/contacts/organization-details.tsx
 #: src/session/components/note-input/transcript/renderer/speaker-assign.tsx
@@ -7198,6 +7210,10 @@ msgstr "O modelo de IA está sobrecarregado no momento. Aguarde um pouco e tente
 msgid "The AI model stopped responding before it finished."
 msgstr "O modelo de IA parou de responder antes de terminar."
 
+#: src/annotate/lifecycle.tsx
+msgid "The annotation is still being prepared."
+msgstr "A anotação ainda está sendo preparada."
+
 #: src/ai/apple-foundation-model.ts
 msgid "The Apple Foundation Models experiment currently supports text only."
 msgstr "No momento, o experimento com Apple Foundation Models só aceita texto."
@@ -8328,6 +8344,14 @@ msgstr "Onde o indicador aparece enquanto você dita."
 #: src/settings/dictation-audio.tsx
 msgid "While dictating"
 msgstr "Durante o ditado"
+
+#: src/settings/annotate.tsx
+msgid "While recording, press it to turn drawing on or off, as the capsule's pen does; scrolling still reaches the app under the pointer. It is held only while recording, so it types as usual the rest of the time."
+msgstr "Durante a gravação, pressione para ligar ou desligar o desenho, como a caneta da cápsula; a rolagem continua chegando ao app sob o ponteiro. Ele só fica reservado durante a gravação, então digita normalmente no resto do tempo."
+
+#: src/settings/annotate.tsx
+msgid "While recording, press it to turn drawing on or off, as the capsule's pen does. It is held only while recording, so it types as usual the rest of the time. It isn't available on Wayland, where your desktop would keep those keys for good."
+msgstr "Durante a gravação, pressione para ligar ou desligar o desenho, como a caneta da cápsula. Ele só fica reservado durante a gravação, então digita normalmente no resto do tempo. Não está disponível no Wayland, onde o seu ambiente de trabalho reservaria essas teclas para sempre."
 
 #: src/capture/editor/toolbar.tsx
 msgid "White"

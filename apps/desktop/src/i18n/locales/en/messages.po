@@ -4567,6 +4567,10 @@ msgstr "New Paste last annotation shortcut"
 msgid "New paste last dictation shortcut"
 msgstr "New paste last dictation shortcut"
 
+#: src/settings/annotate.tsx
+msgid "New Pen shortcut"
+msgstr "New Pen shortcut"
+
 #: src/settings/capture-shortcuts.tsx
 msgid "New Record GIF shortcut"
 msgstr "New Record GIF shortcut"
@@ -5277,6 +5281,10 @@ msgstr "Paste an **API key** to pay as you go."
 msgid "Paste an API key from your Kimi Code membership."
 msgstr "Paste an API key from your Kimi Code membership."
 
+#: src/annotate/lifecycle.tsx
+msgid "Paste it again once the capsule shows it is ready."
+msgstr "Paste it again once the capsule shows it is ready."
+
 #: src/settings/dictation-paste-last.tsx
 msgid "Paste it anywhere with ⌘V, without a shortcut. It replaces what was on the clipboard."
 msgstr "Paste it anywhere with ⌘V, without a shortcut. It replaces what was on the clipboard."
@@ -5362,6 +5370,10 @@ msgstr "Pauses Music, Spotify, and VLC if they are playing, and resumes them whe
 #: src/capture/editor/toolbar.tsx
 msgid "Pen"
 msgstr "Pen"
+
+#: src/settings/annotate.tsx
+msgid "Pen shortcut"
+msgstr "Pen shortcut"
 
 #: src/contacts/organization-details.tsx
 #: src/session/components/note-input/transcript/renderer/speaker-assign.tsx
@@ -7198,6 +7210,10 @@ msgstr "The AI model is overloaded right now. Wait a moment, then retry."
 msgid "The AI model stopped responding before it finished."
 msgstr "The AI model stopped responding before it finished."
 
+#: src/annotate/lifecycle.tsx
+msgid "The annotation is still being prepared."
+msgstr "The annotation is still being prepared."
+
 #: src/ai/apple-foundation-model.ts
 msgid "The Apple Foundation Models experiment currently supports text only."
 msgstr "The Apple Foundation Models experiment currently supports text only."
@@ -8328,6 +8344,14 @@ msgstr "Where the indicator shows while you dictate."
 #: src/settings/dictation-audio.tsx
 msgid "While dictating"
 msgstr "While dictating"
+
+#: src/settings/annotate.tsx
+msgid "While recording, press it to turn drawing on or off, as the capsule's pen does; scrolling still reaches the app under the pointer. It is held only while recording, so it types as usual the rest of the time."
+msgstr "While recording, press it to turn drawing on or off, as the capsule's pen does; scrolling still reaches the app under the pointer. It is held only while recording, so it types as usual the rest of the time."
+
+#: src/settings/annotate.tsx
+msgid "While recording, press it to turn drawing on or off, as the capsule's pen does. It is held only while recording, so it types as usual the rest of the time. It isn't available on Wayland, where your desktop would keep those keys for good."
+msgstr "While recording, press it to turn drawing on or off, as the capsule's pen does. It is held only while recording, so it types as usual the rest of the time. It isn't available on Wayland, where your desktop would keep those keys for good."
 
 #: src/capture/editor/toolbar.tsx
 msgid "White"

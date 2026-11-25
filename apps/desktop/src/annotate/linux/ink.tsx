@@ -7,6 +7,8 @@ import {
 } from "@anlg/plugin-annotate";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
+import { wheelClicks } from "./wheel";
+
 // The macOS overlay's look: red #ff3b30, 4.5 pt strokes, a lifted stroke
 // held 650 ms, then faded over 650 ms on a squared curve.
 const RED = "255, 59, 48";
@@ -73,6 +75,22 @@ function paint(
 async function report(kind: PointerKind, point: Point) {
   try {
     await annotate.inkPointer(kind, point.x, point.y);
+  } catch (error) {
+    console.error("[annotate] ink", error);
+  }
+}
+
+let wheel = { x: 0, y: 0 };
+
+/**
+ * The plugin lets a scroll through to the app underneath and replays the
+ * whole wheel clicks it adds up to; a part click waits for the next event.
+ */
+async function scrollThrough(event: WheelEvent) {
+  const { clicks, rest } = wheelClicks(wheel, event);
+  wheel = rest;
+  try {
+    await annotate.inkScroll(clicks.x, clicks.y);
   } catch (error) {
     console.error("[annotate] ink", error);
   }
@@ -172,6 +190,11 @@ export function AnnotateInkScreen() {
       [window, "pointermove", pointer("move") as EventListener],
       [window, "pointerdown", pointer("down") as EventListener],
       [window, "pointerup", pointer("up") as EventListener],
+      [
+        window,
+        "wheel",
+        ((event: WheelEvent) => void scrollThrough(event)) as EventListener,
+      ],
       [
         document.documentElement,
         "pointerleave",

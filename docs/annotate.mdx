@@ -29,6 +29,10 @@ The capsule has three buttons:
 - **Stop** finishes the annotation, like the shortcut.
 - **Discard** asks **Discard?**. Choose **Discard** to delete the recording, or **Keep** to go on recording. Without an answer, recording goes on after a few seconds.
 
+While a recording runs, the pen shortcut (Shift + C unless you change it in **Settings → Annotate**) turns the pen on and off like the capsule's button; the rest of the time those keys type as usual. While the pen is on, scrolling and pinching still reach the app under the pointer.
+
+When you finish, the capsule shows that the annotation is being prepared, then a check mark once it is ready to paste, or a red mark if it could not be finished. **Paste last annotation** pressed meanwhile waits for it, for up to 30 seconds, and never pastes the one before.
+
 Press Escape to stop drawing; it never stops the recording. Drawing also turns off after 30 seconds without pointer movement. A recording stops by itself after 20 minutes.
 
 Turning off **Enable Annotate** while you record does not discard the recording: the shortcut still finishes it, and Annotate turns off once the annotation is written. Quitting Librelog while you record, or while an annotation is being finished, discards it.
@@ -84,6 +88,8 @@ What is different:
 - **The capsule and your marks are in the video.** Nothing of Librelog's can be left out of a recording on Linux. The capsule sits at the top centre of the recorded screen, and `recording.mp4` shows your red marks as you drew them. The key frames don't: Librelog takes each one from just before the ink appeared (or just after it faded) and draws your marks on it, as on a Mac. Only when ink showed from the very start to the very end of a recording do the marks land on the recorded ink.
 - **Stopping drawing.** A right click on the red layer, the capsule's pen, letting go of the held shortcut, or Control + Alt + period turn drawing off. Escape doesn't: the red layer never takes the keyboard, so your typing stays in the app you annotate. The capsule stays clickable while you draw. With the pen, drawing turns off 30 seconds after your last stroke.
 - **Holding the shortcut to draw depends on your desktop.** On Wayland, Librelog only learns that you let go of the shortcut if your desktop says so. So that drawing never holds on to the pointer, it stops 8 seconds after you pressed the shortcut, and when you click while it draws; hold the shortcut again to go on, or use the pen for longer marks.
+- **Scrolling while drawing** lets the wheel through for a moment and replays through X what the red layer caught. Under XWayland that replay reaches only X apps, so a native Wayland app under the pen misses the start of each scroll.
+- **No pen shortcut on Wayland.** Your desktop would keep its keys for good, so Shift + C would stop typing a capital C everywhere; use the capsule's pen.
 - **No app name.** The summary doesn't name the app in front, which Wayland doesn't tell other apps.
 - **Finishing takes longer.** Librelog reads the recording back to pick the key frames, which takes a few seconds per minute recorded, and up to a few minutes after a long recording. **Finishing the annotation…** shows meanwhile.
 - **Video format.** The recording is an MP4 when GStreamer has an H.264 encoder, otherwise WebM (`recording.webm`), which the annotation and retention treat like `recording.mp4`.
