@@ -307,10 +307,6 @@ function ActiveDictation() {
         const { microphone, livePreview, conn, languages, audio, hudPosition } =
           current.current;
         useDictationStatus.setState({ error: null });
-        // Loads while it records, so the stop transcribes at once. A start
-        // that fails leaves it held only until its time runs out.
-        releaseModel();
-        releaseModel = holdLocalModel(conn, MAX_CAPTURE_MS + 60_000);
         const meeting = meetingRecording().catch(() => true);
         if (platform() === "macos") {
           const permission = unwrap(
@@ -377,6 +373,10 @@ function ActiveDictation() {
         if (shown.status === "ok") hudShown = true;
         else console.error("Dictation indicator could not show:", shown.error);
         signal.throwIfAborted();
+        // Loads while it records, so the stop transcribes at once. Taken once
+        // nothing but the microphone can still fail the start.
+        releaseModel();
+        releaseModel = holdLocalModel(conn, MAX_CAPTURE_MS + 60_000);
         const capture = {
           stopped: false,
           preview: conn &&
@@ -387,36 +387,41 @@ function ActiveDictation() {
             },
         };
         live = capture;
-        unwrap(
-          await dictation.startSystemRecording(
-            microphone || null,
-            id,
-            preview,
-            new Channel<RecordingUpdate>((update) => {
-              if (update.type === "ended") {
-                if (capture.stopped) void cue("StopRecording");
-                return;
-              }
-              if (
-                disposed ||
-                !livePreview ||
-                update.type !== "transcript" ||
-                signal.aborted ||
-                live !== capture
-              )
-                return;
-              hud({
-                type: "preview",
-                stable: update.text,
-                tentative:
-                  update.text && update.partial
-                    ? ` ${update.partial}`
-                    : update.partial,
-              });
-            }),
-            environment,
-          ),
-        );
+        try {
+          unwrap(
+            await dictation.startSystemRecording(
+              microphone || null,
+              id,
+              preview,
+              new Channel<RecordingUpdate>((update) => {
+                if (update.type === "ended") {
+                  if (capture.stopped) void cue("StopRecording");
+                  return;
+                }
+                if (
+                  disposed ||
+                  !livePreview ||
+                  update.type !== "transcript" ||
+                  signal.aborted ||
+                  live !== capture
+                )
+                  return;
+                hud({
+                  type: "preview",
+                  stable: update.text,
+                  tentative:
+                    update.text && update.partial
+                      ? ` ${update.partial}`
+                      : update.partial,
+                });
+              }),
+              environment,
+            ),
+          );
+        } catch (error) {
+          releaseModel();
+          throw error;
+        }
         return { app, field, read, options, operationId, exclusions };
       },
       stop: async () => {

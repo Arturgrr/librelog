@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
   runBatch: vi.fn(),
   play: vi.fn(),
   recordDictation: vi.fn(),
+  holdLocalModel: vi.fn(),
+  releaseModel: vi.fn(),
   keepOnClipboard: vi.fn(),
   stopTranscription: vi.fn(),
   unlisten: vi.fn(),
@@ -67,7 +69,9 @@ vi.mock("~/stt/contexts", () => ({
     select({ live: mocks.meeting, stopTranscription: mocks.stopTranscription }),
 }));
 vi.mock("~/stt/useRunBatch", () => ({ useRunBatch: () => mocks.runBatch }));
-vi.mock("~/stt/local-model-hold", () => ({ holdLocalModel: () => () => {} }));
+vi.mock("~/stt/local-model-hold", () => ({
+  holdLocalModel: mocks.holdLocalModel,
+}));
 vi.mock("@anlg/plugin-shortcut", () => ({
   commands: { configure: mocks.configure, setActive: mocks.setActive },
   events: {
@@ -223,6 +227,7 @@ describe("dictation access and lifecycle", () => {
       data: { name: "Notes", id: "com.apple.Notes" },
     });
     mocks.recordDictation.mockResolvedValue({ audioKept: false });
+    mocks.holdLocalModel.mockReturnValue(mocks.releaseModel);
     mocks.rankDictationTerms.mockResolvedValue([]);
     mocks.recordUsedTerms.mockResolvedValue(undefined);
     mocks.keepOnClipboard.mockResolvedValue(undefined);
@@ -553,6 +558,44 @@ describe("dictation access and lifecycle", () => {
     expect(useDictationStatus.getState().error).toMatch(
       /microphone permission/u,
     );
+  });
+
+  it("holds the local model only once the start can no longer fail before the microphone, and releases it if the microphone fails", async () => {
+    mocks.connection = {
+      provider: "soniqo",
+      model: "soniqo-parakeet-batch",
+      apiKey: "",
+      baseUrl: "http://127.0.0.1:50060",
+    };
+    mocks.checkInsertion.mockResolvedValueOnce({
+      status: "error",
+      error: "No text field is focused.",
+    });
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await act(async () => {
+      mocks.listener?.({ payload: { type: "pressed" } });
+    });
+    await waitFor(() =>
+      expect(useDictationStatus.getState().phase).toBe("idle"),
+    );
+    expect(mocks.holdLocalModel).not.toHaveBeenCalled();
+
+    mocks.startSystemRecording.mockResolvedValueOnce({
+      status: "error",
+      error: "microphone unavailable",
+    });
+    await act(async () => {
+      mocks.listener?.({ payload: { type: "pressed" } });
+    });
+    await waitFor(() =>
+      expect(useDictationStatus.getState().phase).toBe("idle"),
+    );
+    expect(mocks.holdLocalModel).toHaveBeenCalledTimes(1);
+    expect(mocks.holdLocalModel.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.startSystemRecording.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.releaseModel).toHaveBeenCalled();
   });
 
   it.each(["windows", "linux"])(
