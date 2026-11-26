@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -115,6 +116,30 @@ describe("folder catalog", () => {
     );
     expect(mocks.deleteFolderCatalog).not.toHaveBeenCalled();
     expect(mocks.deleteFolder).not.toHaveBeenCalled();
+  });
+
+  it("moves only notes literally inside the deleted folder, not look-alike or other-case folders", async () => {
+    const { DatabaseSync } = createRequire(import.meta.url)(
+      "node:sqlite",
+    ) as typeof import("node:sqlite");
+    const database = new DatabaseSync(":memory:");
+    database.exec(`
+      CREATE TABLE sessions (id TEXT PRIMARY KEY, folder_path TEXT, deleted_at TEXT);
+      INSERT INTO sessions (id, folder_path) VALUES
+        ('own', 'Q1_2026'), ('inside', 'Q1_2026/Notes'), ('backslash', 'Q1_2026\\Notes'),
+        ('look-alike', 'Q1-2026/Notes'), ('percent', 'Q1%2026/Notes'), ('other-case', 'q1_2026');
+    `);
+    mocks.execute.mockImplementation(async (sql: string, params: never[]) =>
+      database.prepare(sql).all(...params),
+    );
+
+    await deleteNamedFolder("Q1_2026");
+
+    expect(mocks.moveSession.mock.calls.map(([id]) => id).sort()).toEqual([
+      "backslash",
+      "inside",
+      "own",
+    ]);
   });
 
   it("does not update the catalog if creating a missing rename target fails", async () => {

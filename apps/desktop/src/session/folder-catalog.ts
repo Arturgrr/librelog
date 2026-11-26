@@ -69,9 +69,12 @@ export async function deleteNamedFolder(folderPath: string): Promise<void> {
       SELECT id, folder_path
       FROM sessions
       WHERE deleted_at IS NULL
-        AND (folder_path = ? OR folder_path LIKE ? OR folder_path LIKE ?)
+        AND (
+          folder_path = ?
+          OR substr(folder_path, 1, length(?) + 1) IN (? || '/', ? || '\\')
+        )
     `,
-    [path, `${path}/%`, `${path}\\%`],
+    [path, path, path, path],
   );
 
   for (const session of sessions) {
@@ -245,11 +248,14 @@ async function folderNameTaken(path: string): Promise<boolean> {
         SELECT folder_path
         FROM sessions
         WHERE deleted_at IS NULL
-          AND (folder_path = ? OR folder_path LIKE ? OR folder_path LIKE ?)
+          AND (
+            folder_path = ?
+            OR substr(folder_path, 1, length(?) + 1) IN (? || '/', ? || '\\')
+          )
       )
       LIMIT 1
     `,
-    [path, path, path, `${path}/%`, `${path}\\%`],
+    [path, path, path, path, path, path],
   );
   return rows.length > 0;
 }
