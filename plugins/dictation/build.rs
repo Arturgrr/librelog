@@ -7,6 +7,8 @@ const COMMANDS: &[&str] = &[
     "discard_recording",
     "check_insertion",
     "insert_text",
+    "insert_dictation",
+    "read_dictation_field",
     "frontmost_app",
     "keep_history_audio",
     "history_audio_path",

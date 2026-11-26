@@ -30,6 +30,36 @@ pub(crate) async fn insert_text(text: String) -> Result<(), String> {
     crate::insertion::insert(text).await
 }
 
+/// Inserts a dictation where the focus is when its turn comes, fitted to the text before the
+/// caret or over the selection a voice edit read; returns what was typed. `exclusions` keeps
+/// the field of an excluded app unread.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn insert_dictation(
+    text: String,
+    mode: crate::insertion::InsertMode,
+    exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
+) -> Result<String, String> {
+    if text.contains('\0') {
+        return Err("Dictation text contains an unsupported NUL character".into());
+    }
+    if text.is_empty() || text.len() > 100_000 {
+        return Err("Dictation text is empty or too long".into());
+    }
+    crate::insertion::insert_dictation(text, mode, exclusions).await
+}
+
+/// The focused field as a dictation starts: its text around the caret, the selection a voice
+/// edit may rewrite, and the window's context for cleanup, each only where the privacy decision
+/// and `request` allow.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn read_dictation_field(
+    request: crate::insertion::field::FieldRequest,
+) -> crate::insertion::field::DictationField {
+    crate::insertion::read_field(request).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn hud<R: tauri::Runtime>(
@@ -283,7 +313,12 @@ pub(crate) async fn extract_dictation_terms(
     let limit = limit.map_or(anlg_dictation_core::context::MAX_CONTEXT_TERMS, |limit| {
         (limit as usize).min(anlg_dictation_core::terms::MAX_TERMS)
     });
-    anlg_dictation_core::terms::distinctive_terms(&text, ordinary_words(), heading, limit)
+    anlg_dictation_core::terms::distinctive_terms(
+        &text,
+        crate::insertion::field::ordinary_words(),
+        heading,
+        limit,
+    )
 }
 
 /// The terms speech-to-text hears for one dictation, highest first.
@@ -318,16 +353,4 @@ pub(crate) async fn kept_dictation_text(
     now: anlg_dictation_core::corrections::FieldText,
 ) -> Option<String> {
     anlg_dictation_core::corrections::kept_text(&start, &now)
-}
-
-/// The system word list, which tells ordinary capitalized words from names. Without one,
-/// capitalized words are left out of extracted terms.
-fn ordinary_words() -> Option<&'static anlg_dictation_core::terms::OrdinaryWords> {
-    static WORDS: std::sync::LazyLock<Option<anlg_dictation_core::terms::OrdinaryWords>> =
-        std::sync::LazyLock::new(|| {
-            std::fs::read_to_string("/usr/share/dict/words")
-                .ok()
-                .map(|lines| anlg_dictation_core::terms::OrdinaryWords::from_lines(&lines))
-        });
-    WORDS.as_ref()
 }

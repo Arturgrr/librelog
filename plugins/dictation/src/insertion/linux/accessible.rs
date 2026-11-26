@@ -1,6 +1,7 @@
 //! The focused field through AT-SPI, and inserting into it with
 //! `EditableText`, which needs no permission and leaves the clipboard alone.
 
+use anlg_dictation_core::context::{WindowFacts, is_browser};
 use atspi::proxy::{
     accessible::{AccessibleProxy, ObjectRefExt},
     application::ApplicationProxy,
@@ -8,10 +9,12 @@ use atspi::proxy::{
     text::TextProxy,
 };
 use atspi::{AccessibilityConnection, Interface, ObjectRef, Role, State};
+use std::future::Future;
 use std::time::Duration;
 use zbus::proxy::CacheProperties;
 
 use super::route::App;
+use crate::insertion::field::FieldRead;
 
 /// Where the keyboard focus is, as far as AT-SPI tells.
 pub enum Focus {
@@ -210,6 +213,192 @@ async fn process(connection: &AccessibilityConnection, owner: &str) -> Option<u3
 
 fn executable(process: u32) -> Option<std::path::PathBuf> {
     std::fs::read_link(format!("/proc/{process}/exe")).ok()
+}
+
+/// The focused field, found once, for the reads one dictation makes.
+pub struct FocusedField {
+    focus: Focus,
+}
+
+pub async fn focused_field() -> FocusedField {
+    FocusedField {
+        focus: focus().await,
+    }
+}
+
+impl crate::insertion::field::FieldSource for FocusedField {
+    async fn facts(&self) -> Option<WindowFacts> {
+        let (object, app) = match &self.focus {
+            Focus::Editable { object, app } => (object, app),
+            Focus::Password => {
+                return Some(WindowFacts {
+                    secure_field: Some(true),
+                    ..WindowFacts::default()
+                });
+            }
+            Focus::Other { .. } | Focus::Unknown { .. } => return None,
+        };
+        let name = Some(app.name.trim()).filter(|name| !name.is_empty());
+        // The executable stands in for a bundle id, as on Windows; a Flatpak's is its sandbox
+        // launcher, so its name ("Firefox") is tried as a desktop app id too.
+        let candidates = [
+            app.executable
+                .as_deref()
+                .and_then(std::path::Path::file_name)
+                .map(|file| file.to_string_lossy().to_lowercase()),
+            name.map(|name| name.to_lowercase().replace(' ', "-")),
+        ];
+        let browser = candidates.iter().flatten().find(|id| is_browser(id));
+        let bundle_id = browser.or(candidates.iter().flatten().next()).cloned();
+        let title = with_timeout(window_title(object)).await.flatten();
+        Some(WindowFacts {
+            bundle_id,
+            app_name: name.map(str::to_owned),
+            title,
+            secure_field: Some(false),
+            private_window: browser.is_none().then_some(false),
+            browser_host: None,
+        })
+    }
+
+    async fn read(&self, _deep: bool) -> Option<FieldRead> {
+        let Focus::Editable { object, .. } = &self.focus else {
+            return None;
+        };
+        with_timeout(read_text(object)).await.flatten()
+    }
+
+    async fn window_text(&self, max_chars: usize) -> Option<String> {
+        let Focus::Editable { object, .. } = &self.focus else {
+            return None;
+        };
+        with_timeout(window_text(object, max_chars)).await.flatten()
+    }
+}
+
+async fn with_timeout<T>(read: impl Future<Output = T>) -> Option<T> {
+    tokio::time::timeout(STEP_TIMEOUT, read).await.ok()
+}
+
+async fn window_title(object: &ObjectRef) -> Option<String> {
+    let connection = AccessibilityConnection::new().await.ok()?;
+    let bus = connection.connection();
+    let window = window_of(bus, object).await?;
+    window
+        .as_accessible_proxy(bus)
+        .await
+        .ok()?
+        .name()
+        .await
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+}
+
+/// The frame, window or dialog `object` is in.
+async fn window_of(bus: &zbus::Connection, object: &ObjectRef) -> Option<ObjectRef> {
+    let mut node = object.clone();
+    for _ in 0..32 {
+        let parent = node
+            .as_accessible_proxy(bus)
+            .await
+            .ok()?
+            .parent()
+            .await
+            .ok()?;
+        let role = parent.as_accessible_proxy(bus).await.ok()?.get_role().await;
+        if matches!(role, Ok(Role::Frame | Role::Window | Role::Dialog)) {
+            return Some(parent);
+        }
+        node = parent;
+    }
+    None
+}
+
+/// The field around its selection, in characters, as AT-SPI counts them.
+async fn read_text(object: &ObjectRef) -> Option<FieldRead> {
+    let connection = AccessibilityConnection::new().await.ok()?;
+    let (text, _) = field(connection.connection(), object).await.ok()?;
+    let length = text.character_count().await.ok()?;
+    let (start, end) = if selection_count(&text).await.ok()? > 0 {
+        let (a, b) = text.get_selection(0).await.ok()?;
+        (a.min(b), a.max(b))
+    } else {
+        let caret = text.caret_offset().await.ok()?;
+        (caret, caret)
+    };
+    let (start, end) = (start.clamp(0, length), end.clamp(0, length));
+    let window = crate::insertion::field::FIELD_WINDOW as i32;
+    let from = start.saturating_sub(window).max(0);
+    let to = end.saturating_add(window).min(length);
+    let value: Vec<char> = text.get_text(from, to).await.ok()?.chars().collect();
+    // A bridge counting other units than characters (Qt's UTF-16) would split the text wrong.
+    if value.len() != (to - from) as usize {
+        return None;
+    }
+    let part = |a: i32, b: i32| {
+        value[(a - from) as usize..(b - from) as usize]
+            .iter()
+            .collect()
+    };
+    Some(FieldRead {
+        length: length as usize,
+        start: start as usize,
+        before: part(from, start),
+        selected: part(start, end),
+        after: part(end, to),
+    })
+}
+
+/// How many elements of a window are read for its text, and how long that may take.
+const WINDOW_NODES: usize = 800;
+const WINDOW_TEXT_TIME: Duration = Duration::from_millis(250);
+
+/// The labels and text of the field's window in reading order, the newest `max_chars`. Password
+/// fields and the field itself are skipped.
+async fn window_text(object: &ObjectRef, max_chars: usize) -> Option<String> {
+    let connection = AccessibilityConnection::new().await.ok()?;
+    let bus = connection.connection();
+    let window = window_of(bus, object).await?;
+    let deadline = tokio::time::Instant::now() + WINDOW_TEXT_TIME;
+    let mut parts = Vec::new();
+    let mut pending = vec![(window, 0)];
+    let mut visited = 0;
+    while let Some((node, depth)) = pending.pop() {
+        if visited >= WINDOW_NODES || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        visited += 1;
+        if &node == object || depth > 30 {
+            continue;
+        }
+        let Ok(Ok(proxy)) = tokio::time::timeout(NODE_TIMEOUT, node.as_accessible_proxy(bus)).await
+        else {
+            continue;
+        };
+        let Ok(Ok(role)) = tokio::time::timeout(NODE_TIMEOUT, proxy.get_role()).await else {
+            continue;
+        };
+        if role == Role::PasswordText {
+            continue;
+        }
+        if matches!(
+            role,
+            Role::Label | Role::Static | Role::Heading | Role::Paragraph | Role::Caption
+        ) && let Ok(Ok(name)) = tokio::time::timeout(NODE_TIMEOUT, proxy.name()).await
+            && !name.trim().is_empty()
+        {
+            parts.push(name.trim().to_owned());
+        }
+        let Ok(Ok(children)) = tokio::time::timeout(NODE_TIMEOUT, proxy.get_children()).await
+        else {
+            continue;
+        };
+        // Popped from the end: the first child is read first.
+        pending.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
+    }
+    let text = parts.join("\n");
+    let skip = text.chars().count().saturating_sub(max_chars);
+    Some(text.chars().skip(skip).collect()).filter(|text: &String| !text.is_empty())
 }
 
 /// How long an edit the field accepted gets to show in its text.

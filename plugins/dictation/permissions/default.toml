@@ -9,6 +9,8 @@ permissions = [
   "allow-discard-recording",
   "allow-check-insertion",
   "allow-insert-text",
+  "allow-insert-dictation",
+  "allow-read-dictation-field",
   "allow-frontmost-app",
   "allow-keep-history-audio",
   "allow-history-audio-path",

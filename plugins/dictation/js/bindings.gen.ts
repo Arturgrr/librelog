@@ -84,6 +84,27 @@ async insertText(text: string) : Promise<Result<null, string>> {
 }
 },
 /**
+ * Inserts a dictation where the focus is when its turn comes, fitted to the text before the
+ * caret or over the selection a voice edit read; returns what was typed. `exclusions` keeps
+ * the field of an excluded app unread.
+ */
+async insertDictation(text: string, mode: InsertMode, exclusions: ContextExclusions | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|insert_dictation", { text, mode, exclusions }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The focused field as a dictation starts: its text around the caret, the selection a voice
+ * edit may rewrite, and the window's context for cleanup, each only where the privacy decision
+ * and `request` allow.
+ */
+async readDictationField(request: FieldRequest) : Promise<DictationField> {
+    return await TAURI_INVOKE("plugin:dictation|read_dictation_field", { request });
+},
+/**
  * The application in front right now, for the dictation history.
  */
 async frontmostApp() : Promise<Result<TargetApp | null, string>> {
@@ -333,6 +354,39 @@ export type DenyReason =
  */
 "unverifiedBrowserHost"
 /**
+ * The focused field as a dictation starts. Empty where it may not be read.
+ */
+export type DictationField = { 
+/**
+ * The text around the caret, for learning what the person kept of a dictation.
+ */
+text: FieldText | null; 
+/**
+ * The selected text, when a voice edit may rewrite it.
+ */
+selection: string | null; 
+/**
+ * Pass to `insert_dictation` so the edit is written only over the same selection.
+ */
+fingerprint: string | null; 
+/**
+ * What cleanup may use of the window.
+ */
+context: ContextSnapshot | null }
+export type FieldRequest = { operationId: string; 
+/**
+ * The person's opt-in to window context for cleanup.
+ */
+context: boolean; 
+/**
+ * The person's opt-in to editing a selection by voice.
+ */
+selection: boolean; 
+/**
+ * `None` while the exclusions can't be read, which denies every read.
+ */
+exclusions: ContextExclusions | null }
+/**
  * A field as read around the caret.
  */
 export type FieldText = { before: string; selected: string; after: string }
@@ -379,6 +433,19 @@ export type HudPosition =
  * macOS.
  */
 "notch"
+/**
+ * How a dictation's text goes into the focused field.
+ */
+export type InsertMode = 
+/**
+ * Typed at the caret, spaced and cased for the text before it where that may be read.
+ */
+{ type: "fit" } | 
+/**
+ * Typed over the selection a voice edit rewrote, only while the field still reads as it
+ * did then.
+ */
+{ type: "replaceSelection"; fingerprint: string }
 export type ListenParams = { model?: string | null; channels?: number; sample_rate?: number; languages?: string[]; keywords?: string[]; num_speakers?: number | null; min_speakers?: number | null; max_speakers?: number | null; mic_num_speakers?: number | null; custom_query?: Partial<{ [key in string]: string }> | null }
 /**
  * Whether macOS lets this app pause and resume a media player, under

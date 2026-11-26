@@ -12,6 +12,8 @@ Default permissions for the plugin
 - `allow-discard-recording`
 - `allow-check-insertion`
 - `allow-insert-text`
+- `allow-insert-dictation`
+- `allow-read-dictation-field`
 - `allow-frontmost-app`
 - `allow-keep-history-audio`
 - `allow-history-audio-path`
@@ -329,6 +331,32 @@ Denies the hud command without any pre-configured scope.
 <tr>
 <td>
 
+`dictation:allow-insert-dictation`
+
+</td>
+<td>
+
+Enables the insert_dictation command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-insert-dictation`
+
+</td>
+<td>
+
+Denies the insert_dictation command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-insert-text`
 
 </td>
@@ -530,6 +558,32 @@ Enables the rank_dictation_terms command without any pre-configured scope.
 <td>
 
 Denies the rank_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-read-dictation-field`
+
+</td>
+<td>
+
+Enables the read_dictation_field command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-read-dictation-field`
+
+</td>
+<td>
+
+Denies the read_dictation_field command without any pre-configured scope.
 
 </td>
 </tr>

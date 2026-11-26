@@ -12,6 +12,7 @@ mod remote;
 mod route;
 mod system;
 
+pub use accessible::focused_field;
 pub use remote::set_data_dir;
 
 use route::{Chord, KeyPath, Target};

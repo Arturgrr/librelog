@@ -78,6 +78,21 @@ final class TextInsertionTests: XCTestCase {
       [text("abcdefghijklmnopqrs"), text("😀z"), .lineBreak, text("next"), .lineBreak])
   }
 
+  /// A read that cut an emoji in half at its window's edge sent a broken character to the model
+  /// and made the selection's fingerprint differ on every read.
+  func testAFieldReadNeverSplitsASurrogatePairAtItsEdges() {
+    let units = Array("ab😀cd😀ef".utf16)
+    let selection = CFRange(location: 4, length: 2)
+    let (from, to) = FieldWindow.bounds(
+      units: units, length: units.count, selection: selection, window: 1)
+    XCTAssertEqual(from, 4)
+    XCTAssertEqual(to, 6)
+    let (all, end) = FieldWindow.bounds(
+      units: units, length: units.count, selection: selection, window: 100)
+    XCTAssertEqual(all, 0)
+    XCTAssertEqual(end, units.count)
+  }
+
   /// A fixed wait after Command-V let the next insertion replace the clipboard before a slow app
   /// read it. The next one now waits until the app asks the paste's provider for the text.
   func testAPasteCountsAsReadOnlyOnceAnAppAsksForTheText() {

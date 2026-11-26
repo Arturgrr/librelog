@@ -32,6 +32,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::discard_recording::<tauri::Wry>,
             commands::check_insertion,
             commands::insert_text,
+            commands::insert_dictation,
+            commands::read_dictation_field,
             commands::frontmost_app,
             commands::keep_history_audio::<tauri::Wry>,
             commands::history_audio_path::<tauri::Wry>,
