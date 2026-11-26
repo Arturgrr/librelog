@@ -13,7 +13,7 @@ import { useTabs } from "~/store/zustand/tabs";
 
 const MAX_EXCLUSIONS = 200;
 
-/** Dictation features that use the person's selected AI model, each off until turned on. */
+/** Optional dictation features, each off until turned on. */
 export function DictationAiSettings() {
   const cleanup = useConfigValue("dictation_cleanup");
   const setCleanup = useSetSettingValue("dictation_cleanup");
@@ -21,6 +21,8 @@ export function DictationAiSettings() {
   const setVoiceEdit = useSetSettingValue("dictation_voice_edit");
   const context = useConfigValue("dictation_context");
   const setContext = useSetSettingValue("dictation_context");
+  const learning = useConfigValue("dictation_learning");
+  const setLearning = useSetSettingValue("dictation_learning");
   const model = useLanguageModel();
   const openNew = useTabs((state) => state.openNew);
 
@@ -72,6 +74,18 @@ export function DictationAiSettings() {
         onChange={setContext}
       />
       {context && <ContextExclusions />}
+      <SettingSwitchRow
+        title={<Trans>Learn from your corrections</Trans>}
+        description={
+          <Trans>
+            Gives the words you dictate most a better chance of being heard
+            right, and suggests Dictionary words when you fix a dictated word in
+            the field. What it learns stays on this computer.
+          </Trans>
+        }
+        checked={learning}
+        onChange={setLearning}
+      />
       {(cleanup || voiceEdit) && !model && (
         <div className="flex flex-col items-start gap-2" role="status">
           <p className="text-muted-foreground text-xs">

@@ -3289,6 +3289,10 @@ msgstr "GitHub Copilot"
 msgid "GitHub Copilot authorization failed."
 msgstr "Falha na autorização do GitHub Copilot."
 
+#: src/settings/dictation-ai.tsx
+msgid "Gives the words you dictate most a better chance of being heard right, and suggests Dictionary words when you fix a dictated word in the field. What it learns stays on this computer."
+msgstr "Dá às palavras que você mais dita uma chance maior de serem ouvidas certo e sugere palavras para o Dicionário quando você corrige no campo uma palavra ditada. O que ele aprende fica neste computador."
+
 #: src/i18n/external-messages.ts
 msgid "Global shortcuts are unavailable in this desktop session."
 msgstr "Atalhos globais não estão disponíveis nesta sessão de desktop."
@@ -3788,6 +3792,10 @@ msgstr "Última execução falhou {relative}: {0}"
 #: src/i18n/native-labels.tsx
 msgid "Later"
 msgstr "Mais tarde"
+
+#: src/settings/dictation-ai.tsx
+msgid "Learn from your corrections"
+msgstr "Aprender com as suas correções"
 
 #: src/chat/components/message/error.tsx
 msgid "Learn how to fix this"

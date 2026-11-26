@@ -3276,6 +3276,10 @@ msgstr ""
 msgid "GitHub Copilot authorization failed."
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Gives the words you dictate most a better chance of being heard right, and suggests Dictionary words when you fix a dictated word in the field. What it learns stays on this computer."
+msgstr ""
+
 #: src/i18n/external-messages.ts
 msgid "Global shortcuts are unavailable in this desktop session."
 msgstr ""
@@ -3774,6 +3778,10 @@ msgstr ""
 
 #: src/i18n/native-labels.tsx
 msgid "Later"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Learn from your corrections"
 msgstr ""
 
 #: src/chat/components/message/error.tsx
