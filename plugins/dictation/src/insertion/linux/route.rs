@@ -54,6 +54,10 @@ enum Kind {
     /// and web content may apply them without telling the page's editor:
     /// they are never asked.
     Web,
+    /// Qt's bridge reads `InsertText`'s length in UTF-16 units where the
+    /// spec and GTK count bytes, and Qt versions may differ: pasting is
+    /// right in every one of them.
+    Qt,
     Native,
 }
 
@@ -125,11 +129,12 @@ fn kind(app: &App, own_pid: u32, exists: &impl Fn(&Path) -> bool) -> Kind {
     if app.pid == Some(own_pid) {
         return Kind::Web;
     }
-    if app.toolkit.as_deref().is_some_and(|toolkit| {
-        let toolkit = toolkit.to_lowercase();
-        WEB_TOOLKITS.iter().any(|web| toolkit.contains(web))
-    }) {
+    let toolkit = app.toolkit.as_deref().unwrap_or_default().to_lowercase();
+    if WEB_TOOLKITS.iter().any(|web| toolkit.contains(web)) {
         return Kind::Web;
+    }
+    if toolkit.starts_with("qt") {
+        return Kind::Qt;
     }
     let folder = app.executable.as_deref().and_then(Path::parent);
     if folder.is_some_and(|folder| {
@@ -301,6 +306,18 @@ mod tests {
                     app: App {
                         toolkit: Some("Chromium".into()),
                         ..app("Chromium", "/app/chromium/chrome-wrapper")
+                    },
+                },
+                false,
+            ),
+            // Qt reads InsertText's length in UTF-16 units: non-ASCII text
+            // sent through AT-SPI gained stray characters.
+            (
+                Focus::Editable {
+                    object: object(),
+                    app: App {
+                        toolkit: Some("Qt".into()),
+                        ..app("Kate", "/usr/bin/kate")
                     },
                 },
                 false,
