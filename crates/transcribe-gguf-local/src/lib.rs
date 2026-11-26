@@ -77,11 +77,18 @@ impl TranscribeService {
             .build()
     }
 
-    /// Loads the model now and keeps it loaded for `hold`, idle or not, for
-    /// a recording that will be transcribed when it stops; `None` lets it go
-    /// idle again.
-    pub async fn hold(&self, hold: Option<std::time::Duration>) -> Result<(), String> {
-        self.slot.hold(hold).await
+    /// Loads the model now and keeps it loaded until `until`, idle or not,
+    /// for a recording that will be transcribed when it stops; `None` lets it
+    /// go idle again. Holds may arrive out of order: one whose `generation`
+    /// is not newer than the last one's is ignored.
+    pub async fn hold(
+        &self,
+        generation: u64,
+        until: Option<std::time::Instant>,
+    ) -> Result<(), String> {
+        self.slot
+            .hold(generation, until.map(tokio::time::Instant::from_std))
+            .await
     }
 
     pub fn builder() -> TranscribeServiceBuilder {

@@ -66,6 +66,9 @@ struct SlotState {
     /// Kept loaded until then, idle or not: a recording that will be
     /// transcribed when it stops.
     held_until: Option<Instant>,
+    /// The newest hold applied; holds are sent separately and may arrive
+    /// out of order, so an older one is ignored.
+    hold_generation: u64,
 }
 
 impl SlotState {
@@ -92,6 +95,7 @@ impl EngineSlot {
                 last_used: Instant::now(),
                 lent: false,
                 held_until: None,
+                hold_generation: 0,
             })),
         };
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -125,13 +129,18 @@ impl EngineSlot {
         state.last_used = Instant::now();
     }
 
-    /// Loads the model unless a job has it, and keeps it loaded for `hold`;
-    /// `None` lets it go idle from now.
-    pub(crate) async fn hold(&self, hold: Option<Duration>) -> Result<(), String> {
+    /// Loads the model unless a job has it, and keeps it loaded until
+    /// `until`; `None` lets it go idle from now. Ignored unless `generation`
+    /// is newer than the last hold's.
+    pub(crate) async fn hold(&self, generation: u64, until: Option<Instant>) -> Result<(), String> {
         let mut state = self.state.lock().await;
+        if generation <= state.hold_generation {
+            return Ok(());
+        }
+        state.hold_generation = generation;
         state.last_used = Instant::now();
-        state.held_until = hold.map(|hold| Instant::now() + hold);
-        if hold.is_none() || state.engine.is_some() || state.lent {
+        state.held_until = until;
+        if !state.held() || state.engine.is_some() || state.lent {
             return Ok(());
         }
         let engine = self.load().await?;
@@ -202,7 +211,10 @@ mod tests {
             }),
             None,
         );
-        slot.hold(Some(Duration::from_secs(25 * 60))).await.unwrap();
+        let until = |hold: Duration| Some(Instant::now() + hold);
+        slot.hold(1, until(Duration::from_secs(25 * 60)))
+            .await
+            .unwrap();
         assert!(loaded(&slot).await);
 
         tokio::time::sleep(IDLE_UNLOAD * 5).await;
@@ -211,14 +223,28 @@ mod tests {
         slot.put_back(engine).await;
         assert_eq!(loads.load(Ordering::SeqCst), 1);
 
-        slot.hold(None).await.unwrap();
+        slot.hold(2, None).await.unwrap();
         tokio::time::sleep(IDLE_UNLOAD / 2).await;
         assert!(loaded(&slot).await);
         tokio::time::sleep(IDLE_UNLOAD / 2 + IDLE_CHECK * 5).await;
         assert!(!loaded(&slot).await);
 
         // A lost release: the hold ends by itself.
-        slot.hold(Some(IDLE_UNLOAD)).await.unwrap();
+        slot.hold(3, until(IDLE_UNLOAD)).await.unwrap();
+        tokio::time::sleep(IDLE_UNLOAD + IDLE_CHECK * 5).await;
+        assert!(!loaded(&slot).await);
+    }
+
+    #[tokio::test]
+    async fn a_hold_that_arrives_after_its_release_is_ignored() {
+        let slot = EngineSlot::new(Arc::new(|| Ok(Box::new(Fake) as BoxedTranscriber)), None);
+        slot.hold(2, None).await.unwrap();
+        slot.hold(1, Some(Instant::now() + Duration::from_secs(25 * 60)))
+            .await
+            .unwrap();
+        assert!(!loaded(&slot).await);
+
+        slot.warm().await.unwrap();
         tokio::time::sleep(IDLE_UNLOAD + IDLE_CHECK * 5).await;
         assert!(!loaded(&slot).await);
     }

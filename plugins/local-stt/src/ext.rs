@@ -156,12 +156,12 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             #[cfg(not(feature = "gguf"))]
             _ => return Ok(None),
         };
-        let (id, hold) = {
+        let (id, update) = {
             let state = self.manager.state::<crate::SharedState>();
             let mut guard = state.lock().await;
             guard.holds.add(held, hold, std::time::Instant::now())
         };
-        apply_hold(held, Some(hold));
+        apply_hold(update);
         Ok(Some(id))
     }
 
@@ -172,8 +172,8 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             let mut guard = state.lock().await;
             guard.holds.remove(id, std::time::Instant::now())
         };
-        if let Some((held, hold)) = released {
-            apply_hold(held, hold);
+        if let Some(update) = released {
+            apply_hold(update);
         }
     }
 
@@ -973,20 +973,27 @@ fn parse_device_preference(value_json: Option<&str>) -> crate::SttDevicePreferen
 
 /// Tells the engine how long to keep its model loaded, in the background:
 /// loading never holds up the caller, and failing to is only logged.
-fn apply_hold(held: crate::hold::Held, hold: Option<std::time::Duration>) {
-    match held {
+fn apply_hold(update: crate::hold::HoldUpdate) {
+    match update.held {
         crate::hold::Held::Soniqo(model) => {
+            static APPLIED: std::sync::LazyLock<crate::hold::Applied> =
+                std::sync::LazyLock::new(Default::default);
             tauri::async_runtime::spawn_blocking(move || {
-                if let Err(error) = anlg_transcribe_soniqo::hold_model(model, hold) {
-                    tracing::warn!(%error, "could not hold the Soniqo model");
-                }
+                APPLIED.apply(update, |hold| {
+                    if let Err(error) = anlg_transcribe_soniqo::hold_model(model, hold) {
+                        tracing::warn!(%error, "could not hold the Soniqo model");
+                    }
+                });
             });
         }
         crate::hold::Held::Internal => {
             #[cfg(feature = "gguf")]
             if let Some(cell) = registry::where_is(internal::InternalSTTActor::name()) {
                 let actor: ActorRef<internal::InternalSTTMessage> = cell.into();
-                if let Err(error) = actor.cast(internal::InternalSTTMessage::Hold(hold)) {
+                if let Err(error) = actor.cast(internal::InternalSTTMessage::Hold {
+                    generation: update.generation,
+                    until: update.until,
+                }) {
                     tracing::warn!(%error, "could not hold the transcription model");
                 }
             }

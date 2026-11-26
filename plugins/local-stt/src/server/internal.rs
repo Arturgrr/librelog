@@ -13,9 +13,13 @@ use super::{ServerInfo, ServerStatus};
 pub enum InternalSTTMessage {
     GetHealth(RpcReplyPort<ServerInfo>),
     ServerError(String),
-    /// Keep the model loaded for this long, idle or not; `None` lets it go
-    /// idle. Loading runs in the background.
-    Hold(Option<std::time::Duration>),
+    /// Keep the model loaded until `until`, idle or not; `None` lets it go
+    /// idle. Loading runs in the background, so holds may be applied out of
+    /// order: the engine ignores one whose `generation` is not the newest.
+    Hold {
+        generation: u64,
+        until: Option<std::time::Instant>,
+    },
 }
 
 /// A model the caller already loaded (to check a picked file), handed to the
@@ -151,10 +155,10 @@ impl Actor for InternalSTTActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             InternalSTTMessage::ServerError(e) => Err(e.into()),
-            InternalSTTMessage::Hold(hold) => {
+            InternalSTTMessage::Hold { generation, until } => {
                 let service = state.service.clone();
                 tokio::spawn(async move {
-                    if let Err(error) = service.hold(hold).await {
+                    if let Err(error) = service.hold(generation, until).await {
                         tracing::warn!(error, "could not load the held transcription model");
                     }
                 });
