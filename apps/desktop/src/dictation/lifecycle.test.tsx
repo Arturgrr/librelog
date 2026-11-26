@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   cancelRecording: vi.fn(),
   discardRecording: vi.fn(),
   insertText: vi.fn(),
+  rankDictationTerms: vi.fn(),
+  recordUsedTerms: vi.fn(),
   checkPermission: vi.fn(),
   getCaptureState: vi.fn(),
   runBatch: vi.fn(),
@@ -71,6 +73,10 @@ vi.mock("./history/store", () => ({
   recordDictation: mocks.recordDictation,
 }));
 vi.mock("./clipboard", () => ({ keepOnClipboard: mocks.keepOnClipboard }));
+vi.mock("./learning", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./learning")>()),
+  recordUsedTerms: mocks.recordUsedTerms,
+}));
 vi.mock("@anlg/plugin-dictation", () => ({
   commands: {
     hud: mocks.hud,
@@ -81,6 +87,7 @@ vi.mock("@anlg/plugin-dictation", () => ({
     cancelRecording: mocks.cancelRecording,
     discardRecording: mocks.discardRecording,
     insertText: mocks.insertText,
+    rankDictationTerms: mocks.rankDictationTerms,
   },
 }));
 vi.mock("@anlg/plugin-permissions", () => ({
@@ -169,6 +176,7 @@ describe("dictation access and lifecycle", () => {
     mocks.settings.microphone_device = "";
     mocks.settings.dictation_audio_behavior = "nothing";
     mocks.settings.dictation_hud_position = "top";
+    mocks.settings.dictation_learning = false;
     mocks.meeting = { status: "inactive", loading: false };
     mocks.listener = null;
     for (const fn of [
@@ -192,6 +200,8 @@ describe("dictation access and lifecycle", () => {
       data: { name: "Notes", id: "com.apple.Notes" },
     });
     mocks.recordDictation.mockResolvedValue({ audioKept: false });
+    mocks.rankDictationTerms.mockResolvedValue([]);
+    mocks.recordUsedTerms.mockResolvedValue(undefined);
     mocks.keepOnClipboard.mockResolvedValue(undefined);
     mocks.cancelRecording.mockImplementation(async () => {
       endCapture();
@@ -770,6 +780,35 @@ describe("dictation access and lifecycle", () => {
       expect.objectContaining({ baseUrl: "http://127.0.0.1:1234", apiKey: "" }),
     );
   });
+  it("sends the ranked dictionary to batch transcription and weighs the terms once inserted", async () => {
+    mocks.settings.personalization_dictionary_terms = ["Librelog"];
+    mocks.settings.personalization_dictionary_replacements = [
+      { from: "work mail", to: "me@example.com" },
+    ];
+    mocks.settings.dictation_learning = true;
+    mocks.settings.dictation_term_weights = "weights";
+    mocks.rankDictationTerms.mockResolvedValue(["Librelog", "me@example.com"]);
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await shortcut("pressed");
+    await shortcut("released");
+    await waitFor(() => expect(mocks.insertText).toHaveBeenCalledWith("Hello"));
+    expect(mocks.rankDictationTerms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dictionary: ["Librelog"],
+        replacements: [{ from: "work mail", to: "me@example.com" }],
+        weights: "weights",
+      }),
+    );
+    expect(mocks.runBatch).toHaveBeenCalledWith(
+      "/tmp/dictation.wav",
+      expect.objectContaining({ keywords: ["Librelog", "me@example.com"] }),
+    );
+    await waitFor(() =>
+      expect(mocks.recordUsedTerms).toHaveBeenCalledWith("Hello"),
+    );
+  });
+
   it("records each dictation with the app it went to and what transcribed it, leaving audio the history kept", async () => {
     mocks.recordDictation.mockResolvedValue({ audioKept: true });
     render(<DictationLifecycle />);

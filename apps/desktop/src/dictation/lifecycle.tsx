@@ -23,6 +23,12 @@ import {
 } from "./environment";
 import { recordDictation } from "./history/store";
 import { normalizeHudPosition } from "./hud-position";
+import {
+  rankDictationKeywords,
+  readDictationField,
+  recordUsedTerms,
+  watchCorrection,
+} from "./learning";
 import { useDictationStatus } from "./state";
 
 import { localizeExternalMessage } from "~/i18n/external-messages";
@@ -120,6 +126,11 @@ function ActiveDictation() {
   const microphone = useConfigValue("microphone_device");
   const livePreview = useConfigValue("dictation_live_preview");
   const dictionary = useConfigValue("personalization_dictionary_terms");
+  const replacements = useConfigValue(
+    "personalization_dictionary_replacements",
+  );
+  const learning = useConfigValue("dictation_learning");
+  const weights = useConfigValue("dictation_term_weights");
   const languages = useConfigValue("spoken_languages");
   const sounds = useConfigValue("dictation_sounds");
   const hudPosition = useConfigValue("dictation_hud_position");
@@ -138,6 +149,9 @@ function ActiveDictation() {
     livePreview,
     languages,
     dictionary,
+    replacements,
+    learning,
+    weights,
     sounds,
     hudPosition,
     audio,
@@ -151,6 +165,9 @@ function ActiveDictation() {
     livePreview,
     languages,
     dictionary,
+    replacements,
+    learning,
+    weights,
     sounds,
     hudPosition,
     audio,
@@ -161,6 +178,17 @@ function ActiveDictation() {
 
   useMountEffect(() => {
     let disposed = false;
+    // The last dictation's wait to see how it was corrected; a newer one,
+    // which may land in the same field, replaces it.
+    let correction = new AbortController();
+    const keywords = () => {
+      const { dictionary, replacements, learning, weights } = current.current;
+      return rankDictationKeywords({
+        dictionary: dictionary || [],
+        replacements: replacements || [],
+        weights: (learning && weights) || null,
+      });
+    };
     let presentation: Promise<void> = Promise.resolve();
     let status = { phase: "idle", capturing: false, pending: 0 };
     // The capture whose live words the HUD shows, and what makes them.
@@ -224,15 +252,12 @@ function ActiveDictation() {
       start: async (signal) => {
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
-        const {
-          microphone,
-          livePreview,
-          conn,
-          languages,
-          dictionary,
-          audio,
-          hudPosition,
-        } = current.current;
+        // Read only with learning on: what the field held before dictating.
+        const field = current.current.learning
+          ? readDictationField().catch(() => null)
+          : Promise.resolve(null);
+        const { microphone, livePreview, conn, languages, audio, hudPosition } =
+          current.current;
         useDictationStatus.setState({ error: null });
         const meeting = meetingRecording().catch(() => true);
         if (platform() === "macos") {
@@ -269,7 +294,7 @@ function ActiveDictation() {
                   channels: 1,
                   sample_rate: 16000,
                   languages: languages || [],
-                  keywords: dictionary || [],
+                  keywords: await keywords(),
                   num_speakers: 1,
                   min_speakers: null,
                   max_speakers: null,
@@ -340,7 +365,7 @@ function ActiveDictation() {
             environment,
           ),
         );
-        return { app };
+        return { app, field };
       },
       stop: async () => {
         const capture = live;
@@ -369,6 +394,7 @@ function ActiveDictation() {
           deferAudioFinalization: true,
           notifyOnCompletion: false,
           numSpeakers: 1,
+          keywords: await keywords(),
           handlePersist: (words) => {
             text = words
               .slice()
@@ -398,6 +424,17 @@ function ActiveDictation() {
       },
       onJobFinished: async (job) => {
         if (job.cancelled) return { claimedAudio: false };
+        if (job.inserted) {
+          void recordUsedTerms(job.finalText);
+          correction.abort();
+          correction = new AbortController();
+          void watchCorrection({
+            start: job.context.field,
+            inserted: job.finalText,
+            readField: readDictationField,
+            signal: correction.signal,
+          }).catch(console.error);
+        }
         try {
           const { audioKept } = await recordDictation({
             id: job.id,
@@ -485,6 +522,7 @@ function ActiveDictation() {
 
     return () => {
       disposed = true;
+      correction.abort();
       cancel();
       useDictationStatus.setState({
         ready: false,
