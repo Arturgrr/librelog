@@ -7304,6 +7304,10 @@ msgstr ""
 msgid "The annotation is still being prepared."
 msgstr ""
 
+#: src/i18n/external-messages.ts
+msgid "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation."
+msgstr ""
+
 #: src/ai/apple-foundation-model.ts
 msgid "The Apple Foundation Models experiment currently supports text only."
 msgstr ""
@@ -7327,6 +7331,14 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "The capture was kept at {path}, but {problem}"
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The dictation contains a character that cannot be inserted."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The dictation is empty or too long to insert."
 msgstr ""
 
 #: src/onboarding/model-setup.tsx
@@ -7429,6 +7441,10 @@ msgstr ""
 
 #: src/stt/useRunBatch.ts
 msgid "the selected speech-to-text provider"
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The selected text changed before the edit was ready. It was left unchanged."
 msgstr ""
 
 #: src/settings/dictionary/replacements.tsx
@@ -8474,7 +8490,11 @@ msgid "Window"
 msgstr ""
 
 #: src/i18n/external-messages.ts
-msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion."
+msgid "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion."
 msgstr ""
 
 #: src/settings/ai/stt/model-rows.tsx

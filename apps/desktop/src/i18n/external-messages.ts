@@ -48,8 +48,18 @@ export function localizeExternalMessage(message: string): string {
       return t`This text field does not expose an accessibility identity.`;
     case "Release the shortcut keys before inserting text. Copy your last dictation from Settings > Dictation.":
       return t`Release the shortcut keys before inserting text. Copy your last dictation from Settings > Dictation.`;
-    case "Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion.":
-      return t`Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion.`;
+    case "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion.":
+      return t`Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion.`;
+    case "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation.":
+      return t`Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation.`;
+    case "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation.":
+      return t`The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation.`;
+    case "The selected text changed before the edit was ready. It was left unchanged.":
+      return t`The selected text changed before the edit was ready. It was left unchanged.`;
+    case "Dictation text is empty or too long":
+      return t`The dictation is empty or too long to insert.`;
+    case "Dictation text contains an unsupported NUL character":
+      return t`The dictation contains a character that cannot be inserted.`;
     case "voice recording is already active":
       return t`Voice recording is already active.`;
     case "voice recording is not active":

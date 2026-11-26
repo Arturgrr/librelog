@@ -7317,6 +7317,10 @@ msgstr "O modelo de IA parou de responder antes de terminar."
 msgid "The annotation is still being prepared."
 msgstr "A anotação ainda está sendo preparada."
 
+#: src/i18n/external-messages.ts
+msgid "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation."
+msgstr "O app pode não ter inserido o ditado inteiro. Verifique o campo ou copie seu último ditado em Configurações > Ditado."
+
 #: src/ai/apple-foundation-model.ts
 msgid "The Apple Foundation Models experiment currently supports text only."
 msgstr "No momento, o experimento com Apple Foundation Models só aceita texto."
@@ -7341,6 +7345,14 @@ msgstr "O modelo integrado falhou ao iniciar três vezes seguidas. Abra Configur
 #: src/i18n/external-messages.ts
 msgid "The capture was kept at {path}, but {problem}"
 msgstr "A captura foi mantida em {path}, mas {problem}"
+
+#: src/i18n/external-messages.ts
+msgid "The dictation contains a character that cannot be inserted."
+msgstr "O ditado contém um caractere que não pode ser inserido."
+
+#: src/i18n/external-messages.ts
+msgid "The dictation is empty or too long to insert."
+msgstr "O ditado está vazio ou é longo demais para ser inserido."
 
 #: src/onboarding/model-setup.tsx
 msgid "The download stopped before it finished."
@@ -7443,6 +7455,10 @@ msgstr "Não foi possível concluir a gravação ({reason}). O que foi gravado e
 #: src/stt/useRunBatch.ts
 msgid "the selected speech-to-text provider"
 msgstr "o provedor de conversão de fala em texto selecionado"
+
+#: src/i18n/external-messages.ts
+msgid "The selected text changed before the edit was ready. It was left unchanged."
+msgstr "O texto selecionado mudou antes de a edição ficar pronta. Ele ficou como estava."
 
 #: src/settings/dictionary/replacements.tsx
 msgid "The text to write can be at most 2,000 characters."
@@ -8497,8 +8513,12 @@ msgid "Window"
 msgstr "Janela"
 
 #: src/i18n/external-messages.ts
-msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion."
-msgstr "O Windows não conseguiu inserir o ditado inteiro. Verifique o campo antes de copiar seu último ditado. Apps com privilégios elevados podem bloquear a inserção de texto."
+msgid "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation."
+msgstr "O Windows bloqueou o ditado, então nada foi inserido. Apps com privilégios elevados podem bloquear a inserção de texto. Copie seu último ditado em Configurações > Ditado."
+
+#: src/i18n/external-messages.ts
+msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion."
+msgstr "O Windows não conseguiu inserir o ditado inteiro. Verifique o campo antes de copiar seu último ditado em Configurações > Ditado. Apps com privilégios elevados podem bloquear a inserção de texto."
 
 #: src/settings/ai/stt/model-rows.tsx
 msgid "Word timing"
