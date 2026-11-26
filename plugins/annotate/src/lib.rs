@@ -6,6 +6,8 @@
 //! recorder, Tauri windows for the ink and the capsule, GStreamer) on Linux.
 
 mod audio;
+#[cfg(target_os = "macos")]
+mod awake;
 mod bundle;
 mod commands;
 mod error;
@@ -100,6 +102,18 @@ fn system(app: &tauri::AppHandle<tauri::Wry>, root: &std::path::Path) -> Arc<dyn
     }
 }
 
+#[cfg(target_os = "macos")]
+fn awake() -> Box<dyn Send> {
+    Box::new(awake::Activity::begin(
+        "Recording and preparing an annotation",
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn awake() -> Box<dyn Send> {
+    Box::new(())
+}
+
 #[cfg(not(target_os = "linux"))]
 fn system(_app: &tauri::AppHandle<tauri::Wry>, _root: &std::path::Path) -> Arc<dyn native::Native> {
     Arc::new(native::System)
@@ -156,6 +170,7 @@ pub fn init(root: Option<PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 Arc::new(move |recording| {
                     let _ = pen.send(recording);
                 }),
+                Arc::new(awake),
             ));
             app.manage(session.clone());
             tauri::async_runtime::spawn(async move {

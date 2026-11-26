@@ -199,6 +199,30 @@ describe("Annotate flow", () => {
     expect(notify.stillPreparing).not.toHaveBeenCalled();
   });
 
+  it("prepares and pastes an annotation stopped without this flow, never the one before", async () => {
+    const previous = { ...finalized, id: "annotation-0", summary: "old" };
+    // A webview reload or remount lost the flow that stopped it.
+    const { flow, deps, plugin, calls } = setup({
+      status: vi.fn(async () => ({
+        available: true,
+        phase: "finishing" as const,
+        stopped,
+      })),
+      latest: vi.fn(async () => previous),
+    });
+    vi.mocked(deps.sleep).mockImplementation((ms) =>
+      ms === PASTE_WAIT_MS ? new Promise<void>(() => {}) : Promise.resolve(),
+    );
+    await flow.pasteLast();
+    expect(deps.transcribe).toHaveBeenCalledOnce();
+    expect(plugin.finalize).toHaveBeenCalledOnce();
+    expect(plugin.latest).not.toHaveBeenCalled();
+    expect(calls).toEqual([
+      `insert:${shellEscapePath(finalized.contactSheet)}`,
+      `insert:${finalized.summary}`,
+    ]);
+  });
+
   it("says the annotation is still being prepared when it takes longer than paste last waits", async () => {
     const { flow, deps, plugin, calls, notify } = setup({
       // The capsule's stop: the plugin finishes it before its event arrives.

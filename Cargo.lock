@@ -12658,6 +12658,8 @@ dependencies = [
  "hound",
  "image",
  "libc",
+ "objc2",
+ "objc2-foundation",
  "raw-window-handle",
  "serde",
  "serde_json",
