@@ -113,9 +113,6 @@ describe("dictation history store", () => {
   });
 
   it("records every dictation that produced text, even one that was not inserted", async () => {
-    await expect(
-      recordDictation(dictation("empty", { rawText: " ", finalText: "" })),
-    ).resolves.toEqual({ audioKept: false });
     await recordDictation(dictation("failed", { inserted: false }));
 
     expect(rows()).toMatchObject([
@@ -125,6 +122,42 @@ describe("dictation history store", () => {
       id: "failed",
       text: "failed.",
     });
+  });
+
+  it("keeps a dictation that failed to transcribe with its audio for a day, and retrying it makes its text the latest", async () => {
+    const failed = (id: string, createdAt = new Date().toISOString()) =>
+      recordDictation(
+        dictation(id, {
+          rawText: "",
+          finalText: "",
+          inserted: false,
+          createdAt,
+        }),
+      );
+    await expect(failed("retried")).resolves.toEqual({ audioKept: true });
+    await failed("stale", new Date(Date.now() - 2 * DAY_MS).toISOString());
+    await expect(latestDictation()).resolves.toBeNull();
+
+    await replaceDictationText("retried", {
+      text: "Recovered words",
+      provider: "soniqo",
+      model: "soniqo-parakeet-batch",
+      language: "en",
+    });
+    expect(rows().find((row) => row.id === "retried")).toMatchObject({
+      final_text: "Recovered words",
+      audio_path: null,
+      versions_json: "[]",
+    });
+    expect(mocks.deleteHistoryAudio).toHaveBeenCalledWith(["retried.wav"]);
+    await expect(latestDictation()).resolves.toEqual({
+      id: "retried",
+      text: "Recovered words",
+    });
+
+    mocks.settings.dictation_history_retention = "forever";
+    await purgeExpiredDictations();
+    expect(rows().map((row) => row.id)).toEqual(["retried"]);
   });
 
   it("moves the audio only while keep-audio is on, and says when the caller must not discard it", async () => {

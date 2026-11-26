@@ -23,6 +23,7 @@ import {
 } from "./store";
 
 import { useLiveQuery } from "~/db";
+import { rankStoredDictationKeywords } from "~/dictation/learning";
 import { displayModelLabel } from "~/settings/ai/stt/shared";
 import { syncLocalSttServer } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
@@ -230,6 +231,7 @@ export function useRetranscribe() {
         deferAudioFinalization: true,
         notifyOnCompletion: false,
         numSpeakers: 1,
+        keywords: await rankStoredDictationKeywords(),
         handlePersist: (words) => {
           text = wordsToText(words);
         },
@@ -246,6 +248,7 @@ export function useRetranscribe() {
         model: used.model,
         language: entry.language,
       });
+      return text;
     },
   });
 }
