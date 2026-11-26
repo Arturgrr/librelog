@@ -8,6 +8,7 @@ mod custom_model;
 mod download_pollers;
 mod error;
 mod ext;
+mod hold;
 mod model;
 mod server;
 mod types;
@@ -27,6 +28,7 @@ pub struct State {
     pub supervisor_handle: Option<SupervisorHandle>,
     pub model_downloader: ModelDownloadManager<LocalModel>,
     pub(crate) download_pollers: download_pollers::DownloadPollers,
+    pub(crate) holds: hold::Holds,
 }
 
 #[derive(Default)]
@@ -56,6 +58,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::start_server_for_path::<Wry>,
             commands::list_stt_devices::<Wry>,
             commands::forget_stt_gpu_failures::<Wry>,
+            commands::hold_model::<Wry>,
+            commands::release_model_hold::<Wry>,
         ])
         .events(tauri_specta::collect_events![
             types::DownloadProgressPayload,
@@ -88,6 +92,7 @@ pub fn init<R: tauri::Runtime>(options: InitOptions) -> tauri::plugin::TauriPlug
                 supervisor_handle: None,
                 model_downloader,
                 download_pollers: download_pollers::DownloadPollers::default(),
+                holds: hold::Holds::default(),
             }));
 
             app.manage(state.clone());

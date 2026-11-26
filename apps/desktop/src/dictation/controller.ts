@@ -3,7 +3,7 @@ import { t } from "@lingui/core/macro";
 export type DictationPhase = "idle" | "starting" | "recording" | "transcribing";
 
 const MAX_PENDING_JOBS = 5;
-const MAX_CAPTURE_MS = 300_000;
+export const MAX_CAPTURE_MS = 300_000;
 
 /** A transcript and what made it. */
 type Transcript = {

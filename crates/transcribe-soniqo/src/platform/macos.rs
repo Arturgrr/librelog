@@ -13,6 +13,7 @@ swift!(fn _soniqo_diarization_cache_dir() -> SRString);
 swift!(fn _soniqo_model_download_state(model_id: &SRString) -> SRString);
 swift!(fn _soniqo_model_start_download(model_id: &SRString) -> Bool);
 swift!(fn _soniqo_model_reset(model_id: &SRString) -> Bool);
+swift!(fn _soniqo_model_hold(model_id: &SRString, seconds: f64) -> Bool);
 swift!(fn _soniqo_transcribe_audio_file(
     model_id: &SRString,
     audio_path: &SRString,
@@ -106,6 +107,18 @@ pub(crate) fn start_model_download(model: SoniqoModel) -> Result<()> {
     } else {
         Err(Error::Bridge(format!(
             "failed to start Soniqo download for {}",
+            model.as_str()
+        )))
+    }
+}
+
+pub(crate) fn hold_model(model: SoniqoModel, seconds: f64) -> Result<()> {
+    let model_id = sr_string(model.as_str());
+    if unsafe { _soniqo_model_hold(&model_id, seconds) } {
+        Ok(())
+    } else {
+        Err(Error::Bridge(format!(
+            "failed to load Soniqo model {}",
             model.as_str()
         )))
     }

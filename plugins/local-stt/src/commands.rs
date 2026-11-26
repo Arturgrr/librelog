@@ -187,3 +187,31 @@ pub async fn get_servers<R: tauri::Runtime>(
         .await
         .map_err(|e| e.to_string())
 }
+
+/// Starts loading `model` (`null`: the internal server's, as for a picked
+/// file) and keeps it loaded for `holdMs` at most, for a recording that will
+/// be transcribed when it stops. Returns the hold to release, or `null` when
+/// there is nothing to hold: a cloud model, Apple's, or a model not served.
+#[tauri::command]
+#[specta::specta]
+pub async fn hold_model<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    model: Option<LocalModel>,
+    hold_ms: u32,
+) -> Result<Option<String>, String> {
+    app.local_stt()
+        .hold_model(model, std::time::Duration::from_millis(u64::from(hold_ms)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Ends a hold from `holdModel`; the model may then go idle.
+#[tauri::command]
+#[specta::specta]
+pub async fn release_model_hold<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    hold: String,
+) -> Result<(), String> {
+    app.local_stt().release_model_hold(&hold).await;
+    Ok(())
+}

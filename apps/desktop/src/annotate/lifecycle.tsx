@@ -29,7 +29,9 @@ import { useDictationStatus } from "~/dictation/state";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { useSettingsReady } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
+import { holdLocalModel } from "~/stt/local-model-hold";
 import { useRunBatch } from "~/stt/useRunBatch";
+import { useSTTConnection } from "~/stt/useSTTConnection";
 
 function unwrap<T>(
   result: { status: "ok"; data: T } | { status: "error"; error: string },
@@ -82,11 +84,15 @@ type Flow = ReturnType<typeof createAnnotateFlow>;
 
 const BATCH_ID = `annotate-${crypto.randomUUID()}`;
 
-/** What the mounted Annotate gives the flow: its transcriber and microphone. */
+/**
+ * What the mounted Annotate gives the flow: its transcriber, the speech-to-text
+ * connection it uses, and the microphone.
+ */
 const live: {
   runBatch: ReturnType<typeof useRunBatch> | null;
+  conn: ReturnType<typeof useSTTConnection>["conn"];
   microphone: string;
-} = { runBatch: null, microphone: "" };
+} = { runBatch: null, conn: null, microphone: "" };
 let shared: Flow | null = null;
 
 /**
@@ -159,6 +165,8 @@ function annotateFlow(): Flow {
       if (!text) return null;
       return { provider: used.provider, model: used.model, text, words };
     },
+    // The 20-minute cap, and preparing the annotation.
+    holdModel: () => holdLocalModel(live.conn, 25 * 60_000),
     copy: (text) => writeText(text),
     insert: async (text) => {
       unwrap(await dictation.insertText(text));
@@ -235,6 +243,8 @@ function ActiveAnnotate() {
   const runBatch = useRunBatch(BATCH_ID);
   const microphone = useConfigValue("microphone_device");
   live.runBatch = runBatch;
+  const { conn } = useSTTConnection();
+  live.conn = conn;
   live.microphone = microphone;
 
   useMountEffect(() => {

@@ -21,6 +21,10 @@ pub(crate) fn start_model_download(_model: SoniqoModel) -> Result<()> {
     Err(Error::UnsupportedPlatform)
 }
 
+pub(crate) fn hold_model(_model: SoniqoModel, _seconds: f64) -> Result<()> {
+    Err(Error::UnsupportedPlatform)
+}
+
 pub(crate) fn reset_model(_model: SoniqoModel) -> Result<()> {
     Err(Error::UnsupportedPlatform)
 }

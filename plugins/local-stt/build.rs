@@ -15,6 +15,8 @@ const COMMANDS: &[&str] = &[
     "start_server_for_path",
     "list_stt_devices",
     "forget_stt_gpu_failures",
+    "hold_model",
+    "release_model_hold",
 ];
 
 fn main() {

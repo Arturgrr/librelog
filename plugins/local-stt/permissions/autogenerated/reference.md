@@ -20,6 +20,8 @@ Default permissions for the plugin
 - `allow-start-server-for-path`
 - `allow-list-stt-devices`
 - `allow-forget-stt-gpu-failures`
+- `allow-hold-model`
+- `allow-release-model-hold`
 
 ## Permission Table
 
@@ -182,6 +184,32 @@ Enables the get_servers command without any pre-configured scope.
 <td>
 
 Denies the get_servers command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`local-stt:allow-hold-model`
+
+</td>
+<td>
+
+Enables the hold_model command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`local-stt:deny-hold-model`
+
+</td>
+<td>
+
+Denies the hold_model command without any pre-configured scope.
 
 </td>
 </tr>
@@ -364,6 +392,32 @@ Enables the models_dir command without any pre-configured scope.
 <td>
 
 Denies the models_dir command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`local-stt:allow-release-model-hold`
+
+</td>
+<td>
+
+Enables the release_model_hold command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`local-stt:deny-release-model-hold`
+
+</td>
+<td>
+
+Denies the release_model_hold command without any pre-configured scope.
 
 </td>
 </tr>

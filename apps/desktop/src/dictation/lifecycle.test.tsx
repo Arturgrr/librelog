@@ -58,6 +58,7 @@ vi.mock("~/stt/contexts", () => ({
     select({ live: mocks.meeting, stopTranscription: mocks.stopTranscription }),
 }));
 vi.mock("~/stt/useRunBatch", () => ({ useRunBatch: () => mocks.runBatch }));
+vi.mock("~/stt/local-model-hold", () => ({ holdLocalModel: () => () => {} }));
 vi.mock("@anlg/plugin-shortcut", () => ({
   commands: { configure: mocks.configure, setActive: mocks.setActive },
   events: {

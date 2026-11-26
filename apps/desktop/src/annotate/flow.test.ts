@@ -30,6 +30,8 @@ const finalized = {
 
 function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
   const calls: string[] = [];
+  // What the flow did with the local model.
+  const model: string[] = [];
   const notify = {
     ready: vi.fn(),
     screenRecordingDenied: vi.fn(),
@@ -66,6 +68,10 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
       text: "Look here.",
       words: [{ startMs: 100, endMs: 400, text: " Look" }],
     })),
+    holdModel: vi.fn(() => {
+      model.push("hold");
+      return () => model.push("release");
+    }),
     copy: vi.fn(async () => {}),
     insert: vi.fn(async (text: string) => {
       calls.push(`insert:${text}`);
@@ -77,7 +83,7 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
     notify,
     onPhase: vi.fn(),
   };
-  return { flow: createAnnotateFlow(deps), deps, plugin, notify, calls };
+  return { flow: createAnnotateFlow(deps), deps, plugin, notify, calls, model };
 }
 
 describe("Annotate flow", () => {
@@ -97,6 +103,29 @@ describe("Annotate flow", () => {
     expect(notify.ready).toHaveBeenCalledWith(finalized);
     expect(flow.phase).toBe("idle");
     expect(deps.setRecording).toHaveBeenLastCalledWith(false);
+  });
+
+  it("holds the local model from the start until the annotation is finalized, so stop transcribes at once", async () => {
+    const { flow, deps, model } = setup();
+    let heard: (words: null) => void = () => {};
+    vi.mocked(deps.transcribe).mockReturnValue(
+      new Promise((resolve) => {
+        heard = resolve;
+      }),
+    );
+    await flow.start();
+    expect(model).toEqual(["hold"]);
+    const stopping = flow.stop();
+    await vi.waitFor(() => expect(deps.transcribe).toHaveBeenCalled());
+    expect(model).toEqual(["hold"]);
+    heard(null);
+    await stopping;
+    expect(model).toEqual(["hold", "release"]);
+
+    // A discarded recording lets it go too.
+    await flow.start();
+    await flow.onEvent({ type: "discarded" });
+    expect(model).toEqual(["hold", "release", "hold", "release"]);
   });
 
   it("asks for Screen Recording once and stops at a denial or a needed relaunch", async () => {

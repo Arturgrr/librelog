@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-hold-model"
+description = "Enables the hold_model command without any pre-configured scope."
+commands.allow = ["hold_model"]
+
+[[permission]]
+identifier = "deny-hold-model"
+description = "Denies the hold_model command without any pre-configured scope."
+commands.deny = ["hold_model"]

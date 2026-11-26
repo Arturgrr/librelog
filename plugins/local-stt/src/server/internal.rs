@@ -13,6 +13,9 @@ use super::{ServerInfo, ServerStatus};
 pub enum InternalSTTMessage {
     GetHealth(RpcReplyPort<ServerInfo>),
     ServerError(String),
+    /// Keep the model loaded for this long, idle or not; `None` lets it go
+    /// idle. Loading runs in the background.
+    Hold(Option<std::time::Duration>),
 }
 
 /// A model the caller already loaded (to check a picked file), handed to the
@@ -33,6 +36,7 @@ pub struct InternalSTTState {
     model_path: PathBuf,
     shutdown: tokio::sync::watch::Sender<()>,
     server_task: tokio::task::JoinHandle<()>,
+    service: anlg_transcribe_gguf_local::TranscribeService,
 }
 
 pub struct InternalSTTActor;
@@ -83,7 +87,9 @@ impl Actor for InternalSTTActor {
         myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let service = HandleError::new(transcribe_service(&args), move |err: String| async move {
+        let transcriber = transcribe_service(&args);
+        let held = transcriber.clone();
+        let service = HandleError::new(transcriber, move |err: String| async move {
             let _ = myself.send_message(InternalSTTMessage::ServerError(err.clone()));
             (StatusCode::INTERNAL_SERVER_ERROR, err)
         });
@@ -123,6 +129,7 @@ impl Actor for InternalSTTActor {
             model_path,
             shutdown: shutdown_tx,
             server_task,
+            service: held,
         })
     }
 
@@ -144,6 +151,15 @@ impl Actor for InternalSTTActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             InternalSTTMessage::ServerError(e) => Err(e.into()),
+            InternalSTTMessage::Hold(hold) => {
+                let service = state.service.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = service.hold(hold).await {
+                        tracing::warn!(error, "could not load the held transcription model");
+                    }
+                });
+                Ok(())
+            }
             InternalSTTMessage::GetHealth(reply_port) => {
                 let info = ServerInfo {
                     url: Some(state.base_url.clone()),

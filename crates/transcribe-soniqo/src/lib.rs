@@ -57,6 +57,14 @@ pub fn start_model_download(model: SoniqoModel) -> Result<()> {
     platform::start_model_download(model)
 }
 
+/// Loads `model` now and keeps it loaded for `hold`, idle or not, for a
+/// recording that will be transcribed when it stops; `None` lets it go idle
+/// again. Blocks until it is loaded.
+pub fn hold_model(model: SoniqoModel, hold: Option<std::time::Duration>) -> Result<()> {
+    ensure_supported_platform(model)?;
+    platform::hold_model(model, hold.map_or(0.0, |hold| hold.as_secs_f64()))
+}
+
 pub fn reset_model(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
     platform::reset_model(model)

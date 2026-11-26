@@ -77,6 +77,13 @@ impl TranscribeService {
             .build()
     }
 
+    /// Loads the model now and keeps it loaded for `hold`, idle or not, for
+    /// a recording that will be transcribed when it stops; `None` lets it go
+    /// idle again.
+    pub async fn hold(&self, hold: Option<std::time::Duration>) -> Result<(), String> {
+        self.slot.hold(hold).await
+    }
+
     pub fn builder() -> TranscribeServiceBuilder {
         TranscribeServiceBuilder::default()
     }

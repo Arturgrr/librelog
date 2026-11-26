@@ -128,6 +128,55 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             .ok_or(crate::Error::SupervisorNotFound)
     }
 
+    /// Starts loading `model` and keeps it loaded for `hold` at most (see
+    /// [`crate::hold`]); the hold's id, or `None` when nothing is held.
+    pub async fn hold_model(
+        &self,
+        model: Option<LocalModel>,
+        hold: std::time::Duration,
+    ) -> Result<Option<String>, crate::Error> {
+        let held = match model {
+            Some(LocalModel::Soniqo(model)) => {
+                if soniqo_download_state(model).await?.status != "ready" {
+                    return Ok(None);
+                }
+                crate::hold::Held::Soniqo(model)
+            }
+            Some(LocalModel::AppleSpeech(_)) => return Ok(None),
+            #[cfg(feature = "gguf")]
+            model => {
+                let Some(info) = internal_health().await else {
+                    return Ok(None);
+                };
+                if model.is_some() && info.model != model {
+                    return Ok(None);
+                }
+                crate::hold::Held::Internal
+            }
+            #[cfg(not(feature = "gguf"))]
+            _ => return Ok(None),
+        };
+        let (id, hold) = {
+            let state = self.manager.state::<crate::SharedState>();
+            let mut guard = state.lock().await;
+            guard.holds.add(held, hold, std::time::Instant::now())
+        };
+        apply_hold(held, Some(hold));
+        Ok(Some(id))
+    }
+
+    /// Ends a hold from [`Self::hold_model`]; an unknown one is fine.
+    pub async fn release_model_hold(&self, id: &str) {
+        let released = {
+            let state = self.manager.state::<crate::SharedState>();
+            let mut guard = state.lock().await;
+            guard.holds.remove(id, std::time::Instant::now())
+        };
+        if let Some((held, hold)) = released {
+            apply_hold(held, hold);
+        }
+    }
+
     async fn download_pollers(&self) -> DownloadPollers {
         let state = self.manager.state::<crate::SharedState>();
         state.lock().await.download_pollers.clone()
@@ -920,6 +969,29 @@ fn parse_device_preference(value_json: Option<&str>) -> crate::SttDevicePreferen
     value_json
         .and_then(|value| serde_json::from_str(value).ok())
         .unwrap_or_default()
+}
+
+/// Tells the engine how long to keep its model loaded, in the background:
+/// loading never holds up the caller, and failing to is only logged.
+fn apply_hold(held: crate::hold::Held, hold: Option<std::time::Duration>) {
+    match held {
+        crate::hold::Held::Soniqo(model) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(error) = anlg_transcribe_soniqo::hold_model(model, hold) {
+                    tracing::warn!(%error, "could not hold the Soniqo model");
+                }
+            });
+        }
+        crate::hold::Held::Internal => {
+            #[cfg(feature = "gguf")]
+            if let Some(cell) = registry::where_is(internal::InternalSTTActor::name()) {
+                let actor: ActorRef<internal::InternalSTTMessage> = cell.into();
+                if let Err(error) = actor.cast(internal::InternalSTTMessage::Hold(hold)) {
+                    tracing::warn!(%error, "could not hold the transcription model");
+                }
+            }
+        }
+    }
 }
 
 #[cfg(feature = "gguf")]

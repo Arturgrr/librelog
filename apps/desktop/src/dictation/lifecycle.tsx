@@ -16,7 +16,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { keepOnClipboard } from "./clipboard";
-import { DictationController } from "./controller";
+import { DictationController, MAX_CAPTURE_MS } from "./controller";
 import {
   dictationAudioBehaviors,
   recordingEnvironmentConfig,
@@ -36,6 +36,7 @@ import { useSettingsReady } from "~/settings/queries";
 import { isAppStoreBuild } from "~/shared/app-store";
 import { useConfigValue } from "~/shared/config";
 import { useListener } from "~/stt/contexts";
+import { holdLocalModel } from "~/stt/local-model-hold";
 import { useRunBatch } from "~/stt/useRunBatch";
 import { useSTTConnection } from "~/stt/useSTTConnection";
 export { useDictationStatus } from "./state";
@@ -201,6 +202,8 @@ function ActiveDictation() {
       } | null;
     } | null = null;
     let hudShown = false;
+    // Keeps the local model loaded while a dictation records.
+    let releaseModel = () => {};
     // One at a time, so the HUD sees events in the order they happened.
     let hudEvents: Promise<unknown> = Promise.resolve();
     const sendHud = (event: HudEvent) => {
@@ -259,6 +262,10 @@ function ActiveDictation() {
         const { microphone, livePreview, conn, languages, audio, hudPosition } =
           current.current;
         useDictationStatus.setState({ error: null });
+        // Loads while it records, so the stop transcribes at once. A start
+        // that fails leaves it held only until its time runs out.
+        releaseModel();
+        releaseModel = holdLocalModel(conn, MAX_CAPTURE_MS + 60_000);
         const meeting = meetingRecording().catch(() => true);
         if (platform() === "macos") {
           const permission = unwrap(
@@ -369,6 +376,8 @@ function ActiveDictation() {
       },
       stop: async () => {
         const capture = live;
+        // Its transcription starts now, with the model loaded.
+        releaseModel();
         live = null;
         // The stop cue plays once the recording has ended and any audio it
         // quieted is back.
@@ -384,6 +393,7 @@ function ActiveDictation() {
         };
       },
       cancel: async () => {
+        releaseModel();
         live = null;
         unwrap(await dictation.cancelRecording(id));
       },
@@ -524,6 +534,7 @@ function ActiveDictation() {
       disposed = true;
       correction.abort();
       cancel();
+      releaseModel();
       useDictationStatus.setState({
         ready: false,
         phase: "idle",

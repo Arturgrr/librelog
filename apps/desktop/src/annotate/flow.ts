@@ -35,6 +35,11 @@ export type AnnotateDeps = {
   microphoneAuthorized: () => Promise<boolean>;
   /** The narration's words, or null when nothing was heard. */
   transcribe: (audioPath: string) => Promise<TranscriptInput | null>;
+  /**
+   * Starts loading the local model the narration is transcribed with and
+   * keeps it loaded until the returned release; never waits for the load.
+   */
+  holdModel: () => () => void;
   copy: (text: string) => Promise<void>;
   /** Pastes into the frontmost app. */
   insert: (text: string) => Promise<void>;
@@ -126,6 +131,11 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
   let heard: { id: string; transcript: TranscriptInput | null } | null = null;
   // When the annotation being prepared was stopped, for the log.
   let stoppedAt = performance.now();
+  // Lets the local model go idle again once the annotation is done.
+  let releaseModel: (() => void) | null = null;
+  const holdModel = () => {
+    releaseModel ??= deps.holdModel();
+  };
   // The annotation being prepared, from its stop until it is finalized
   // (null when it failed or was discarded), for paste last to wait on.
   let preparing: {
@@ -156,6 +166,8 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     work.catch((error) => console.error("[annotate]", error));
 
   const toIdle = () => {
+    releaseModel?.();
+    releaseModel = null;
     endPreparing(null);
     finishing = null;
     stopWhenStarted = false;
@@ -188,6 +200,8 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
         deps.notify.microphoneDenied();
         return toIdle();
       }
+      // Loads while it records, so the narration is transcribed at once.
+      holdModel();
       await deps.plugin.start();
       set("recording");
       await quietly(deps.setRecording(true));
@@ -295,12 +309,14 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     try {
       const status = await deps.plugin.status();
       if (status.phase === "recording") {
+        holdModel();
         // Nothing is being prepared: paste last must not wait on it.
         endPreparing(null);
         set("recording");
         await quietly(deps.setRecording(true));
       } else if (status.phase === "finishing" && status.stopped) {
         if (finishing !== status.stopped.id) stoppedAt = performance.now();
+        holdModel();
         await finish(status.stopped);
       } else if (status.phase === "idle") {
         toIdle();
