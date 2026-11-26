@@ -8,7 +8,8 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSActivityOptions, NSObjectProtocol, NSProcessInfo, NSString};
 
-/// A user-initiated activity, ended on drop.
+/// A user-initiated activity that still lets the system sleep when idle,
+/// ended on drop.
 pub struct Activity(Retained<ProtocolObject<dyn NSObjectProtocol>>);
 
 // SAFETY: NSProcessInfo's activity calls may come from any thread, and the
@@ -18,8 +19,12 @@ unsafe impl Send for Activity {}
 impl Activity {
     pub fn begin(reason: &str) -> Self {
         let reason = NSString::from_str(reason);
-        let token = NSProcessInfo::processInfo()
-            .beginActivityWithOptions_reason(NSActivityOptions::UserInitiated, &reason);
+        // Allowing idle sleep: an annotation left running should not keep the
+        // Mac awake, and App Nap is what slows the work down.
+        let token = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+            NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+            &reason,
+        );
         Self(token)
     }
 }
