@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-may-read-dictation-for-fitting"
+description = "Enables the may_read_dictation_for_fitting command without any pre-configured scope."
+commands.allow = ["may_read_dictation_for_fitting"]
+
+[[permission]]
+identifier = "deny-may-read-dictation-for-fitting"
+description = "Denies the may_read_dictation_for_fitting command without any pre-configured scope."
+commands.deny = ["may_read_dictation_for_fitting"]

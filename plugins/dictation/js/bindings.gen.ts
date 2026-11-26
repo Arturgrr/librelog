@@ -145,6 +145,83 @@ async requestMediaControl() : Promise<Result<PlayerControl[], string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * `text` with each spoken phrase the person saved swapped for what is typed in its place.
+ */
+async applyDictationReplacements(text: string, replacements: Replacement[]) : Promise<string> {
+    return await TAURI_INVOKE("plugin:dictation|apply_dictation_replacements", { text, replacements });
+},
+/**
+ * `text` spaced and cased to be typed after `before`, the field's text before the caret, or
+ * as given when `before` is `None` because the field could not be read.
+ */
+async fitDictationText(text: string, before: string | null, canJoin: boolean) : Promise<CaretFit> {
+    return await TAURI_INVOKE("plugin:dictation|fit_dictation_text", { text, before, canJoin });
+},
+/**
+ * `next`, a newly transcribed phrase, appended to `committed`, the dictation's text so far.
+ */
+async joinDictationTranscript(committed: string, next: string) : Promise<string> {
+    return await TAURI_INVOKE("plugin:dictation|join_dictation_transcript", { committed, next });
+},
+/**
+ * Whether the dictation needs a model call (cleanup or voice edit) and what it says. A `done`
+ * plan already holds what to type.
+ */
+async prepareDictationRefinement(request: RefineRequest) : Promise<RefinePlan> {
+    return await TAURI_INVOKE("plugin:dictation|prepare_dictation_refinement", { request });
+},
+/**
+ * What to type once the model call from `prepare_dictation_refinement` settled.
+ */
+async resolveDictationRefinement(pending: PendingRefinement, reply: ModelReply) : Promise<RefineOutcome> {
+    return await TAURI_INVOKE("plugin:dictation|resolve_dictation_refinement", { pending, reply });
+},
+/**
+ * Whether a dictation may read this window's title and text for context. `exclusions` is
+ * `None` while the person's exclusions can't be read, which denies.
+ */
+async decideDictationContext(enabled: boolean, facts: WindowFacts, exclusions: ContextExclusions | null) : Promise<ContextAccess> {
+    return await TAURI_INVOKE("plugin:dictation|decide_dictation_context", { enabled, facts, exclusions });
+},
+/**
+ * Whether the text around the caret may be read, on this device only, to fit a dictation.
+ */
+async mayReadDictationForFitting(facts: WindowFacts, exclusions: ContextExclusions | null) : Promise<boolean> {
+    return await TAURI_INVOKE("plugin:dictation|may_read_dictation_for_fitting", { facts, exclusions });
+},
+/**
+ * The distinctive terms of `text` (names, products, handles), most frequent first. `heading`
+ * reads every word as mid-sentence, for a title or an app name.
+ */
+async extractDictationTerms(text: string, heading: boolean, limit: number | null) : Promise<string[]> {
+    return await TAURI_INVOKE("plugin:dictation|extract_dictation_terms", { text, heading, limit });
+},
+/**
+ * The terms speech-to-text hears for one dictation, highest first.
+ */
+async rankDictationTerms(request: RankRequest) : Promise<string[]> {
+    return await TAURI_INVOKE("plugin:dictation|rank_dictation_terms", { request });
+},
+/**
+ * The weights blob after `request.event`, for the caller to store in place of the old one.
+ */
+async recordDictationTerms(request: RecordRequest) : Promise<string> {
+    return await TAURI_INVOKE("plugin:dictation|record_dictation_terms", { request });
+},
+/**
+ * Dictionary terms worth suggesting from how the person corrected what a dictation typed.
+ */
+async suggestDictationTerms(request: SuggestRequest) : Promise<string[]> {
+    return await TAURI_INVOKE("plugin:dictation|suggest_dictation_terms", { request });
+},
+/**
+ * What the person kept of a dictation, from the field around the caret when it started and
+ * now; `None` when the field was sent, cleared, or rewritten around it.
+ */
+async keptDictationText(start: FieldText, now: FieldText) : Promise<string | null> {
+    return await TAURI_INVOKE("plugin:dictation|kept_dictation_text", { start, now });
 }
 }
 
@@ -178,11 +255,87 @@ export type AudioBehavior = { type: "nothing" } |
  * are paused either way.
  */
 { type: "pauseMedia"; browsers: boolean }
+/**
+ * How a dictation lands at the caret.
+ */
+export type CaretFit = { 
+/**
+ * What to type at the caret.
+ */
+text: string; 
+/**
+ * The dictation finishes the sentence before the caret: `text` starts with ", " and goes
+ * over the one period directly before the caret, so "now." becomes "now, if…".
+ */
+join: boolean }
 export type Config = { behavior: AudioBehavior; 
 /**
  * Keeps the computer from idle sleep while the session lasts.
  */
 preventSleep: boolean }
+export type ContextAccess = { type: "allowed" } | { type: "denied"; reason: DenyReason }
+/**
+ * What the person keeps out of dictation context.
+ */
+export type ContextExclusions = { 
+/**
+ * App names or bundle ids, matched case-insensitively.
+ */
+apps: string[]; 
+/**
+ * Website domains; a subdomain of an excluded domain is excluded too.
+ */
+websites: string[] }
+/**
+ * What a dictation read from its window, for its own operation only. Bounded at collection
+ * and again when used; never written to recovery files or telemetry.
+ */
+export type ContextSnapshot = { operationId: string; capturedAtMs: number; 
+/**
+ * The end of the text before the caret.
+ */
+before: string | null; 
+/**
+ * The window's newest text under a line naming the app and window.
+ */
+screen: string | null; 
+/**
+ * Distinctive terms from the app, the field and the window, most relevant first.
+ */
+terms: string[] }
+export type DenyReason = 
+/**
+ * Context is off for this dictation.
+ */
+"disabled" | 
+/**
+ * The exclusions couldn't be read.
+ */
+"exclusionsUnreadable" | 
+/**
+ * The app couldn't be identified.
+ */
+"unknownApp" | "passwordManager" | 
+/**
+ * A browser that is always private (Tor, Mullvad).
+ */
+"privateBrowser" | "secureField" | 
+/**
+ * Whether the field is secure couldn't be told.
+ */
+"unknownSecureField" | "privateWindow" | 
+/**
+ * Whether the window is private couldn't be told.
+ */
+"unknownPrivateWindow" | "excludedApp" | "excludedSite" | 
+/**
+ * A browser whose page host couldn't be read from the browser itself.
+ */
+"unverifiedBrowserHost"
+/**
+ * A field as read around the caret.
+ */
+export type FieldText = { before: string; selected: string; after: string }
 /**
  * What the dictation HUD is told, as Hex's indicator events: the HUD keeps
  * its own clock for how long each look shows.
@@ -240,8 +393,39 @@ export type MediaControl = "allowed" | "denied" |
  * macOS asks only while the player runs.
  */
 "notRunning"
+/**
+ * The one model call to make, and the deadline after which it no longer counts.
+ */
+export type ModelCall = { system: string; prompt: string; deadlineMs: number }
+export type ModelReply = { type: "text"; text: string } | 
+/**
+ * The deadline passed first.
+ */
+{ type: "timedOut" } | 
+/**
+ * The operation was cancelled.
+ */
+{ type: "cancelled" } | 
+/**
+ * The model call failed; why is not carried, so no provider text is kept.
+ */
+{ type: "failed" }
+/**
+ * What the reply is checked against; passed back unchanged with the reply.
+ */
+export type PendingRefinement = { kind: RefineKind; raw: string; selection: string | null; before: string | null; instructed: boolean; replacements: Replacement[] }
 export type PlayerControl = { player: string; control: MediaControl }
 export type PreviewConfig = { provider: string; baseUrl: string; apiKey: string; params: ListenParams }
+export type RankRequest = { nowMs: number; dictionary: string[]; replacements: Replacement[]; 
+/**
+ * Distinctive terms from this dictation's context snapshot, most relevant first.
+ */
+contextTerms: string[]; 
+/**
+ * The stored weights blob, or `None` when there are none.
+ */
+weights: string | null; limit: number | null }
+export type RecordRequest = { nowMs: number; dictionary: string[]; weights: string | null; event: TermEvent }
 export type RecordedAudio = { filePath: string; durationMs: number; transcript: string | null }
 /**
  * What a dictation asks of the computer's other audio, and of sleep, while
@@ -261,12 +445,148 @@ export type RecordingUpdate = { type: "transcript"; text: string; partial: strin
  * again, so a stop sound played now is heard.
  */
 { type: "ended" }
+export type RefineKind = "cleanup" | "edit"
+export type RefineOutcome = 
+/**
+ * Type `text`, the cleaned dictation with replacements applied.
+ */
+{ type: "cleaned"; text: string } | 
+/**
+ * Type `text`, the raw transcript with replacements applied.
+ */
+{ type: "raw"; text: string; reason: RefineReason } | 
+/**
+ * Replace the selection with `text`, which keeps the selection's edge whitespace.
+ */
+{ type: "edited"; text: string } | 
+/**
+ * Type nothing; the selection stays as it was.
+ */
+{ type: "editFailed"; reason: RefineReason } | 
+/**
+ * The operation was cancelled; type nothing.
+ */
+{ type: "cancelled" } | 
+/**
+ * Nothing was said.
+ */
+{ type: "empty" }
+export type RefinePlan = 
+/**
+ * No model call: the outcome is already known.
+ */
+{ type: "done"; outcome: RefineOutcome } | 
+/**
+ * Make `call`, then resolve its reply with `pending`.
+ */
+{ type: "ask"; call: ModelCall; pending: PendingRefinement }
+export type RefineReason = "cleanupOff" | "voiceEditOff" | "noModel" | "policyUnreadable" | "tooLong" | "timedOut" | "failed" | "emptyReply" | "malformed" | 
+/**
+ * The reply was much longer than what was said: it answered or added to it.
+ */
+"answered" | 
+/**
+ * The reply left out most of what was said.
+ */
+"dropped" | 
+/**
+ * The reply repeated the text already before the caret.
+ */
+"repeatsBefore" | 
+/**
+ * The reply looped over a phrase.
+ */
+"repetition"
+export type RefineRequest = { operationId: string; nowMs: number; 
+/**
+ * The dictation's one final transcript.
+ */
+text: string; 
+/**
+ * The selected text, when the dictation edits it.
+ */
+selection: string | null; 
+/**
+ * `None` when the person's choices couldn't be read: nothing is sent anywhere.
+ */
+policy: TextPolicy | null; 
+/**
+ * Whether the selected model connection is usable now.
+ */
+modelReady: boolean; terms: string[]; replacements: Replacement[]; instructions: string | null; 
+/**
+ * The text before the caret in a Librelog field (chat).
+ */
+before: string | null; 
+/**
+ * What the native side read for this operation, after its privacy decision.
+ */
+context: ContextSnapshot | null }
+/**
+ * A phrase said in dictation, and what is typed in its place.
+ */
+export type Replacement = { from: string; to: string }
+export type SuggestRequest = { 
+/**
+ * What the dictation typed.
+ */
+inserted: string; 
+/**
+ * What the person kept of it after editing.
+ */
+kept: string; 
+/**
+ * The Dictionary as it is now; terms already in it are not suggested.
+ */
+dictionary: string[]; 
+/**
+ * Names seen in this dictation's context, used only to spell a suggestion as it was seen.
+ */
+seen: string[] }
 export type TAURI_CHANNEL<TSend> = null
 /**
  * The application that has focus: its display name, and its bundle
  * identifier (macOS), executable (Windows, Linux) when known.
  */
 export type TargetApp = { name: string; id: string | null }
+export type TermEvent = 
+/**
+ * A dictation came out as `text`: each Dictionary term in it was used.
+ */
+{ type: "used"; text: string } | 
+/**
+ * The person accepted these corrections: the engine mishears them.
+ */
+{ type: "corrected"; terms: string[] }
+/**
+ * The person's explicit choices, read at the start of the operation. Both default off.
+ */
+export type TextPolicy = { 
+/**
+ * Clean up plain dictation with the selected model.
+ */
+cleanup: boolean; 
+/**
+ * Treat a dictation over selected text as an instruction to edit it.
+ */
+voiceEdit: boolean }
+/**
+ * What the native side knows about the window and field a dictation is typed into. Every
+ * privacy fact is `None` when it couldn't be told, and an unknown fact denies the read.
+ */
+export type WindowFacts = { bundleId: string | null; appName: string | null; title: string | null; 
+/**
+ * The focused field is a password or other secure field.
+ */
+secureField: boolean | null; 
+/**
+ * The window is a private or incognito one. Apps without private windows report `false`.
+ */
+privateWindow: boolean | null; 
+/**
+ * For a browser, the host of the page as read from the browser itself (never its title).
+ */
+browserHost: string | null }
 
 /** tauri-specta globals **/
 

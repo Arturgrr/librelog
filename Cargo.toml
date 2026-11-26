@@ -54,6 +54,7 @@ anlg-db-reactive = { path = "crates/db-reactive", package = "db-reactive" }
 anlg-desktop-portal = { path = "crates/desktop-portal", package = "desktop-portal" }
 anlg-detect = { path = "crates/detect", package = "detect" }
 anlg-device-monitor = { path = "crates/device-monitor", package = "device-monitor" }
+anlg-dictation-core = { path = "crates/dictation-core", package = "dictation-core" }
 anlg-dictation-ui-macos = { path = "crates/dictation-ui-macos", package = "dictation-ui-macos" }
 anlg-download-interface = { path = "crates/download-interface", package = "download-interface" }
 anlg-embedding = { path = "crates/embedding", package = "embedding" }

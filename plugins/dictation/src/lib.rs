@@ -38,6 +38,18 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::delete_history_audio::<tauri::Wry>,
             commands::prune_history_audio::<tauri::Wry>,
             commands::request_media_control,
+            commands::apply_dictation_replacements,
+            commands::fit_dictation_text,
+            commands::join_dictation_transcript,
+            commands::prepare_dictation_refinement,
+            commands::resolve_dictation_refinement,
+            commands::decide_dictation_context,
+            commands::may_read_dictation_for_fitting,
+            commands::extract_dictation_terms,
+            commands::rank_dictation_terms,
+            commands::record_dictation_terms,
+            commands::suggest_dictation_terms,
+            commands::kept_dictation_text,
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
