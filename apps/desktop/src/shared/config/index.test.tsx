@@ -81,6 +81,21 @@ const cases = [
     },
     expected: true,
   },
+  {
+    name: "drops malformed dictation replacements instead of typing them",
+    key: "personalization_dictionary_replacements",
+    values: {
+      personalization_dictionary_replacements:
+        '[{"from":"work mail","to":"a@b.c"},{"from":" ","to":"x"},{"to":"y"}]',
+    },
+    expected: [{ from: "work mail", to: "a@b.c" }],
+  },
+  {
+    name: "reads unreadable context exclusions as null so context is denied",
+    key: "dictation_context_exclusions",
+    values: { dictation_context_exclusions: '{"apps":"Slack"}' },
+    expected: null,
+  },
 ] satisfies Array<{
   name: string;
   key: SettingKey;

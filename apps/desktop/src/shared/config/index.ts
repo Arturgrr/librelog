@@ -1,3 +1,5 @@
+import type { ContextExclusions, Replacement } from "@anlg/plugin-dictation";
+
 import {
   useStoredSettingValues,
   type StoredSettingValues,
@@ -17,11 +19,15 @@ type JsonParsedKeys =
 
 type ConfigValueType<K extends SettingKey> = K extends JsonParsedKeys
   ? string[]
-  : K extends keyof typeof SETTING_DEFINITIONS
-    ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
-      ? SettingValue<K>
-      : SettingValue<K> | undefined
-    : never;
+  : K extends "personalization_dictionary_replacements"
+    ? Replacement[]
+    : K extends "dictation_context_exclusions"
+      ? ContextExclusions | null
+      : K extends keyof typeof SETTING_DEFINITIONS
+        ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
+          ? SettingValue<K>
+          : SettingValue<K> | undefined
+        : never;
 
 const JSON_PARSED_KEYS = new Set<SettingKey>([
   "dictation_shortcuts",
@@ -88,6 +94,12 @@ export function resolveConfigValue<K extends SettingKey>(
   }
 
   const value = hasValues.has(key) ? values[key] : defaultValue;
+  if (key === "personalization_dictionary_replacements") {
+    return parseReplacements(value) as ConfigValueType<K>;
+  }
+  if (key === "dictation_context_exclusions") {
+    return parseContextExclusions(value) as ConfigValueType<K>;
+  }
   if (JSON_PARSED_KEYS.has(key)) {
     return parseStringArray(
       value,
@@ -111,4 +123,44 @@ function parseStringArray(value: unknown, fallback: string[]): string[] {
   } catch {
     return fallback;
   }
+}
+
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseReplacements(value: unknown): Replacement[] {
+  const parsed = parseJson(value);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((entry) =>
+    entry &&
+    typeof entry.from === "string" &&
+    typeof entry.to === "string" &&
+    entry.from.trim() !== ""
+      ? [{ from: entry.from, to: entry.to }]
+      : [],
+  );
+}
+
+// Null when the stored value can't be read, which denies window context.
+function parseContextExclusions(value: unknown): ContextExclusions | null {
+  if (value === "" || value === undefined) return { apps: [], websites: [] };
+  const parsed = parseJson(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const { apps = [], websites = [] } = parsed as Record<string, unknown>;
+  if (!isStringArray(apps) || !isStringArray(websites)) return null;
+  return { apps, websites };
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
