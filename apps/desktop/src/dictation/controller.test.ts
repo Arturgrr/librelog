@@ -62,7 +62,9 @@ describe("system dictation", () => {
     state.controller.press();
     state.controller.release();
     await settle(state);
-    expect(state.insert).toHaveBeenCalledWith("안녕하세요, world.");
+    expect(state.insert.mock.calls.map(([text]) => text)).toEqual([
+      "안녕하세요, world.",
+    ]);
     expect(state.discard).toHaveBeenCalledWith("/tmp/dictation-1.wav");
   });
 
@@ -252,7 +254,10 @@ describe("system dictation", () => {
       if (handsFree) state.controller.press();
       else state.controller.release();
       await settle(state);
-      expect(state.insert.mock.calls).toEqual([["First."], ["Second."]]);
+      expect(state.insert.mock.calls.map(([text]) => text)).toEqual([
+        "First.",
+        "Second.",
+      ]);
       expect(
         state.onJobFinished.mock.calls.map(([job]) => [
           job.context,
@@ -283,7 +288,9 @@ describe("system dictation", () => {
     });
     first.open(said("Five minutes of thought."));
     await settle(state);
-    expect(state.insert).toHaveBeenCalledWith("Five minutes of thought.");
+    expect(state.insert.mock.calls.map(([text]) => text)).toEqual([
+      "Five minutes of thought.",
+    ]);
     expect(state.onStatus.mock.lastCall?.[1]).toBe("completed");
   });
 
@@ -302,7 +309,7 @@ describe("system dictation", () => {
     fail(new Error("Network unavailable"));
     await settle(state);
     expect(state.onError).toHaveBeenCalledOnce();
-    expect(state.insert.mock.calls).toEqual([["Second."]]);
+    expect(state.insert.mock.calls.map(([text]) => text)).toEqual(["Second."]);
     expect(state.discard).toHaveBeenCalledTimes(2);
   });
 

@@ -29,8 +29,10 @@ import {
   recordUsedTerms,
   watchCorrection,
 } from "./learning";
+import { refineTranscript, type RefineOptions } from "./refine";
 import { useDictationStatus } from "./state";
 
+import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { useSettingsReady } from "~/settings/queries";
 import { isAppStoreBuild } from "~/shared/app-store";
@@ -131,6 +133,11 @@ function ActiveDictation() {
     "personalization_dictionary_replacements",
   );
   const learning = useConfigValue("dictation_learning");
+  const cleanup = useConfigValue("dictation_cleanup");
+  const voiceEdit = useConfigValue("dictation_voice_edit");
+  const context = useConfigValue("dictation_context");
+  const exclusions = useConfigValue("dictation_context_exclusions");
+  const model = useLanguageModel();
   const weights = useConfigValue("dictation_term_weights");
   const languages = useConfigValue("spoken_languages");
   const sounds = useConfigValue("dictation_sounds");
@@ -152,6 +159,11 @@ function ActiveDictation() {
     dictionary,
     replacements,
     learning,
+    cleanup,
+    voiceEdit,
+    context,
+    exclusions,
+    model,
     weights,
     sounds,
     hudPosition,
@@ -168,6 +180,11 @@ function ActiveDictation() {
     dictionary,
     replacements,
     learning,
+    cleanup,
+    voiceEdit,
+    context,
+    exclusions,
+    model,
     weights,
     sounds,
     hudPosition,
@@ -255,9 +272,30 @@ function ActiveDictation() {
       start: async (signal) => {
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
-        // Read only with learning on: what the field held before dictating.
-        const field = current.current.learning
-          ? readDictationField().catch(() => null)
+        const { learning, cleanup, voiceEdit, context, exclusions } =
+          current.current;
+        const options: RefineOptions = {
+          cleanup,
+          voiceEdit,
+          context,
+          replacements: current.current.replacements || [],
+        };
+        const operationId = crypto.randomUUID();
+        // What the field held before dictating, read natively only for the
+        // options that need it and only where its privacy allows.
+        const read =
+          learning || voiceEdit || context
+            ? dictation
+                .readDictationField({
+                  operationId,
+                  context,
+                  selection: voiceEdit,
+                  exclusions,
+                })
+                .catch(() => null)
+            : Promise.resolve(null);
+        const field = learning
+          ? read.then((read) => read?.text ?? null)
           : Promise.resolve(null);
         const { microphone, livePreview, conn, languages, audio, hudPosition } =
           current.current;
@@ -372,7 +410,7 @@ function ActiveDictation() {
             environment,
           ),
         );
-        return { app, field };
+        return { app, field, read, options, operationId, exclusions };
       },
       stop: async () => {
         const capture = live;
@@ -422,9 +460,28 @@ function ActiveDictation() {
           language: used.languages.join(",") || null,
         };
       },
-      insert: async (text) => {
+      refine: async (text, context, signal) =>
+        refineTranscript({
+          operationId: context.operationId,
+          text,
+          terms: await keywords(),
+          options: context.options,
+          field: await context.read,
+          model: current.current.model,
+          signal,
+        }),
+      insert: async (text, { context, edit }) => {
+        const fingerprint = edit ? (await context.read)?.fingerprint : null;
         try {
-          unwrap(await dictation.insertText(text));
+          return unwrap(
+            await dictation.insertDictation(
+              text,
+              fingerprint
+                ? { type: "replaceSelection", fingerprint }
+                : { type: "fit" },
+              context.exclusions,
+            ),
+          );
         } finally {
           await keepOnClipboard(text).catch(console.error);
         }

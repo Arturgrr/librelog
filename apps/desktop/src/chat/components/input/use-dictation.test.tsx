@@ -37,7 +37,12 @@ vi.mock("@anlg/ui/components/ui/toast", () => ({
 }));
 
 vi.mock("~/shared/config", () => ({
-  useConfigValue: () => "Built-in Microphone",
+  useConfigValue: (key: string) =>
+    key === "microphone_device" ? "Built-in Microphone" : undefined,
+}));
+
+vi.mock("~/ai/hooks/useLLMConnection", () => ({
+  useLanguageModel: () => null,
 }));
 
 vi.mock("~/stt/useRunBatch", () => ({

@@ -9,6 +9,7 @@ import { Button } from "@anlg/ui/components/ui/button";
 import { Textarea } from "@anlg/ui/components/ui/textarea";
 
 import { DesktopShortcutsNote } from "./desktop-shortcuts";
+import { DictationAiSettings } from "./dictation-ai";
 import { DictationAudioSettings } from "./dictation-audio";
 import { DictationIndicatorSetting } from "./dictation-indicator";
 import { DictationPasteLastSettings } from "./dictation-paste-last";
@@ -160,6 +161,7 @@ export function SettingsDictation() {
         <DictationIndicatorSetting />
         <DictationAudioSettings />
         <DictationPasteLastSettings />
+        <DictationAiSettings />
         {status.lastTranscript && (
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">

@@ -18,10 +18,22 @@ export type DictionarySuggestions = { terms: string[]; dismissed: string[] };
 export type ReadField = () => Promise<FieldText | null>;
 
 /**
- * Integration point for the native field read (`read_dictation_field`). Until
- * it exists, nothing is read and correction suggestions stay off.
+ * The focused field's text around the caret, read natively only where it may
+ * be: never a secure field, a private window or an excluded app.
  */
-export const readDictationField: ReadField = async () => null;
+export const readDictationField: ReadField = async () => {
+  const exclusions = resolveConfigValue(
+    "dictation_context_exclusions",
+    await getStoredSettingValues(),
+  );
+  const read = await dictation.readDictationField({
+    operationId: crypto.randomUUID(),
+    context: false,
+    selection: false,
+    exclusions,
+  });
+  return read.text;
+};
 
 /**
  * The terms speech-to-text should hear for one dictation, highest first:

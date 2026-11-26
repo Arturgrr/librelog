@@ -1,4 +1,5 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { MockLanguageModelV3 } from "ai/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -26,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   cancelRecording: vi.fn(),
   discardRecording: vi.fn(),
   insertText: vi.fn(),
+  insertDictation: vi.fn(),
+  readDictationField: vi.fn(),
+  prepareDictationRefinement: vi.fn(),
+  resolveDictationRefinement: vi.fn(),
+  model: null as unknown,
   rankDictationTerms: vi.fn(),
   recordUsedTerms: vi.fn(),
   checkPermission: vi.fn(),
@@ -47,6 +53,9 @@ vi.mock("~/stt/useSTTConnection", () => ({
   useSTTConnection: () => ({
     conn: mocks.connection,
   }),
+}));
+vi.mock("~/ai/hooks/useLLMConnection", () => ({
+  useLanguageModel: () => mocks.model,
 }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => mocks.platform }));
 vi.mock("~/settings/queries", () => ({ useSettingsReady: () => true }));
@@ -88,6 +97,19 @@ vi.mock("@anlg/plugin-dictation", () => ({
     cancelRecording: mocks.cancelRecording,
     discardRecording: mocks.discardRecording,
     insertText: mocks.insertText,
+    // What a fitted insertion typed, as heard; `insertText` decides how it went.
+    insertDictation: async (
+      text: string,
+      mode: unknown,
+      exclusions: unknown,
+    ) => {
+      mocks.insertDictation(text, mode, exclusions);
+      const result = await mocks.insertText(text);
+      return result.status === "ok" ? { status: "ok", data: text } : result;
+    },
+    readDictationField: mocks.readDictationField,
+    prepareDictationRefinement: mocks.prepareDictationRefinement,
+    resolveDictationRefinement: mocks.resolveDictationRefinement,
     rankDictationTerms: mocks.rankDictationTerms,
   },
 }));
@@ -204,6 +226,20 @@ describe("dictation access and lifecycle", () => {
     mocks.rankDictationTerms.mockResolvedValue([]);
     mocks.recordUsedTerms.mockResolvedValue(undefined);
     mocks.keepOnClipboard.mockResolvedValue(undefined);
+    mocks.model = null;
+    mocks.settings.dictation_voice_edit = false;
+    mocks.readDictationField.mockResolvedValue({
+      text: null,
+      selection: null,
+      fingerprint: null,
+      context: null,
+    });
+    mocks.prepareDictationRefinement.mockImplementation(
+      async (request: { text: string }) => ({
+        type: "done",
+        outcome: { type: "raw", text: request.text, reason: "cleanupOff" },
+      }),
+    );
     mocks.cancelRecording.mockImplementation(async () => {
       endCapture();
       return { status: "ok", data: null };
@@ -835,6 +871,74 @@ describe("dictation access and lifecycle", () => {
       expect(useDictationStatus.getState().phase).toBe("idle"),
     );
     expect(mocks.discardRecording).not.toHaveBeenCalled();
+  });
+
+  it("rewrites the selection by voice only over the selection it read, keeping the spoken instruction as raw text", async () => {
+    mocks.settings.dictation_voice_edit = true;
+    mocks.settings.dictation_context_exclusions = { apps: [], websites: [] };
+    mocks.model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "Ship it Friday." }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: {
+            total: 4,
+            noCache: 4,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+          outputTokens: { total: 2, text: 2, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    });
+    mocks.readDictationField.mockResolvedValue({
+      text: { before: "", selected: "Ship it Monday.", after: "" },
+      selection: "Ship it Monday.",
+      fingerprint: "field-1",
+      context: null,
+    });
+    mocks.prepareDictationRefinement.mockImplementation(
+      async (request: { text: string; selection: string | null }) => ({
+        type: "ask",
+        call: { system: "rules", prompt: request.text, deadlineMs: 5_000 },
+        pending: {
+          kind: "edit",
+          raw: request.text,
+          selection: request.selection,
+          before: null,
+          instructed: false,
+          replacements: [],
+        },
+      }),
+    );
+    mocks.resolveDictationRefinement.mockImplementation(
+      async (_pending: unknown, reply: { type: string; text?: string }) =>
+        reply.type === "text"
+          ? { type: "edited", text: reply.text }
+          : { type: "editFailed", reason: reply.type },
+    );
+    mocks.runBatch.mockImplementation(hears("Make it Friday"));
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await shortcut("pressed");
+    await shortcut("released");
+    await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+    expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+      expect.objectContaining({ selection: "Ship it Monday." }),
+    );
+    expect(mocks.insertDictation).toHaveBeenCalledWith(
+      "Ship it Friday.",
+      { type: "replaceSelection", fingerprint: "field-1" },
+      { apps: [], websites: [] },
+    );
+    expect(mocks.recordDictation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawText: "Make it Friday",
+        finalText: "Ship it Friday.",
+        inserted: true,
+      }),
+    );
   });
 
   it("keeps a cancelled dictation out of the history even when its text was ready", async () => {

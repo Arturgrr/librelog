@@ -58,7 +58,21 @@ export class DictationController<Context> {
       stop: () => Promise<Recording>;
       cancel: () => Promise<void>;
       transcribe: (path: string, signal: AbortSignal) => Promise<Transcript>;
-      insert: (text: string) => Promise<void>;
+      /**
+       * What to type for a transcript, and whether it rewrites the selection
+       * the dictation started over. Throws when nothing should be typed.
+       * Without it, the transcript is typed as heard.
+       */
+      refine?: (
+        text: string,
+        context: Context,
+        signal: AbortSignal,
+      ) => Promise<{ text: string; edit: boolean }>;
+      /** Resolves what was typed, when that differs from `text`. */
+      insert: (
+        text: string,
+        target: { context: Context; edit: boolean },
+      ) => Promise<string | void>;
       discard: (path: string) => Promise<void>;
       /**
        * Once per accepted job, before its recording is discarded. Resolves
@@ -237,6 +251,7 @@ export class DictationController<Context> {
     let audioPath: string | null = null;
     let durationMs = 0;
     let transcript: Transcript | null = null;
+    let finalText: string | null = null;
     let inserted = false;
     let error: string | null = null;
     try {
@@ -252,6 +267,11 @@ export class DictationController<Context> {
       if (!transcript.text) {
         throw new Error(t`No speech detected. Please try again.`);
       }
+      const refined = this.dependencies.refine
+        ? await this.dependencies.refine(transcript.text, job.context, signal)
+        : { text: transcript.text, edit: false };
+      finalText = refined.text;
+      signal.throwIfAborted();
       // Pasting while a capture is held would type through its shortcut keys
       // or end it, so the text waits for the capture to finish, and for
       // anything else that pauses insertions.
@@ -264,8 +284,12 @@ export class DictationController<Context> {
         signal.throwIfAborted();
       }
       signal.throwIfAborted();
-      this.dependencies.onTranscript(transcript.text);
-      await this.dependencies.insert(transcript.text);
+      this.dependencies.onTranscript(refined.text);
+      finalText =
+        (await this.dependencies.insert(refined.text, {
+          context: job.context,
+          edit: refined.edit,
+        })) || refined.text;
       inserted = true;
     } catch (caught) {
       if (signal.aborted) {
@@ -291,7 +315,7 @@ export class DictationController<Context> {
         model: transcript?.model ?? null,
         language: transcript?.language ?? null,
         rawText: transcript?.text ?? "",
-        finalText: transcript?.text ?? "",
+        finalText: finalText ?? transcript?.text ?? "",
         inserted,
         cancelled: this.outcome === "cancelled",
         audioPath,
