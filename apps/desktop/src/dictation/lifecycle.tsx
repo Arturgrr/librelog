@@ -29,7 +29,11 @@ import {
   recordUsedTerms,
   watchCorrection,
 } from "./learning";
-import { refineTranscript, type RefineOptions } from "./refine";
+import {
+  refineTranscript,
+  VoiceEditFailed,
+  type RefineOptions,
+} from "./refine";
 import { useDictationStatus } from "./state";
 
 import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
@@ -221,6 +225,9 @@ function ActiveDictation() {
     let hudShown = false;
     // Keeps the local model loaded while a dictation records.
     let releaseModel = () => {};
+    // Dictations whose words were an instruction to edit a selection that
+    // could not be carried out: they are not text to type or paste.
+    const failedEdits = new WeakSet<object>();
     // One at a time, so the HUD sees events in the order they happened.
     let hudEvents: Promise<unknown> = Promise.resolve();
     const sendHud = (event: HudEvent) => {
@@ -460,16 +467,22 @@ function ActiveDictation() {
           language: used.languages.join(",") || null,
         };
       },
-      refine: async (text, context, signal) =>
-        refineTranscript({
-          operationId: context.operationId,
-          text,
-          terms: await keywords(),
-          options: context.options,
-          field: await context.read,
-          model: current.current.model,
-          signal,
-        }),
+      refine: async (text, context, signal) => {
+        try {
+          return await refineTranscript({
+            operationId: context.operationId,
+            text,
+            terms: await keywords(),
+            options: context.options,
+            field: await context.read,
+            model: current.current.model,
+            signal,
+          });
+        } catch (error) {
+          if (error instanceof VoiceEditFailed) failedEdits.add(context);
+          throw error;
+        }
+      },
       insert: async (text, { context, edit }) => {
         const fingerprint = edit ? (await context.read)?.fingerprint : null;
         try {
@@ -512,7 +525,7 @@ function ActiveDictation() {
             model: job.model,
             language: job.language,
             rawText: job.rawText,
-            finalText: job.finalText,
+            finalText: failedEdits.has(job.context) ? "" : job.finalText,
             inserted: job.inserted,
             audioPath: job.audioPath,
           });

@@ -5,6 +5,9 @@ import type { DictationField, Replacement } from "@anlg/plugin-dictation";
 
 import { refineDictation } from "~/ai/dictation-refine";
 
+/** The selected text could not be edited by voice; nothing was typed. */
+export class VoiceEditFailed extends Error {}
+
 /** The person's dictation choices, read when a dictation starts. */
 export type RefineOptions = {
   cleanup: boolean;
@@ -42,9 +45,13 @@ export async function refineTranscript({
       operationId,
       nowMs: Date.now(),
       text,
-      // Only a selection whose field can be checked again before the edit is written.
+      // Only a selection whose field can be checked again before the edit is
+      // written, and only with a model to edit it: without one, the words are
+      // typed over the selection as said.
       selection:
-        options.voiceEdit && field?.fingerprint ? field.selection : null,
+        options.voiceEdit && model && field?.fingerprint
+          ? field.selection
+          : null,
       policy: { cleanup: options.cleanup, voiceEdit: options.voiceEdit },
       modelReady: model !== null,
       terms,
@@ -61,7 +68,7 @@ export async function refineTranscript({
     case "edited":
       return { text: outcome.text, edit: true };
     case "editFailed":
-      throw new Error(
+      throw new VoiceEditFailed(
         t`Could not edit the selected text with your AI model. It was left unchanged.`,
       );
     case "empty":

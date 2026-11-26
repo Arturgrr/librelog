@@ -941,6 +941,52 @@ describe("dictation access and lifecycle", () => {
     );
   });
 
+  it("types over the selection as said without a model, and keeps a failed voice edit's instruction from being the text", async () => {
+    mocks.settings.dictation_voice_edit = true;
+    mocks.readDictationField.mockResolvedValue({
+      text: { before: "", selected: "Ship it Monday.", after: "" },
+      selection: "Ship it Monday.",
+      fingerprint: "field-1",
+      context: null,
+    });
+    mocks.runBatch.mockImplementation(hears("Make it Friday"));
+    const view = render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await shortcut("pressed");
+    await shortcut("released");
+    await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+    expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+      expect.objectContaining({ selection: null }),
+    );
+    expect(mocks.insertDictation.mock.calls[0]?.slice(0, 2)).toEqual([
+      "Make it Friday",
+      { type: "fit" },
+    ]);
+
+    mocks.recordDictation.mockClear();
+    mocks.insertDictation.mockClear();
+    mocks.model = new MockLanguageModelV3();
+    view.rerender(<DictationLifecycle />);
+    mocks.prepareDictationRefinement.mockResolvedValue({
+      type: "done",
+      outcome: { type: "editFailed", reason: "tooLong" },
+    });
+    await waitFor(() =>
+      expect(useDictationStatus.getState().phase).toBe("idle"),
+    );
+    await shortcut("pressed");
+    await shortcut("released");
+    await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+    expect(mocks.insertDictation).not.toHaveBeenCalled();
+    expect(mocks.recordDictation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawText: "Make it Friday",
+        finalText: "",
+        inserted: false,
+      }),
+    );
+  });
+
   it("keeps a cancelled dictation out of the history even when its text was ready", async () => {
     const finishFirst = holdFirstTranscription();
     render(<DictationLifecycle />);

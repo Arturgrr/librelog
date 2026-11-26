@@ -124,6 +124,24 @@ describe("dictation history store", () => {
     });
   });
 
+  it("never offers a failed voice edit's spoken instruction as the latest dictation", async () => {
+    const earlier = new Date(Date.now() - 1_000).toISOString();
+    await recordDictation(dictation("typed", { createdAt: earlier }));
+    await recordDictation(
+      dictation("edit", {
+        rawText: "make it Friday",
+        finalText: "",
+        inserted: false,
+      }),
+    );
+
+    expect(rows().map((row) => row.id)).toEqual(["typed", "edit"]);
+    await expect(latestDictation()).resolves.toEqual({
+      id: "typed",
+      text: "typed.",
+    });
+  });
+
   it("keeps a dictation that failed to transcribe with its audio for a day, and retrying it makes its text the latest", async () => {
     const failed = (id: string, createdAt = new Date().toISOString()) =>
       recordDictation(

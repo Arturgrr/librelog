@@ -407,7 +407,7 @@ function HistoryItem({
           id={detailsId}
           className="border-border flex flex-col gap-4 border-t p-3"
         >
-          {entry.rawText !== entry.finalText && (
+          {entry.finalText && entry.rawText !== entry.finalText && (
             <dl className="flex flex-col gap-3 text-sm">
               <div className="flex flex-col gap-1">
                 <dt className="text-muted-foreground text-xs">

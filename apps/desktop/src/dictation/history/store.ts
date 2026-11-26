@@ -206,7 +206,10 @@ export function recordDictation(entry: {
   });
 }
 
-/** The newest dictation's current text, while history is on. */
+/**
+ * The newest dictation's current text, while history is on. A voice edit
+ * that failed has only its spoken instruction, as raw text, and is skipped.
+ */
 export function latestDictation(): Promise<{
   id: string;
   text: string;
@@ -220,7 +223,7 @@ export function latestDictation(): Promise<{
       final_text: string;
     }>(
       `SELECT id, raw_text, final_text FROM dictation_history
-       WHERE created_at >= ? AND ${HAS_TEXT}
+       WHERE created_at >= ? AND final_text <> ''
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
       [retentionCutoff(retention) ?? ""],
