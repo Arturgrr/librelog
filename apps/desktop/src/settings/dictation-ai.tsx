@@ -73,7 +73,6 @@ export function DictationAiSettings() {
         checked={context}
         onChange={setContext}
       />
-      {context && <ContextExclusions />}
       <SettingSwitchRow
         title={<Trans>Learn from your corrections</Trans>}
         description={
@@ -86,6 +85,7 @@ export function DictationAiSettings() {
         checked={learning}
         onChange={setLearning}
       />
+      <ContextExclusions />
       {(cleanup || voiceEdit) && !model && (
         <div className="flex flex-col items-start gap-2" role="status">
           <p className="text-muted-foreground text-xs">
@@ -136,6 +136,18 @@ function ContextExclusions() {
         save();
       }}
     >
+      <div>
+        <h3 className="mb-1 text-sm font-medium">
+          <Trans>Apps and websites dictation never reads</Trans>
+        </h3>
+        <p className="text-muted-foreground text-xs">
+          <Trans>
+            Dictation reads the text around the cursor to fit what it types, and
+            reads fields and windows for the options above. It never reads the
+            apps and websites listed here.
+          </Trans>
+        </p>
+      </div>
       {stored === null && (
         <p role="alert" className="text-destructive text-xs">
           <Trans>

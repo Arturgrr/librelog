@@ -895,6 +895,10 @@ msgstr "Applying…"
 msgid "Approve Librelog's shortcuts in your desktop's prompt."
 msgstr "Approve Librelog's shortcuts in your desktop's prompt."
 
+#: src/settings/dictation-ai.tsx
+msgid "Apps and websites dictation never reads"
+msgstr "Apps and websites dictation never reads"
+
 #: src/stt/detect-events.ts
 msgid "Are you in a meeting?"
 msgstr "Are you in a meeting?"
@@ -2529,6 +2533,10 @@ msgstr "Dictation is unavailable in password fields and while Secure Keyboard En
 #: src/i18n/external-messages.ts
 msgid "Dictation is unavailable in password fields."
 msgstr "Dictation is unavailable in password fields."
+
+#: src/settings/dictation-ai.tsx
+msgid "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
+msgstr "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
 
 #: src/settings/dictation-shortcut.tsx
 msgid "Dictation shortcuts"
