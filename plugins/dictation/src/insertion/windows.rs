@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use windows::Win32::{
     System::{Com::*, Ole::*},
     UI::{Accessibility::*, Input::KeyboardAndMouse::*},
@@ -84,29 +86,74 @@ pub async fn capture() -> Result<String, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// How long typing waits for the shortcut's modifier keys to be released.
+const KEYS_RELEASE_WAIT: Duration = Duration::from_secs(2);
+const FIELD_CHANGED: &str =
+    "The focused text field changed. Copy your last dictation from Settings > Dictation.";
+const KEYS_HELD: &str = "Release the shortcut keys before inserting text. Copy your last dictation from Settings > Dictation.";
+/// Nothing reached the field.
+const BLOCKED: &str = "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation.";
+/// Part of the text may be in the field.
+const PARTLY_TYPED: &str = "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion.";
+
 pub async fn insert(target: String, text: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN].iter().any(|key| unsafe { GetAsyncKeyState(key.0 as i32) } < 0) {
-            if std::time::Instant::now() >= deadline {
-                return Err("Release the shortcut keys before inserting text. Copy your last dictation from Settings > Dictation.".into());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+    tauri::async_runtime::spawn_blocking(move || type_into(&target, &text))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The captured field is still the focused, editable one. Any UI
+/// Automation failure counts as a change.
+fn focused(target: &str) -> bool {
+    with_focused(|element| identity(&element)).is_ok_and(|focused| focused == target)
+}
+
+fn modifiers_held() -> bool {
+    [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN]
+        .iter()
+        .any(|key| unsafe { GetAsyncKeyState(i32::from(key.0)) } < 0)
+}
+
+fn type_into(target: &str, text: &str) -> Result<(), String> {
+    // Fail at once for a field that changed rather than after the key wait.
+    if !focused(target) {
+        return Err(FIELD_CHANGED.into());
+    }
+    let deadline = Instant::now() + KEYS_RELEASE_WAIT;
+    while modifiers_held() {
+        if Instant::now() >= deadline {
+            return Err(KEYS_HELD.into());
         }
-        with_focused(|element| {
-        if identity(&element)? != target {
-            return Err("The focused text field changed. Copy your last dictation from Settings > Dictation.".into());
-        }
-        let inputs: Vec<INPUT> = text.encode_utf16().flat_map(|unit| {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let inputs: Vec<INPUT> = text
+        .encode_utf16()
+        .flat_map(|unit| {
             [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP].map(|flags| INPUT {
                 r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 { ki: KEYBDINPUT { wScan: unit, dwFlags: flags, ..Default::default() } },
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wScan: unit,
+                        dwFlags: flags,
+                        ..Default::default()
+                    },
+                },
             })
-        }).collect();
-        if unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) } != inputs.len() as u32 {
-            return Err("Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion.".into());
-        }
-        Ok(())
         })
-    }).await.map_err(|e| e.to_string())?
+        .collect();
+    // Typed keys combine with a modifier pressed since the wait, and focus
+    // may have moved during it.
+    if modifiers_held() {
+        return Err(KEYS_HELD.into());
+    }
+    if !focused(target) {
+        return Err(FIELD_CHANGED.into());
+    }
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) } as usize;
+    match sent {
+        sent if sent == inputs.len() => Ok(()),
+        // Elevated apps refuse synthesized input from a normal process.
+        0 => Err(BLOCKED.into()),
+        _ => Err(PARTLY_TYPED.into()),
+    }
 }

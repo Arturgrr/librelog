@@ -19,6 +19,9 @@ import {
   InputGroupInput,
 } from "@anlg/ui/components/ui/input-group";
 
+import { DictionaryReplacements, DictionarySuggestions } from "./replacements";
+
+import { parseSuggestions, settleSuggestion } from "~/dictation/learning";
 import { SettingsPageTitle } from "~/settings/page-title";
 import { useSetSettingValue } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
@@ -27,11 +30,37 @@ import { normalizeKeywordList, parseDictionaryTermsText } from "~/stt/keywords";
 export function SettingsDictionary() {
   const terms = useConfigValue("personalization_dictionary_terms");
   const setTerms = useSetSettingValue("personalization_dictionary_terms");
+  const replacements = useConfigValue(
+    "personalization_dictionary_replacements",
+  );
+  const setReplacements = useSetSettingValue(
+    "personalization_dictionary_replacements",
+  );
+  const suggestions = parseSuggestions(
+    useConfigValue("dictation_dictionary_suggestions"),
+  ).terms;
+  const settle = (term: string) => {
+    void settleSuggestion(term).catch((error: unknown) => {
+      console.error("[dictionary] suggestion was not settled", error);
+    });
+  };
 
   return (
     <div className="flex flex-col gap-8">
       <SettingsPageTitle title={<Trans>Dictionary</Trans>} />
       <DictionarySettings terms={terms} onSave={setTerms} />
+      <DictionarySuggestions
+        suggestions={suggestions}
+        onAdd={(term) => {
+          setTerms(JSON.stringify(normalizeKeywordList([...terms, term])));
+          settle(term);
+        }}
+        onDismiss={settle}
+      />
+      <DictionaryReplacements
+        replacements={replacements}
+        onSave={setReplacements}
+      />
     </div>
   );
 }

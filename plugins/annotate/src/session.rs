@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anlg_annotate_core::retention::Preset;
 use serde::{Deserialize, Serialize};
@@ -26,6 +26,10 @@ pub type Emit = Arc<dyn Fn(AnnotateEvent) + Send + Sync>;
 /// block. The pen shortcut is handed over the same way: held from the
 /// moment the session records (`true`) until it stops or is discarded.
 pub type Escape = Arc<dyn Fn(bool) + Send + Sync>;
+/// Keeps the app from being napped or throttled until the guard it returns
+/// is dropped: from the recording's start until its annotation is finalized
+/// or thrown away, so preparing it runs at full speed whatever is in front.
+pub type Awake = Arc<dyn Fn() -> Box<dyn Send> + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +75,7 @@ struct Active {
     narration: Narration,
     poll: CancellationToken,
     start: StartReply,
+    awake: Option<Box<dyn Send>>,
 }
 
 struct Finishing {
@@ -82,16 +87,21 @@ struct Finishing {
     discard: bool,
     /// Finalizing failed once; the next failure gives up.
     retried: bool,
+    /// When it was stopped, for the log.
+    since: Instant,
+    _awake: Option<Box<dyn Send>>,
 }
 
 impl Finishing {
-    fn new(id: String, dir: PathBuf) -> Self {
+    fn new(active: &mut Active) -> Self {
         Self {
-            id,
-            dir,
+            id: active.id.clone(),
+            dir: active.dir.clone(),
             stop: None,
             discard: false,
             retried: false,
+            since: Instant::now(),
+            _awake: active.awake.take(),
         }
     }
 }
@@ -113,6 +123,7 @@ pub struct Session {
     emit: Emit,
     escape: Escape,
     pen: Escape,
+    awake: Awake,
     state: Mutex<State>,
     retention: Mutex<Option<Preset>>,
 }
@@ -165,6 +176,7 @@ impl Session {
         emit: Emit,
         escape: Escape,
         pen: Escape,
+        awake: Awake,
     ) -> Self {
         Self {
             native,
@@ -173,6 +185,7 @@ impl Session {
             emit,
             escape,
             pen,
+            awake,
             state: Mutex::new(State::Idle),
             retention: Mutex::new(None),
         }
@@ -315,6 +328,7 @@ impl Session {
             narration,
             poll: poll.clone(),
             start,
+            awake: Some((self.awake)()),
         });
         let cancelled = {
             let mut state = self.lock();
@@ -410,23 +424,22 @@ impl Session {
             if !matches!(&*state, State::Recording(_)) {
                 return Err(Error::NotRecording);
             }
-            let State::Recording(active) = std::mem::replace(&mut *state, State::Idle) else {
+            let State::Recording(mut active) = std::mem::replace(&mut *state, State::Idle) else {
                 unreachable!()
             };
-            *state = State::Finishing(Box::new(Finishing::new(
-                active.id.clone(),
-                active.dir.clone(),
-            )));
+            *state = State::Finishing(Box::new(Finishing::new(&mut active)));
             (self.escape)(false);
             (self.pen)(false);
             active
         };
+        let stopping = Instant::now();
         let Active {
             id,
             dir,
             narration,
             poll,
             start,
+            ..
         } = *active;
         poll.cancel();
         let native = self.native.clone();
@@ -451,6 +464,10 @@ impl Session {
                 }
             },
         };
+        tracing::info!(
+            ms = stopping.elapsed().as_millis() as u64,
+            "annotate stopped; waiting for its transcript"
+        );
         let audio_path = narrated
             .filter(|narrated| narrated.samples > 0)
             .map(|narrated| narrated.path.to_string_lossy().into_owned());
@@ -522,16 +539,19 @@ impl Session {
         id: &str,
         transcript: Option<TranscriptInput>,
     ) -> Result<Finalized, Error> {
-        let (dir, result, stopped) = {
+        let (dir, result, stopped, since) = {
             let mut state = self.lock();
             match &mut *state {
                 State::Finishing(finishing) if finishing.id == id => match finishing.stop.take() {
-                    Some((result, stopped)) => (finishing.dir.clone(), result, stopped),
+                    Some((result, stopped)) => {
+                        (finishing.dir.clone(), result, stopped, finishing.since)
+                    }
                     None => return Err(Error::Busy("finishing")),
                 },
                 _ => return Err(Error::UnknownAnnotation),
             }
         };
+        let finalizing = Instant::now();
         let native = self.native.clone();
         let finalized = {
             let dir = dir.clone();
@@ -562,6 +582,12 @@ impl Session {
                 *state = State::Idle;
                 drop(state);
                 self.capsule(if finalized.is_ok() { "ready" } else { "failed" });
+                tracing::info!(
+                    finalize_ms = finalizing.elapsed().as_millis() as u64,
+                    since_stop_ms = since.elapsed().as_millis() as u64,
+                    ok = finalized.is_ok(),
+                    "annotate finalized"
+                );
                 finalized
             }
         }
@@ -592,11 +618,8 @@ impl Session {
                     #[cfg(not(target_os = "linux"))]
                     return Ok(());
                 }
-                State::Recording(active) => {
-                    *state = State::Finishing(Box::new(Finishing::new(
-                        active.id.clone(),
-                        active.dir.clone(),
-                    )));
+                State::Recording(mut active) => {
+                    *state = State::Finishing(Box::new(Finishing::new(&mut active)));
                     (self.escape)(false);
                     (self.pen)(false);
                     Taken::Recording(active)
@@ -729,6 +752,16 @@ mod tests {
         /// What the host told the capsule after each stop.
         capsules: Mutex<Vec<String>>,
         pens: AtomicUsize,
+        /// The app is being kept awake while this is above zero.
+        awake: AtomicUsize,
+    }
+
+    struct Awake(Arc<Fake>);
+
+    impl Drop for Awake {
+        fn drop(&mut self) {
+            self.0.awake.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 
     impl Native for Fake {
@@ -896,6 +929,7 @@ mod tests {
         let sink = events.clone();
         let escape = escapes.clone();
         let pen = pens.clone();
+        let awake = fake.clone();
         let session = Arc::new(Session::new(
             fake.clone(),
             Arc::new(FixedClock),
@@ -903,6 +937,10 @@ mod tests {
             Arc::new(move |event| sink.lock().unwrap().push(event)),
             Arc::new(move |on| escape.lock().unwrap().push(on)),
             Arc::new(move |on| pen.lock().unwrap().push(on)),
+            Arc::new(move || {
+                awake.awake.fetch_add(1, Ordering::SeqCst);
+                Box::new(Awake(awake.clone()))
+            }),
         ));
         (session, fake, events, escapes, pens)
     }
@@ -1190,6 +1228,29 @@ mod tests {
         session.start(Arc::new(Mic), None, labels()).await.unwrap();
         session.cancel().await.unwrap();
         assert_eq!(*pens.lock().unwrap(), [true, false, true, false]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_app_stays_awake_from_the_recording_until_its_annotation_is_finalized_or_discarded()
+    {
+        let root = tempfile::tempdir().unwrap();
+        let (session, fake, _) = session(root.path());
+        let awake = || fake.awake.load(Ordering::SeqCst);
+        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        assert_eq!(awake(), 1);
+        session.stop().await.unwrap();
+        // Transcribing the narration happens in between: still awake.
+        assert_eq!(awake(), 1);
+        session.finalize(&started.id, None).await.unwrap();
+        assert_eq!(awake(), 0);
+
+        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.stop().await.unwrap();
+        session.cancel().await.unwrap();
+        assert_eq!(awake(), 0);
+        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.cancel().await.unwrap();
+        assert_eq!(awake(), 0);
     }
 
     #[cfg(unix)]

@@ -12,12 +12,26 @@ Default permissions for the plugin
 - `allow-discard-recording`
 - `allow-check-insertion`
 - `allow-insert-text`
+- `allow-insert-dictation`
+- `allow-read-dictation-field`
 - `allow-frontmost-app`
 - `allow-keep-history-audio`
 - `allow-history-audio-path`
 - `allow-delete-history-audio`
 - `allow-prune-history-audio`
 - `allow-request-media-control`
+- `allow-apply-dictation-replacements`
+- `allow-fit-dictation-text`
+- `allow-join-dictation-transcript`
+- `allow-prepare-dictation-refinement`
+- `allow-resolve-dictation-refinement`
+- `allow-decide-dictation-context`
+- `allow-may-read-dictation-for-fitting`
+- `allow-extract-dictation-terms`
+- `allow-rank-dictation-terms`
+- `allow-record-dictation-terms`
+- `allow-suggest-dictation-terms`
+- `allow-kept-dictation-text`
 
 ## Permission Table
 
@@ -27,6 +41,32 @@ Default permissions for the plugin
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`dictation:allow-apply-dictation-replacements`
+
+</td>
+<td>
+
+Enables the apply_dictation_replacements command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-apply-dictation-replacements`
+
+</td>
+<td>
+
+Denies the apply_dictation_replacements command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -83,6 +123,32 @@ Denies the check_insertion command without any pre-configured scope.
 <tr>
 <td>
 
+`dictation:allow-decide-dictation-context`
+
+</td>
+<td>
+
+Enables the decide_dictation_context command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-decide-dictation-context`
+
+</td>
+<td>
+
+Denies the decide_dictation_context command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-delete-history-audio`
 
 </td>
@@ -128,6 +194,58 @@ Enables the discard_recording command without any pre-configured scope.
 <td>
 
 Denies the discard_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-extract-dictation-terms`
+
+</td>
+<td>
+
+Enables the extract_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-extract-dictation-terms`
+
+</td>
+<td>
+
+Denies the extract_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-fit-dictation-text`
+
+</td>
+<td>
+
+Enables the fit_dictation_text command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-fit-dictation-text`
+
+</td>
+<td>
+
+Denies the fit_dictation_text command without any pre-configured scope.
 
 </td>
 </tr>
@@ -213,6 +331,32 @@ Denies the hud command without any pre-configured scope.
 <tr>
 <td>
 
+`dictation:allow-insert-dictation`
+
+</td>
+<td>
+
+Enables the insert_dictation command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-insert-dictation`
+
+</td>
+<td>
+
+Denies the insert_dictation command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-insert-text`
 
 </td>
@@ -232,6 +376,32 @@ Enables the insert_text command without any pre-configured scope.
 <td>
 
 Denies the insert_text command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-join-dictation-transcript`
+
+</td>
+<td>
+
+Enables the join_dictation_transcript command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-join-dictation-transcript`
+
+</td>
+<td>
+
+Denies the join_dictation_transcript command without any pre-configured scope.
 
 </td>
 </tr>
@@ -265,6 +435,84 @@ Denies the keep_history_audio command without any pre-configured scope.
 <tr>
 <td>
 
+`dictation:allow-kept-dictation-text`
+
+</td>
+<td>
+
+Enables the kept_dictation_text command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-kept-dictation-text`
+
+</td>
+<td>
+
+Denies the kept_dictation_text command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-may-read-dictation-for-fitting`
+
+</td>
+<td>
+
+Enables the may_read_dictation_for_fitting command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-may-read-dictation-for-fitting`
+
+</td>
+<td>
+
+Denies the may_read_dictation_for_fitting command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-prepare-dictation-refinement`
+
+</td>
+<td>
+
+Enables the prepare_dictation_refinement command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-prepare-dictation-refinement`
+
+</td>
+<td>
+
+Denies the prepare_dictation_refinement command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-prune-history-audio`
 
 </td>
@@ -291,6 +539,84 @@ Denies the prune_history_audio command without any pre-configured scope.
 <tr>
 <td>
 
+`dictation:allow-rank-dictation-terms`
+
+</td>
+<td>
+
+Enables the rank_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-rank-dictation-terms`
+
+</td>
+<td>
+
+Denies the rank_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-read-dictation-field`
+
+</td>
+<td>
+
+Enables the read_dictation_field command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-read-dictation-field`
+
+</td>
+<td>
+
+Denies the read_dictation_field command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-record-dictation-terms`
+
+</td>
+<td>
+
+Enables the record_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-record-dictation-terms`
+
+</td>
+<td>
+
+Denies the record_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-request-media-control`
 
 </td>
@@ -310,6 +636,32 @@ Enables the request_media_control command without any pre-configured scope.
 <td>
 
 Denies the request_media_control command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-resolve-dictation-refinement`
+
+</td>
+<td>
+
+Enables the resolve_dictation_refinement command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-resolve-dictation-refinement`
+
+</td>
+<td>
+
+Denies the resolve_dictation_refinement command without any pre-configured scope.
 
 </td>
 </tr>
@@ -388,6 +740,32 @@ Enables the stop_recording command without any pre-configured scope.
 <td>
 
 Denies the stop_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-suggest-dictation-terms`
+
+</td>
+<td>
+
+Enables the suggest_dictation_terms command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-suggest-dictation-terms`
+
+</td>
+<td>
+
+Denies the suggest_dictation_terms command without any pre-configured scope.
 
 </td>
 </tr>

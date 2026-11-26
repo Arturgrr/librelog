@@ -36,6 +36,7 @@ import {
   type DictationEntry,
   DICTATION_HISTORY_RETENTIONS,
   type DictationHistoryRetention,
+  isFailedDictation,
   normalizeRetention,
   restoreDictationVersion,
 } from "./store";
@@ -76,6 +77,12 @@ export function SettingsDictationHistory() {
             Each dictation is saved on this computer with its date, the app it
             went to, the model that transcribed it, and its text. Your history
             never leaves this computer.
+          </Trans>
+        </p>
+        <p className="text-muted-foreground text-sm">
+          <Trans>
+            A dictation that could not be transcribed is kept with its audio for
+            24 hours, so you can retry it.
           </Trans>
         </p>
         <RetentionRow value={retention} onChange={setRetention} />
@@ -308,6 +315,7 @@ function HistoryItem({
   const copy = useMutation({ mutationFn: (text: string) => writeText(text) });
   const remove = useMutation({ mutationFn: () => deleteDictation(entry.id) });
   const text = entry.finalText || entry.rawText;
+  const failed = isFailedDictation(entry);
 
   return (
     <li className="border-border rounded-lg border">
@@ -328,7 +336,11 @@ function HistoryItem({
             {!entry.inserted && (
               <span className="text-destructive inline-flex items-center gap-1">
                 <Warning className="size-3" aria-hidden="true" />
-                <Trans>Not inserted</Trans>
+                {failed ? (
+                  <Trans>Not transcribed</Trans>
+                ) : (
+                  <Trans>Not inserted</Trans>
+                )}
               </span>
             )}
           </span>
@@ -336,24 +348,39 @@ function HistoryItem({
             className={cn([
               "text-sm break-words whitespace-pre-wrap",
               !expanded && "line-clamp-2",
+              failed && "text-muted-foreground",
             ])}
           >
-            {text}
+            {failed ? (
+              <Trans>
+                This dictation could not be transcribed. Retry it within 24
+                hours, before it is deleted.
+              </Trans>
+            ) : (
+              text
+            )}
           </span>
         </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t`Copy dictation`}
-          disabled={copy.isPending}
-          onClick={() => copy.mutate(text)}
-        >
-          {copy.isSuccess ? (
-            <Check className="size-3.5" aria-hidden="true" />
-          ) : (
-            <Copy className="size-3.5" aria-hidden="true" />
-          )}
-        </Button>
+        {failed ? (
+          <RetryFailed
+            entry={entry}
+            onRecovered={(next) => copy.mutate(next)}
+          />
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t`Copy dictation`}
+            disabled={copy.isPending}
+            onClick={() => copy.mutate(text)}
+          >
+            {copy.isSuccess ? (
+              <Check className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Copy className="size-3.5" aria-hidden="true" />
+            )}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -380,7 +407,7 @@ function HistoryItem({
           id={detailsId}
           className="border-border flex flex-col gap-4 border-t p-3"
         >
-          {entry.rawText !== entry.finalText && (
+          {entry.finalText && entry.rawText !== entry.finalText && (
             <dl className="flex flex-col gap-3 text-sm">
               <div className="flex flex-col gap-1">
                 <dt className="text-muted-foreground text-xs">
@@ -407,6 +434,54 @@ function HistoryItem({
         </div>
       )}
     </li>
+  );
+}
+
+/** Transcribes a failed dictation again with the selected model, then hands its text on. */
+function RetryFailed({
+  entry,
+  onRecovered,
+}: {
+  entry: DictationEntry;
+  onRecovered: (text: string) => void;
+}) {
+  const { t } = useLingui();
+  const { models, isLoading } = useRetranscriptionModels();
+  const retranscribe = useRetranscribe();
+  const [model] = models;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!model || retranscribe.isPending}
+        title={
+          !model && !isLoading
+            ? t`No installed or selected transcription model supports your languages.`
+            : undefined
+        }
+        onClick={() =>
+          model &&
+          retranscribe.mutate(
+            { entry, model },
+            { onSuccess: (text) => onRecovered(text) },
+          )
+        }
+      >
+        {retranscribe.isPending ? (
+          <CircleNotch className="size-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <ArrowClockwise className="size-3.5" aria-hidden="true" />
+        )}
+        <Trans>Retry</Trans>
+      </Button>
+      {retranscribe.isError && (
+        <p role="alert" className="text-destructive max-w-48 text-xs">
+          {localizeExternalMessage(retranscribe.error.message)}
+        </p>
+      )}
+    </div>
   );
 }
 

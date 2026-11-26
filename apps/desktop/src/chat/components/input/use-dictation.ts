@@ -6,6 +6,8 @@ import { commands as dictationCommands } from "@anlg/plugin-dictation";
 import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
+import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
+import { refineTranscript } from "~/dictation/refine";
 import { useConfigValue } from "~/shared/config";
 import { useTabs } from "~/store/zustand/tabs";
 import { useRunBatch } from "~/stt/useRunBatch";
@@ -26,6 +28,11 @@ export function useDictation({
   ).current;
   const runBatch = useRunBatch(transcriptionSessionId);
   const microphoneDevice = useConfigValue("microphone_device");
+  const cleanup = useConfigValue("dictation_cleanup");
+  const replacements = useConfigValue(
+    "personalization_dictionary_replacements",
+  );
+  const model = useLanguageModel();
   const [phase, setPhaseState] = useState<DictationPhase>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const phaseRef = useRef<DictationPhase>("idle");
@@ -168,8 +175,19 @@ export function useDictation({
       if (!transcript) {
         throw new Error("No speech was detected in the audio.");
       }
+      // The composer has no selection to edit by voice: cleanup and saved
+      // replacements only.
+      const refined = await refineTranscript({
+        operationId: transcriptionSessionId,
+        text: transcript,
+        terms: [],
+        options: { cleanup, voiceEdit: false, context: false, replacements },
+        field: null,
+        model,
+        signal: new AbortController().signal,
+      });
       if (mountedRef.current && generation === generationRef.current) {
-        editorRef.current?.insertText(transcript);
+        editorRef.current?.insertText(refined.text);
       }
     } catch (error) {
       if (!mountedRef.current || generation !== generationRef.current) {
@@ -196,7 +214,10 @@ export function useDictation({
       }
     }
   }, [
+    cleanup,
     editorRef,
+    model,
+    replacements,
     runBatch,
     setPhase,
     stopElapsedTimer,

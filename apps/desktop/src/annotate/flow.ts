@@ -35,6 +35,11 @@ export type AnnotateDeps = {
   microphoneAuthorized: () => Promise<boolean>;
   /** The narration's words, or null when nothing was heard. */
   transcribe: (audioPath: string) => Promise<TranscriptInput | null>;
+  /**
+   * Starts loading the local model the narration is transcribed with and
+   * keeps it loaded until the returned release; never waits for the load.
+   */
+  holdModel: () => () => void;
   copy: (text: string) => Promise<void>;
   /** Pastes into the frontmost app. */
   insert: (text: string) => Promise<void>;
@@ -85,6 +90,11 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Milliseconds since `start`, for the timings the log keeps. */
+function since(start: number) {
+  return Math.round(performance.now() - start);
+}
+
 /**
  * A path as Terminal's drag and drop types it: spaces and the shell's
  * special characters behind a backslash, which terminal agents such as
@@ -119,6 +129,13 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
   let stopWhenStarted = false;
   // The transcript of a recording whose finalize is retried once.
   let heard: { id: string; transcript: TranscriptInput | null } | null = null;
+  // When the annotation being prepared was stopped, for the log.
+  let stoppedAt = performance.now();
+  // Lets the local model go idle again once the annotation is done.
+  let releaseModel: (() => void) | null = null;
+  const holdModel = () => {
+    releaseModel ??= deps.holdModel();
+  };
   // The annotation being prepared, from its stop until it is finalized
   // (null when it failed or was discarded), for paste last to wait on.
   let preparing: {
@@ -149,6 +166,8 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     work.catch((error) => console.error("[annotate]", error));
 
   const toIdle = () => {
+    releaseModel?.();
+    releaseModel = null;
     endPreparing(null);
     finishing = null;
     stopWhenStarted = false;
@@ -181,6 +200,8 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
         deps.notify.microphoneDenied();
         return toIdle();
       }
+      // Loads while it records, so the narration is transcribed at once.
+      holdModel();
       await deps.plugin.start();
       set("recording");
       await quietly(deps.setRecording(true));
@@ -224,10 +245,19 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     beginPreparing();
     set("transcribing");
     void quietly(deps.setRecording(false));
+    const transcribing = performance.now();
     const transcript = await transcribe(stopped);
+    console.info(
+      `[annotate] ${stopped.id} transcribed in ${since(transcribing)} ms (${stopped.durationMs} ms of narration, ${transcript ? "words" : "no words"})`,
+    );
     try {
+      const finalizing = performance.now();
       const finalized = await deps.plugin.finalize(stopped.id, transcript);
       heard = null;
+      console.info(
+        `[annotate] ${stopped.id} finalized in ${since(finalizing)} ms, ready ${since(stoppedAt)} ms after the stop`,
+      );
+      // Before paste last may use the clipboard to paste it.
       await quietly(deps.copy(finalized.summary));
       endPreparing(finalized);
       deps.notify.ready(finalized);
@@ -255,9 +285,13 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     if (phase !== "recording") return;
     set("finishing");
     beginPreparing();
+    stoppedAt = performance.now();
     let stopped: Stopped;
     try {
       stopped = await deps.plugin.stop();
+      console.info(
+        `[annotate] ${stopped.id} stopped in ${since(stoppedAt)} ms`,
+      );
     } catch (error) {
       const message = messageOf(error);
       if (message !== NOT_RECORDING && message !== CANCELLED) {
@@ -275,11 +309,14 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     try {
       const status = await deps.plugin.status();
       if (status.phase === "recording") {
+        holdModel();
         // Nothing is being prepared: paste last must not wait on it.
         endPreparing(null);
         set("recording");
         await quietly(deps.setRecording(true));
       } else if (status.phase === "finishing" && status.stopped) {
+        if (finishing !== status.stopped.id) stoppedAt = performance.now();
+        holdModel();
         await finish(status.stopped);
       } else if (status.phase === "idle") {
         toIdle();
@@ -293,6 +330,7 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
   async function onEvent(event: AnnotateEvent) {
     switch (event.type) {
       case "stopped":
+        if (finishing !== event.stopped.id) stoppedAt = performance.now();
         return finish(event.stopped);
       case "discarded":
         return toIdle();
@@ -334,12 +372,22 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
 
   /**
    * The annotation being prepared, if any: also one the capsule stopped
-   * whose event has not arrived yet, which the plugin already finishes.
+   * whose event has not arrived yet, and one the plugin finishes while this
+   * flow lost track of it, which it then takes back up rather than paste
+   * the one before.
    */
   async function beingPrepared() {
-    if (preparing || phase !== "recording") return preparing;
+    if (preparing) return preparing;
     const status = await deps.plugin.status();
-    return status.phase === "finishing" ? beginPreparing() : null;
+    if (status.phase !== "finishing") return null;
+    const waiting = beginPreparing();
+    if (phase === "idle" && status.stopped) {
+      console.warn(
+        `[annotate] ${status.stopped.id} was stopped without this flow; preparing it now`,
+      );
+      void recover();
+    }
+    return waiting;
   }
 
   /**
@@ -348,30 +396,43 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
    * one before it.
    */
   async function pasteLast() {
+    const pressed = performance.now();
     try {
       const waiting = await beingPrepared();
       if (waiting) {
+        console.info(
+          "[annotate] paste last waits for the annotation being prepared",
+        );
         const ready = await Promise.race([
           waiting.done,
           deps.sleep(PASTE_WAIT_MS).then(() => undefined),
         ]);
-        if (ready === undefined) return deps.notify.stillPreparing();
+        if (ready === undefined) {
+          console.warn(
+            `[annotate] paste last gave up after ${since(pressed)} ms`,
+          );
+          return deps.notify.stillPreparing();
+        }
         // Its failure or discard was already told.
         if (ready === null) return;
-        return await paste(ready);
+        return await paste(ready, pressed);
       }
       const latest = await deps.plugin.latest();
       if (!latest) return deps.notify.nothingToPaste();
-      await paste(latest);
+      await paste(latest, pressed);
     } catch (error) {
       deps.notify.error(error);
     }
   }
 
-  async function paste(finalized: Finalized) {
+  async function paste(finalized: Finalized, pressed = performance.now()) {
+    const waited = since(pressed);
     await deps.insert(shellEscapePath(finalized.contactSheet));
     await deps.sleep(PASTE_GAP_MS);
     await deps.insert(finalized.summary);
+    console.info(
+      `[annotate] ${finalized.id} pasted in ${since(pressed)} ms (${waited} ms waiting for it)`,
+    );
   }
 
   return {

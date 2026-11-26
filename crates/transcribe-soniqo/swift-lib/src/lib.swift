@@ -514,6 +514,8 @@ private actor SoniqoBridge {
   private var modelTasks: [SpeechModelKind: ModelLoad] = [:]
   private var modelEvictionTasks: [SpeechModelKind: Task<Void, Never>] = [:]
   private var modelEvictionGenerations: [SpeechModelKind: UInt64] = [:]
+  /// Models kept loaded until then, idle or not, for a recording transcribed when it stops.
+  private var modelHolds: [SpeechModelKind: Date] = [:]
   private var resettingModels: Set<SpeechModelKind> = []
   private var modelResetWaiters: [SpeechModelKind: [CheckedContinuation<Void, Never>]] = [:]
   private var nextModelLoadGeneration: UInt64 = 0
@@ -535,6 +537,26 @@ private actor SoniqoBridge {
 
   func diarizationCacheDirectory() -> String {
     SpeechModelKind.community1CacheDirectoryPath()
+  }
+
+  /// Loads the model and keeps it for `seconds`, idle or not; 0 lets it go idle from now.
+  func holdModel(modelId: String, seconds: Double) async -> Bool {
+    guard let kind = SpeechModelKind.resolve(modelId) else {
+      return false
+    }
+    guard seconds > 0 else {
+      modelHolds[kind] = nil
+      markModelIdle(kind)
+      return true
+    }
+    modelHolds[kind] = Date().addingTimeInterval(seconds)
+    do {
+      _ = try await ensureModelLoaded(kind)
+    } catch {
+      return false
+    }
+    markModelIdle(kind)
+    return true
   }
 
   func modelDownloadStateJSON(modelId: String) -> String {
@@ -1187,9 +1209,11 @@ private actor SoniqoBridge {
     nextModelEvictionGeneration &+= 1
     let generation = nextModelEvictionGeneration
     modelEvictionGenerations[kind] = generation
+    let held = max(0, modelHolds[kind]?.timeIntervalSinceNow ?? 0)
+    let delay = SoniqoBridge.modelIdleEvictionDelayNanoseconds + UInt64(held * 1_000_000_000)
     modelEvictionTasks[kind] = Task.detached(priority: .utility) {
       do {
-        try await Task.sleep(nanoseconds: SoniqoBridge.modelIdleEvictionDelayNanoseconds)
+        try await Task.sleep(nanoseconds: delay)
       } catch {
         return
       }
@@ -1292,6 +1316,13 @@ public func _soniqo_model_start_download(modelId: SRString) -> Bool {
 public func _soniqo_model_reset(modelId: SRString) -> Bool {
   waitForValue {
     await SoniqoBridge.shared.resetModel(modelId: modelId.toString())
+  }
+}
+
+@_cdecl("_soniqo_model_hold")
+public func _soniqo_model_hold(modelId: SRString, seconds: Double) -> Bool {
+  waitForValue {
+    await SoniqoBridge.shared.holdModel(modelId: modelId.toString(), seconds: seconds)
   }
 }
 

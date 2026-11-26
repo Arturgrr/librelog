@@ -12,6 +12,7 @@
 //! only while the lane is idle: it never waits for an insertion, so the
 //! microphone opens at once, and never disturbs one.
 
+pub mod field;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
@@ -47,6 +48,110 @@ pub async fn insert(text: String) -> Result<(), String> {
     insert_in(&LANE, &Native, text).await
 }
 
+/// How a dictation's text goes into the focused field.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum InsertMode {
+    /// Typed at the caret, spaced and cased for the text before it where that may be read.
+    Fit,
+    /// Typed over the selection a voice edit rewrote, only while the field still reads as it
+    /// did then.
+    ReplaceSelection { fingerprint: String },
+}
+
+/// Inserts a dictation where the focus is when its turn comes; returns what was typed.
+pub async fn insert_dictation(
+    text: String,
+    mode: InsertMode,
+    exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
+) -> Result<String, String> {
+    prepared_insert_in(&LANE, &Native, async move {
+        let source = source().await;
+        match mode {
+            InsertMode::Fit => Ok(field::fit(&source, &text, exclusions.as_ref()).await),
+            InsertMode::ReplaceSelection { fingerprint } => {
+                field::check_selection(&source, &fingerprint).await?;
+                Ok(text)
+            }
+        }
+    })
+    .await
+}
+
+/// The focused field as a dictation starts, read only as far as `request` and the privacy
+/// decision allow.
+pub async fn read_field(request: field::FieldRequest) -> field::DictationField {
+    field::read(&source().await, &request).await
+}
+
+#[cfg(target_os = "macos")]
+async fn source() -> impl field::FieldSource {
+    MacField
+}
+
+#[cfg(target_os = "linux")]
+async fn source() -> impl field::FieldSource {
+    linux::focused_field().await
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+async fn source() -> impl field::FieldSource {
+    field::Unreadable
+}
+
+#[cfg(target_os = "macos")]
+struct MacField;
+
+#[cfg(target_os = "macos")]
+impl field::FieldSource for MacField {
+    async fn facts(&self) -> Option<anlg_dictation_core::context::WindowFacts> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Facts {
+            bundle_id: Option<String>,
+            app_name: Option<String>,
+            title: Option<String>,
+            secure: bool,
+        }
+        let facts = tauri::async_runtime::spawn_blocking(anlg_dictation_ui_macos::field_facts)
+            .await
+            .ok()??;
+        let facts: Facts = serde_json::from_str(&facts).ok()?;
+        let browser = facts
+            .bundle_id
+            .as_deref()
+            .is_some_and(anlg_dictation_core::context::is_browser);
+        Some(anlg_dictation_core::context::WindowFacts {
+            bundle_id: facts.bundle_id,
+            app_name: facts.app_name,
+            title: facts.title,
+            secure_field: Some(facts.secure),
+            // Accessibility can't tell a private browser window from another, so a browser's
+            // is unknown, which denies the read; other apps have no private windows.
+            private_window: (!browser).then_some(false),
+            browser_host: None,
+        })
+    }
+
+    async fn read(&self, deep: bool) -> Option<field::FieldRead> {
+        let read = tauri::async_runtime::spawn_blocking(move || {
+            anlg_dictation_ui_macos::field_read(field::FIELD_WINDOW, deep)
+        })
+        .await
+        .ok()??;
+        serde_json::from_str(&read).ok()
+    }
+
+    async fn window_text(&self, max_chars: usize) -> Option<String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            anlg_dictation_ui_macos::window_text(max_chars)
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+}
+
 trait Focus {
     /// Reads where text would go and checks it can; returns that target.
     fn capture(&self) -> impl Future<Output = Result<String, String>> + Send;
@@ -68,11 +173,27 @@ async fn check_in(lane: &Mutex<()>, focus: &impl Focus) -> Result<(), String> {
 }
 
 async fn insert_in(lane: &Mutex<()>, focus: &impl Focus, text: String) -> Result<(), String> {
+    prepared_insert_in(lane, focus, std::future::ready(Ok(text)))
+        .await
+        .map(drop)
+}
+
+/// Inserts what `prepare` settles on once the focus is read, inside the insertion's turn, so it
+/// reads the field the text goes into; returns that text.
+async fn prepared_insert_in(
+    lane: &Mutex<()>,
+    focus: &impl Focus,
+    prepare: impl Future<Output = Result<String, String>>,
+) -> Result<String, String> {
     let _turn = lane.lock().await;
     let target = focus.capture().await?;
-    focus.insert(target, text).await?;
+    let text = prepare.await?;
+    if text.is_empty() {
+        return Ok(text);
+    }
+    focus.insert(target, text.clone()).await?;
     let _ = tokio::time::timeout(PASTE_READ_TIMEOUT, focus.paste_read()).await;
-    Ok(())
+    Ok(text)
 }
 
 struct Native;

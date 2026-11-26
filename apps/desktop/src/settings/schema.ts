@@ -101,6 +101,51 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "history_keep_audio"],
     default: false as boolean,
   },
+  // Cleans up a finished dictation with the selected language model.
+  dictation_cleanup: {
+    type: "boolean",
+    path: ["dictation", "cleanup"],
+    default: false as boolean,
+  },
+  // A dictation over selected text is an instruction to edit it.
+  dictation_voice_edit: {
+    type: "boolean",
+    path: ["dictation", "voice_edit"],
+    default: false as boolean,
+  },
+  // Reads the window being dictated into, to spell its names and terms.
+  dictation_context: {
+    type: "boolean",
+    path: ["dictation", "context"],
+    default: false as boolean,
+  },
+  // JSON `{ apps: string[], websites: string[] }` kept out of context; see
+  // `useConfigValue`, which reads an unreadable value as null.
+  dictation_context_exclusions: {
+    type: "string",
+    path: ["dictation", "context_exclusions"],
+    default: "" as string,
+  },
+  // Learns which Dictionary terms are used and suggests new ones from
+  // corrections.
+  dictation_learning: {
+    type: "boolean",
+    path: ["dictation", "learning"],
+    default: false as boolean,
+  },
+  // Opaque blob owned by the dictation plugin's `record_dictation_terms`.
+  dictation_term_weights: {
+    type: "string",
+    path: ["dictation", "term_weights"],
+    default: "" as string,
+  },
+  // JSON `{ terms: string[], dismissed: string[] }`: suggestions waiting for
+  // review, and those already settled so they aren't offered again.
+  dictation_dictionary_suggestions: {
+    type: "string",
+    path: ["dictation", "dictionary_suggestions"],
+    default: "" as string,
+  },
   annotate_enabled: {
     type: "boolean",
     path: ["annotate", "enabled"],
@@ -474,6 +519,12 @@ export const SETTING_DEFINITIONS = {
   personalization_dictionary_terms: {
     type: "string",
     path: ["personalization", "dictionary_terms"],
+    default: "[]" as string,
+  },
+  // JSON `[{ from, to }]`: a phrase said in dictation and what is typed instead.
+  personalization_dictionary_replacements: {
+    type: "string",
+    path: ["personalization", "dictionary_replacements"],
     default: "[]" as string,
   },
   custom_summary_instructions: {

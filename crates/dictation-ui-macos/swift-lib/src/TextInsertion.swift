@@ -310,6 +310,130 @@ private final class DictationTarget {
 
 }
 
+/// The part of a field a read keeps around its selection.
+enum FieldWindow {
+  /// `window` UTF-16 units on each side of `selection`, clamped to the field and never splitting
+  /// a surrogate pair at either edge. `units` is the whole value when it was read.
+  static func bounds(units: [UInt16]?, length: Int, selection: CFRange, window: Int) -> (Int, Int) {
+    let end = selection.location + selection.length
+    var from = max(0, selection.location - window)
+    var to = min(length, end + window)
+    if let units {
+      if from > 0, from < selection.location, UTF16.isTrailSurrogate(units[from]) { from += 1 }
+      if to < units.count, to > end, UTF16.isLeadSurrogate(units[to - 1]) { to -= 1 }
+    }
+    return (from, to)
+  }
+}
+
+/// Reads of the focused text field and its window for the options a person turned on. Secure
+/// fields, Secure Keyboard Entry and Librelog's own windows are never read.
+private enum FieldReader {
+  /// The focused text element. Without `deep`, only where insertion itself asks Accessibility;
+  /// with it, also web views and Electron apps, whose accessibility trees cost to build.
+  static func element(deep: Bool) -> AXUIElement? {
+    guard AXIsProcessTrusted(), let focus = Focus.current(), !focus.isSecure else { return nil }
+    var element = focus.element
+    if element == nil, deep, focus.pid != getpid() {
+      let running = NSRunningApplication(processIdentifier: focus.pid)
+      let app = AppTraits(
+        bundleID: running?.bundleIdentifier, bundleURL: nil, isCurrentProcess: false)
+      // A terminal's Accessibility text is its screen, not a field.
+      if !app.isTerminal {
+        let application = AXUIElementCreateApplication(focus.pid)
+        AXUIElementSetMessagingTimeout(application, 1)
+        element = application.element(kAXFocusedUIElementAttribute)
+      }
+    }
+    guard let element, element.string(kAXSubroleAttribute) != kAXSecureTextFieldSubrole,
+      FocusedText(role: element.string(kAXRoleAttribute)).isTextControl
+        || element.isSettable(kAXSelectedTextAttribute)
+    else { return nil }
+    return element
+  }
+
+  static func facts() -> String {
+    guard AXIsProcessTrusted(), let focus = Focus.current() else { return "" }
+    let running = NSRunningApplication(processIdentifier: focus.pid)
+    let application = AXUIElementCreateApplication(focus.pid)
+    AXUIElementSetMessagingTimeout(application, 1)
+    var facts: [String: Any] = ["secure": focus.isSecure]
+    facts["bundleId"] = running?.bundleIdentifier
+    facts["appName"] = running?.localizedName
+    facts["title"] = application.element(kAXFocusedWindowAttribute)?.string(kAXTitleAttribute)
+    return json(facts)
+  }
+
+  /// The field around its selection, `window` UTF-16 units each side, as JSON; "" if unreadable.
+  static func read(window: Int, deep: Bool) -> String {
+    guard let element = element(deep: deep),
+      let range = element.range(kAXSelectedTextRangeAttribute)
+    else { return "" }
+    var length = element.int(kAXNumberOfCharactersAttribute)
+    var units: [UInt16]?
+    if length.map({ $0 <= 200_000 }) ?? true, let value = element.string(kAXValueAttribute) {
+      units = Array(value.utf16)
+      length = units?.count
+    }
+    guard let length, range.location >= 0, range.length >= 0, range.length <= 100_000,
+      range.location + range.length <= length
+    else { return "" }
+    let end = range.location + range.length
+    let (from, to) = FieldWindow.bounds(
+      units: units, length: length, selection: range, window: window)
+    func slice(_ start: Int, _ stop: Int) -> String? {
+      if start >= stop { return "" }
+      if let units { return String(decoding: units[start..<stop], as: UTF16.self) }
+      var part = CFRange(location: start, length: stop - start)
+      guard let value = AXValueCreate(.cfRange, &part) else { return nil }
+      var text: CFTypeRef?
+      guard
+        AXUIElementCopyParameterizedAttributeValue(
+          element, kAXStringForRangeParameterizedAttribute as CFString, value, &text) == .success
+      else { return nil }
+      return text as? String
+    }
+    guard let before = slice(from, range.location), let selected = slice(range.location, end),
+      let after = slice(end, to)
+    else { return "" }
+    return json([
+      "length": length, "start": range.location, "before": before, "selected": selected,
+      "after": after,
+    ])
+  }
+
+  /// Static text of the field's window in reading order, the newest `max` characters, within a
+  /// small time and node budget. Secure fields and the field itself are skipped.
+  static func windowText(max: Int) -> String {
+    guard let element = element(deep: true), let window = element.element(kAXWindowAttribute)
+    else { return "" }
+    let deadline = Date().addingTimeInterval(0.25)
+    var parts: [String] = []
+    var visited = 0
+    func walk(_ node: AXUIElement, depth: Int) {
+      guard visited < 800, depth < 30, Date() < deadline, !CFEqual(node, element) else { return }
+      visited += 1
+      AXUIElementSetMessagingTimeout(node, 0.2)
+      if node.string(kAXSubroleAttribute) == kAXSecureTextFieldSubrole { return }
+      if node.string(kAXRoleAttribute) == kAXStaticTextRole,
+        let text = node.string(kAXValueAttribute)?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !text.isEmpty
+      {
+        parts.append(text)
+      }
+      guard let children = node.value(kAXChildrenAttribute) as? [AXUIElement] else { return }
+      for child in children { walk(child, depth: depth + 1) }
+    }
+    walk(window, depth: 0)
+    return String(parts.joined(separator: "\n").suffix(max))
+  }
+
+  private static func json(_ object: [String: Any]) -> String {
+    guard let data = try? JSONSerialization.data(withJSONObject: object) else { return "" }
+    return String(decoding: data, as: UTF8.self)
+  }
+}
+
 private func onMain<T>(_ work: () -> T) -> T {
   Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
 }
@@ -326,6 +450,21 @@ public func insertDictationText(target: SRString, text: SRString) -> SRString {
   // Rust calls this off the main thread, so waiting here doesn't stall the indicator.
   guard KeyboardInput.waitForModifierRelease() else { return SRString(Message.shortcutHeld) }
   return SRString(onMain { DictationTarget.shared.insert(token: token, text: text) })
+}
+
+@_cdecl("_dictation_field_facts")
+public func dictationFieldFacts() -> SRString {
+  SRString(onMain { FieldReader.facts() })
+}
+
+@_cdecl("_dictation_field_read")
+public func dictationFieldRead(window: Int, deep: Bool) -> SRString {
+  SRString(onMain { FieldReader.read(window: window, deep: deep) })
+}
+
+@_cdecl("_dictation_window_text")
+public func dictationWindowText(max: Int) -> SRString {
+  SRString(onMain { FieldReader.windowText(max: max) })
 }
 
 /// Waits up to `timeout` seconds for the app to read what the last insertion pasted, so the next

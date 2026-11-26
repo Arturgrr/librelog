@@ -2,15 +2,22 @@ import type { EditorView } from "prosemirror-view";
 
 import { flushDatabaseWrites } from "~/db/write-queue";
 
-const mountedCanonicalEditors = new Map<string, Map<EditorView, () => void>>();
+const mountedCanonicalEditors = new Map<
+  string,
+  Map<
+    EditorView,
+    { flushPendingChanges: () => void; flushQueuedChange: () => void }
+  >
+>();
 
 export function registerCanonicalSessionEditor(
   sessionId: string,
   view: EditorView,
   flushPendingChanges: () => void,
+  flushQueuedChange: () => void,
 ) {
   const editors = mountedCanonicalEditors.get(sessionId) ?? new Map();
-  editors.set(view, flushPendingChanges);
+  editors.set(view, { flushPendingChanges, flushQueuedChange });
   mountedCanonicalEditors.set(sessionId, editors);
 }
 
@@ -29,9 +36,22 @@ export async function flushCanonicalSessionEditorChanges(
 ): Promise<void> {
   const editors = mountedCanonicalEditors.get(sessionId);
   if (editors) {
-    for (const flushPendingChanges of editors.values()) {
-      flushPendingChanges();
+    for (const editor of editors.values()) {
+      editor.flushPendingChanges();
     }
   }
   await flushDatabaseWrites([`session:${sessionId}`]);
+}
+
+/** Hands every mounted editor's queued local edit to the database write queue. */
+export function flushAllCanonicalSessionEditors() {
+  for (const editors of mountedCanonicalEditors.values()) {
+    for (const editor of editors.values()) {
+      try {
+        editor.flushQueuedChange();
+      } catch (error) {
+        console.error("Failed to flush a note editor", error);
+      }
+    }
+  }
 }

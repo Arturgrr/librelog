@@ -210,6 +210,45 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  /**
+   * Starts loading `model` (`null`: the internal server's, as for a picked
+   * file) and keeps it loaded for `holdMs` at most, for a recording that will
+   * be transcribed when it stops. Returns the hold to release, or `null` when
+   * there is nothing to hold: a cloud model, Apple's, or a model not served.
+   */
+  async holdModel(
+    model: LocalModel | null,
+    holdMs: number,
+  ): Promise<Result<string | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:local-stt|hold_model", {
+          model,
+          holdMs,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Ends a hold from `holdModel`; the model may then go idle.
+   */
+  async releaseModelHold(hold: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:local-stt|release_model_hold", {
+          hold,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/

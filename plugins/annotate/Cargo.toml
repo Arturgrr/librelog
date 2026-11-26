@@ -46,6 +46,8 @@ x11rb = { version = "0.13", features = ["shape", "xtest"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 anlg-tcc = { workspace = true, optional = true }
 libc = "0.2"
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true, features = ["NSProcessInfo", "NSString"] }
 
 [features]
 default = []

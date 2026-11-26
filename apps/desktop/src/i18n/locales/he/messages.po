@@ -367,6 +367,10 @@ msgstr ""
 msgid "A built-in model writes summaries and titles without sending your meetings anywhere."
 msgstr ""
 
+#: src/dictation/history/page.tsx
+msgid "A dictation that could not be transcribed is kept with its audio for 24 hours, so you can retry it."
+msgstr ""
+
 #: src/sidebar/folder-name-dialog.tsx
 msgid "A folder with this name already exists."
 msgstr ""
@@ -453,6 +457,7 @@ msgstr ""
 
 #: src/contacts/shared.tsx
 #: src/settings/dictionary/index.tsx
+#: src/settings/dictionary/replacements.tsx
 #: src/settings/note-types/index.tsx
 #: src/sidebar/toast/registry.tsx
 msgid "Add"
@@ -476,6 +481,10 @@ msgstr ""
 #. placeholder {0}: formatLanguageList(needsSystemSettings, i18n)
 #: src/settings/ai/stt/in-use.tsx
 msgid "Add {0} in System Settings > General > Language & Region to transcribe with {model}, or choose another model."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "Add {term}"
 msgstr ""
 
 #: src/settings/note-types/index.tsx
@@ -873,6 +882,10 @@ msgstr ""
 msgid "Approve Librelog's shortcuts in your desktop's prompt."
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Apps and websites dictation never reads"
+msgstr ""
+
 #: src/stt/detect-events.ts
 msgid "Are you in a meeting?"
 msgstr ""
@@ -1231,6 +1244,7 @@ msgstr ""
 #: src/settings/ai/llm/subscriptions/connect.tsx
 #: src/settings/capture-recent.tsx
 #: src/settings/dictionary/index.tsx
+#: src/settings/dictionary/replacements.tsx
 #: src/settings/general/storage/legacy-cleanup.tsx
 #: src/settings/note-types/index.tsx
 #: src/shared/note-details-form.tsx
@@ -1475,6 +1489,10 @@ msgstr ""
 msgid "Choose a working audio device and retry. Audio missing during this interruption cannot be recovered."
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Choose an AI model"
+msgstr ""
+
 #: src/templates/auto-format-examples-dialog.tsx
 msgid "Choose an AI model before generating a format."
 msgstr ""
@@ -1576,6 +1594,10 @@ msgstr ""
 
 #: src/settings/general/storage/legacy-cleanup.tsx
 msgid "Clean up legacy files?"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Clean up with AI"
 msgstr ""
 
 #: src/settings/general/storage/legacy-cleanup.tsx
@@ -1969,6 +1991,10 @@ msgstr ""
 
 #: src/session/hooks/useDeleteSession.ts
 msgid "Could not delete this note. Please try again."
+msgstr ""
+
+#: src/dictation/refine.ts
+msgid "Could not edit the selected text with your AI model. It was left unchanged."
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -2462,6 +2488,7 @@ msgid "Dictation"
 msgstr ""
 
 #: src/dictation/controller.ts
+#: src/dictation/refine.ts
 msgid "Dictation cancelled."
 msgstr ""
 
@@ -2492,6 +2519,10 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "Dictation is unavailable in password fields."
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
 msgstr ""
 
 #: src/settings/dictation-shortcut.tsx
@@ -2554,7 +2585,12 @@ msgstr ""
 
 #: src/i18n/component-labels.tsx
 #: src/i18n/native-labels.tsx
+#: src/settings/dictionary/replacements.tsx
 msgid "Dismiss"
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "Dismiss {term}"
 msgstr ""
 
 #: src/i18n/component-labels.tsx
@@ -2766,6 +2802,14 @@ msgstr ""
 
 #: src/chat/components/message/tool/edit-summary.tsx
 msgid "Edit memo — review tab opened"
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "Edit replacement: {from}"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Edit selected text by voice"
 msgstr ""
 
 #: src/chat/components/message/tool/edit-summary.tsx
@@ -3238,6 +3282,10 @@ msgstr ""
 
 #: src/settings/ai/llm/subscriptions/oauth.ts
 msgid "GitHub Copilot authorization failed."
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Gives the words you dictate most a better chance of being heard right, and suggests Dictionary words when you fix a dictated word in the field. What it learns stays on this computer."
 msgstr ""
 
 #: src/i18n/external-messages.ts
@@ -3738,6 +3786,10 @@ msgstr ""
 
 #: src/i18n/native-labels.tsx
 msgid "Later"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Learn from your corrections"
 msgstr ""
 
 #: src/chat/components/message/error.tsx
@@ -4498,6 +4550,14 @@ msgstr ""
 msgid "Needs setup"
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Never read these apps"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Never read these websites"
+msgstr ""
+
 #: src/settings/annotate.tsx
 msgid "New Annotate shortcut"
 msgstr ""
@@ -4614,6 +4674,10 @@ msgstr ""
 msgid "No AI model configured"
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "No AI model is selected, so dictation is typed as you said it."
+msgstr ""
+
 #: src/i18n/external-messages.ts
 msgid "No annotation is recording."
 msgstr ""
@@ -4700,6 +4764,10 @@ msgstr ""
 
 #: src/templates/template-icon-picker.tsx
 msgid "No icons found"
+msgstr ""
+
+#: src/dictation/history/page.tsx
+msgid "No installed or selected transcription model supports your languages."
 msgstr ""
 
 #: src/dictation/history/page.tsx
@@ -4809,6 +4877,7 @@ msgstr ""
 
 #: src/dictation/controller.ts
 #: src/dictation/history/queries.ts
+#: src/dictation/refine.ts
 msgid "No speech detected. Please try again."
 msgstr ""
 
@@ -4948,6 +5017,10 @@ msgstr ""
 msgid "Not supported on this platform."
 msgstr ""
 
+#: src/dictation/history/page.tsx
+msgid "Not transcribed"
+msgstr ""
+
 #: src/settings/dictation-indicator.tsx
 msgid "Notch"
 msgstr ""
@@ -5070,6 +5143,14 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "On-device models can take a few minutes to warm up before text appears."
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "One app name or bundle ID per line"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "One domain per line, like bank.example"
 msgstr ""
 
 #: src/settings/automations/workflow-builder.tsx
@@ -5655,6 +5736,10 @@ msgstr ""
 msgid "Reads images"
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Reads text from the window you dictate into so AI cleanup and edits spell its names and terms correctly. Password fields, password managers, private windows and the apps and websites below are never read, and nothing read is kept."
+msgstr ""
+
 #: src/onboarding/model-setup.tsx
 msgid "ready"
 msgstr ""
@@ -5912,12 +5997,20 @@ msgstr ""
 msgid "Remove queued message: {0}"
 msgstr ""
 
+#: src/settings/dictionary/replacements.tsx
+msgid "Remove replacement: {from}"
+msgstr ""
+
 #: src/settings/dictation-shortcut.tsx
 msgid "Remove shortcut {keys}"
 msgstr ""
 
 #: src/settings/automations/workflow-builder.tsx
 msgid "Remove step"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Removes filler words, fixes punctuation and applies the corrections you say (\"no, I mean Friday\") using your selected AI model. If the model is slow or fails, your words are typed as you said them."
 msgstr ""
 
 #: src/sidebar/folder-materials.tsx
@@ -5959,6 +6052,10 @@ msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Replace with..."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "Replacements"
 msgstr ""
 
 #: src/i18n/external-messages.ts
@@ -6068,6 +6165,7 @@ msgid "Resume listening"
 msgstr ""
 
 #: src/chat/components/message/error.tsx
+#: src/dictation/history/page.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 #: src/settings/general/storage/legacy-cleanup.tsx
 #: src/sidebar/toast/registry.tsx
@@ -6152,6 +6250,7 @@ msgstr ""
 #: src/capture/editor/toolbar.tsx
 #: src/capture/lifecycle.tsx
 #: src/settings/dictionary/index.tsx
+#: src/settings/dictionary/replacements.tsx
 #: src/settings/note-types/index.tsx
 #: src/shared/edit-note-dialog.tsx
 #: src/templates/auto-form.tsx
@@ -6410,6 +6509,14 @@ msgstr "בחר שפה"
 
 #: src/session/components/note-input/transcript/renderer/speaker-assign.tsx
 msgid "Select or type to add speaker"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Select text, then dictate an instruction such as \"make this shorter\" to rewrite it with your selected AI model. If the edit fails, the selection is left unchanged."
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Select text, then dictate an instruction such as \"make this shorter\" to rewrite it with your selected AI model. Not available on Windows yet."
 msgstr ""
 
 #: src/settings/general/timezone.tsx
@@ -7007,6 +7114,10 @@ msgstr ""
 msgid "Suggest what to ask next."
 msgstr ""
 
+#: src/settings/dictionary/replacements.tsx
+msgid "Suggested from your corrections"
+msgstr ""
+
 #: src/session/components/note-input/raw.tsx
 msgid "Suggested templates"
 msgstr ""
@@ -7201,6 +7312,10 @@ msgstr ""
 msgid "The annotation is still being prepared."
 msgstr ""
 
+#: src/i18n/external-messages.ts
+msgid "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation."
+msgstr ""
+
 #: src/ai/apple-foundation-model.ts
 msgid "The Apple Foundation Models experiment currently supports text only."
 msgstr ""
@@ -7224,6 +7339,14 @@ msgstr ""
 
 #: src/i18n/external-messages.ts
 msgid "The capture was kept at {path}, but {problem}"
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The dictation contains a character that cannot be inserted."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The dictation is empty or too long to insert."
 msgstr ""
 
 #: src/onboarding/model-setup.tsx
@@ -7304,6 +7427,10 @@ msgstr ""
 msgid "The page you're looking for doesn't exist."
 msgstr ""
 
+#: src/settings/dictionary/replacements.tsx
+msgid "The phrase can be at most 100 characters."
+msgstr ""
+
 #: src/store/zustand/listener/general-live.ts
 msgid "The previous recording needs recovery"
 msgstr ""
@@ -7322,6 +7449,14 @@ msgstr ""
 
 #: src/stt/useRunBatch.ts
 msgid "the selected speech-to-text provider"
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "The selected text changed before the edit was ready. It was left unchanged."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "The text to write can be at most 2,000 characters."
 msgstr ""
 
 #: src/session/components/note-input/transcript/actions.ts
@@ -7355,6 +7490,10 @@ msgstr ""
 
 #: src/i18n/native-labels.tsx
 msgid "There are currently no updates available."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "There is already a replacement for this phrase."
 msgstr ""
 
 #: src/ai/builtin-fetch.ts
@@ -7423,6 +7562,10 @@ msgstr ""
 
 #: src/session/components/version-history-dialog.tsx
 msgid "This device"
+msgstr ""
+
+#: src/dictation/history/page.tsx
+msgid "This dictation could not be transcribed. Retry it within 24 hours, before it is deleted."
 msgstr ""
 
 #: src/dictation/history/queries.ts
@@ -8075,6 +8218,10 @@ msgstr ""
 msgid "Use Touch ID or enter your password to view."
 msgstr ""
 
+#: src/settings/dictation-ai.tsx
+msgid "Use what's on screen"
+msgstr ""
+
 #: src/lock/screen.tsx
 msgid "Use Windows Hello face, PIN, or password to view."
 msgstr ""
@@ -8289,6 +8436,14 @@ msgstr ""
 msgid "When a meeting is transcribed live on this Mac, tell apart the people who shared your microphone or your computer's audio once it ends. Needs saved audio and takes a few minutes after each meeting."
 msgstr ""
 
+#: src/settings/dictionary/replacements.tsx
+msgid "When dictation hears a phrase, it writes your text instead, like \"my email\" for your address."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "When I say"
+msgstr ""
+
 #: src/settings/ai/stt/index.tsx
 msgid "When it transcribes"
 msgstr ""
@@ -8343,7 +8498,11 @@ msgid "Window"
 msgstr ""
 
 #: src/i18n/external-messages.ts
-msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation. Elevated apps may block text insertion."
+msgid "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation."
+msgstr ""
+
+#: src/i18n/external-messages.ts
+msgid "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion."
 msgstr ""
 
 #: src/settings/ai/stt/model-rows.tsx
@@ -8358,12 +8517,20 @@ msgstr ""
 msgid "Words per minute"
 msgstr ""
 
+#: src/settings/dictionary/replacements.tsx
+msgid "Words you fixed after dictating. Add them so dictation spells them right next time."
+msgstr ""
+
 #: src/settings/automations/workflow-builder.tsx
 msgid "Workflow"
 msgstr ""
 
 #: src/sidebar/settings-nav-groups.ts
 msgid "Workspace"
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "Write"
 msgstr ""
 
 #: src/automations/starters.tsx
@@ -8397,6 +8564,10 @@ msgstr ""
 
 #: src/onboarding/capture.tsx
 msgid "You can change this later in Settings › Screenshots."
+msgstr ""
+
+#: src/settings/dictionary/replacements.tsx
+msgid "You can keep up to 100 replacements."
 msgstr ""
 
 #: src/shared/note-details-form.tsx
@@ -8462,6 +8633,10 @@ msgstr ""
 
 #: src/settings/dictionary/index.tsx
 msgid "Your dictionary is empty"
+msgstr ""
+
+#: src/settings/dictation-ai.tsx
+msgid "Your exclusions could not be read, so no window is read until you save them again."
 msgstr ""
 
 #: src/shared/long-load-gate.tsx

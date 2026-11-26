@@ -85,7 +85,7 @@ describe("folder session queries", () => {
     ]);
     expect(mocks.execute).toHaveBeenCalledWith(
       expect.stringContaining("folder_path = ?"),
-      ["CS 101", "CS 101/%", "CS 101\\%"],
+      ["CS 101", "CS 101", "CS 101", "CS 101"],
     );
   });
 });

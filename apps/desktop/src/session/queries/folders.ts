@@ -142,8 +142,8 @@ function folderSessionFilterSql(folderFilter: string): {
   }
 
   return {
-    sql: "(folder_path = ? OR folder_path LIKE ? OR folder_path LIKE ?)",
-    params: [folderFilter, `${folderFilter}/%`, `${folderFilter}\\%`],
+    sql: "(folder_path = ? OR substr(folder_path, 1, length(?) + 1) IN (? || '/', ? || '\\'))",
+    params: [folderFilter, folderFilter, folderFilter, folderFilter],
   };
 }
 

@@ -75,6 +75,10 @@ const RETENTION_MS: Partial<Record<DictationHistoryRetention, number>> = {
   month: 30 * DAY_MS,
 };
 const AUDIO_FILE_NAME = /^[A-Za-z0-9-]{1,64}\.wav$/u;
+// A dictation that could not be transcribed is kept this long, with its
+// audio, so it can be retried.
+const FAILED_RETENTION_MS = DAY_MS;
+const HAS_TEXT = "(raw_text <> '' OR final_text <> '')";
 
 export function normalizeRetention(value: unknown): DictationHistoryRetention {
   return (
@@ -113,11 +117,18 @@ function isoOrNow(value: string) {
   return new Date(Number.isNaN(time) ? Date.now() : time).toISOString();
 }
 
+/** Whether `entry` is a dictation that could not be transcribed, kept to retry. */
+export function isFailedDictation(entry: DictationEntry) {
+  return !entry.rawText.trim() && !entry.finalText.trim();
+}
+
 /**
- * Saves a dictation that produced text, unless history is off. With
- * keep-audio on, the recorder's temporary WAV moves into the history; then
- * `audioKept` is true and the caller must not discard it. Rejects only when
- * nothing was saved and the temporary WAV is untouched.
+ * Saves a dictation, unless history is off. One without text failed to
+ * transcribe: it is saved only with its audio, for a day, to retry it. With
+ * keep-audio on, or for a failed dictation, the recorder's temporary WAV
+ * moves into the history; then `audioKept` is true and the caller must not
+ * discard it. Rejects only when nothing was saved and the temporary WAV is
+ * untouched.
  */
 export function recordDictation(entry: {
   id: string;
@@ -133,9 +144,8 @@ export function recordDictation(entry: {
   audioPath: string | null;
 }): Promise<{ audioKept: boolean }> {
   return enqueueDatabaseWrite(WRITES, async () => {
-    if (!entry.rawText.trim() && !entry.finalText.trim()) {
-      return { audioKept: false };
-    }
+    const failed = !entry.rawText.trim() && !entry.finalText.trim();
+    if (failed && !entry.audioPath) return { audioKept: false };
     const { retention, keepAudio } = await loadSettings();
     if (retention === "off") return { audioKept: false };
 
@@ -156,13 +166,13 @@ export function recordDictation(entry: {
           entry.provider,
           entry.model,
           entry.language,
-          entry.rawText,
-          entry.finalText,
+          failed ? "" : entry.rawText,
+          failed ? "" : entry.finalText,
           entry.inserted ? 1 : 0,
         ],
       },
     ]);
-    if (!keepAudio || !entry.audioPath) return { audioKept: false };
+    if (!(keepAudio || failed) || !entry.audioPath) return { audioKept: false };
 
     let kept: string;
     try {
@@ -171,6 +181,14 @@ export function recordDictation(entry: {
       );
     } catch (error) {
       console.error("[dictation-history] audio was not kept", error);
+      if (failed) {
+        await executeTransaction([
+          {
+            sql: "DELETE FROM dictation_history WHERE id = ?",
+            params: [entry.id],
+          },
+        ]);
+      }
       return { audioKept: false };
     }
     try {
@@ -188,7 +206,10 @@ export function recordDictation(entry: {
   });
 }
 
-/** The newest dictation's current text, while history is on. */
+/**
+ * The newest dictation's current text, while history is on. A voice edit
+ * that failed has only its spoken instruction, as raw text, and is skipped.
+ */
 export function latestDictation(): Promise<{
   id: string;
   text: string;
@@ -202,7 +223,7 @@ export function latestDictation(): Promise<{
       final_text: string;
     }>(
       `SELECT id, raw_text, final_text FROM dictation_history
-       WHERE created_at >= ?
+       WHERE created_at >= ? AND final_text <> ''
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
       [retentionCutoff(retention) ?? ""],
@@ -217,19 +238,27 @@ export function latestDictation(): Promise<{
 
 /**
  * Deletes entries older than the retention allows, with their audio, and
- * any kept audio no entry refers to. Off and Forever expire nothing.
+ * any kept audio no entry refers to. Off and Forever expire nothing, but a
+ * dictation that failed to transcribe always expires after a day.
  */
-export function purgeExpiredDictations(): Promise<void> {
+export function purgeExpiredDictations(now = Date.now()): Promise<void> {
   return enqueueDatabaseWrite(WRITES, async () => {
-    const cutoff = retentionCutoff((await loadSettings()).retention);
-    if (cutoff) {
-      await executeTransaction([
-        {
-          sql: "DELETE FROM dictation_history WHERE created_at < ?",
-          params: [cutoff],
-        },
-      ]);
-    }
+    const cutoff = retentionCutoff((await loadSettings()).retention, now);
+    await executeTransaction([
+      ...(cutoff
+        ? [
+            {
+              sql: "DELETE FROM dictation_history WHERE created_at < ?",
+              params: [cutoff],
+            },
+          ]
+        : []),
+      {
+        sql: `DELETE FROM dictation_history
+          WHERE NOT ${HAS_TEXT} AND created_at < ?`,
+        params: [new Date(now - FAILED_RETENTION_MS).toISOString()],
+      },
+    ]);
     await pruneAudio();
   });
 }
@@ -260,9 +289,10 @@ export function clearDictations(): Promise<void> {
 
 /**
  * Makes `transcript` the entry's text; the text it replaces becomes the
- * newest version.
+ * newest version. A failed dictation recovered this way has no text to keep,
+ * and keeps its audio only as keep-audio says.
  */
-export function replaceDictationText(
+export async function replaceDictationText(
   id: string,
   transcript: {
     text: string;
@@ -271,8 +301,13 @@ export function replaceDictationText(
     language: string | null;
   },
 ): Promise<void> {
-  return updateTexts(id, (entry) => {
-    const versions = [current(entry), ...entry.versions];
+  const recovered = { audio: null as string | null };
+  await updateTexts(id, (entry) => {
+    const failed = isFailedDictation(entry);
+    if (failed) recovered.audio = entry.audioPath;
+    const versions = failed
+      ? entry.versions
+      : [current(entry), ...entry.versions];
     return adopt(
       { ...entry, versions },
       {
@@ -284,6 +319,24 @@ export function replaceDictationText(
         createdAt: new Date().toISOString(),
       },
     );
+  });
+  const audio = recovered.audio;
+  if (audio) await releaseRecoveredAudio(id, audio);
+}
+
+function releaseRecoveredAudio(id: string, audio: string): Promise<void> {
+  return enqueueDatabaseWrite(WRITES, async () => {
+    if ((await loadSettings()).keepAudio) return;
+    await executeTransaction([
+      {
+        sql: `UPDATE dictation_history SET audio_path = NULL
+          WHERE id = ? AND audio_path = ?`,
+        params: [id, audio],
+      },
+    ]);
+    if (AUDIO_FILE_NAME.test(audio)) {
+      unwrap(await dictation.deleteHistoryAudio([audio]));
+    }
   });
 }
 

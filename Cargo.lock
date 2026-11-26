@@ -3073,6 +3073,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dictation-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "specta",
+ "unicode-script",
+]
+
+[[package]]
 name = "dictation-ui-macos"
 version = "0.1.0"
 dependencies = [
@@ -12658,6 +12669,8 @@ dependencies = [
  "hound",
  "image",
  "libc",
+ "objc2",
+ "objc2-foundation",
  "raw-window-handle",
  "serde",
  "serde_json",
@@ -12893,6 +12906,7 @@ dependencies = [
  "atspi",
  "audio",
  "desktop-portal",
+ "dictation-core",
  "dictation-ui-macos",
  "futures-util",
  "hound",
@@ -12918,6 +12932,7 @@ dependencies = [
  "url",
  "windows 0.62.2",
  "x11rb",
+ "zbus",
 ]
 
 [[package]]

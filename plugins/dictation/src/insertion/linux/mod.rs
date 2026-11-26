@@ -1,9 +1,10 @@
 //! Linux insertion. AT-SPI's `EditableText` first: it needs no permission
 //! and leaves the clipboard alone, but only native editable fields take it
 //! (not terminals, Chromium, Electron or Firefox, nor apps without an
-//! accessible field). Everything else, and a field that does not take the
-//! text, gets the clipboard and the paste keys, as on macOS: see
-//! [`paste`]. Only a password field refuses.
+//! accessible field, nor Qt apps). Everything else, and a field that leaves
+//! its text unchanged, gets the clipboard and the paste keys, as on macOS:
+//! see [`paste`]. Only a password field refuses, and a field that took part
+//! of the text is reported rather than pasted into again.
 
 mod accessible;
 mod paste;
@@ -11,12 +12,15 @@ mod remote;
 mod route;
 mod system;
 
+pub use accessible::focused_field;
 pub use remote::set_data_dir;
 
 use route::{Chord, KeyPath, Target};
 
 const FOCUS_CHANGED: &str =
     "The focused field changed. Copy your last dictation from Settings > Dictation.";
+/// Pasting after a partial edit would insert part of the text twice.
+const INCOMPLETE: &str = "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation.";
 
 pub async fn capture() -> Result<String, String> {
     let focus = accessible::focus().await;
@@ -48,6 +52,10 @@ pub async fn insert(target: String, text: String) -> Result<(), String> {
                 accessible::Inserted::Yes => return Ok(()),
                 accessible::Inserted::FocusChanged => return Err(FOCUS_CHANGED.into()),
                 accessible::Inserted::Password => return Err(route::PASSWORD.into()),
+                accessible::Inserted::Incomplete(reason) => {
+                    tracing::warn!(%reason, "AT-SPI may not have inserted all of the dictation");
+                    return Err(INCOMPLETE.into());
+                }
                 accessible::Inserted::Refused(reason) => {
                     tracing::info!(%reason, "AT-SPI did not insert the dictation; pasting it");
                     Chord::Paste

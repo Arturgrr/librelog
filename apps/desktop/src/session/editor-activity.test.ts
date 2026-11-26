@@ -20,8 +20,13 @@ describe("canonical session editor activity", () => {
     const secondView = { hasFocus: () => false } as never;
     const firstFlush = vi.fn();
     const secondFlush = vi.fn();
-    registerCanonicalSessionEditor("session-1", firstView, firstFlush);
-    registerCanonicalSessionEditor("session-1", secondView, secondFlush);
+    registerCanonicalSessionEditor("session-1", firstView, firstFlush, vi.fn());
+    registerCanonicalSessionEditor(
+      "session-1",
+      secondView,
+      secondFlush,
+      vi.fn(),
+    );
     mocks.flushDatabaseWrites.mockImplementationOnce(async () => {
       expect(firstFlush).toHaveBeenCalledOnce();
       expect(secondFlush).toHaveBeenCalledOnce();

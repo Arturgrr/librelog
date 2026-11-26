@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-extract-dictation-terms"
+description = "Enables the extract_dictation_terms command without any pre-configured scope."
+commands.allow = ["extract_dictation_terms"]
+
+[[permission]]
+identifier = "deny-extract-dictation-terms"
+description = "Denies the extract_dictation_terms command without any pre-configured scope."
+commands.deny = ["extract_dictation_terms"]
