@@ -10,7 +10,6 @@ use tauri::menu::{HELP_SUBMENU_ID, Submenu, WINDOW_SUBMENU_ID};
 use tauri::tray::{MouseButtonState, TrayIconEvent};
 use tauri::{
     AppHandle, Result,
-    image::Image,
     menu::{Menu, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
@@ -545,7 +544,9 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
                                 && crate::macos_position::wanted_visible()
                                 && let Some(tray) = app.tray_by_id(TRAY_ID)
                             {
-                                tray.set_icon(Some(Image::from_bytes(RECORDING_FRAMES[frame])?))?;
+                                tray.set_icon(Some(crate::tray_icon::image(
+                                    RECORDING_FRAMES[frame],
+                                )?))?;
                             }
                             Ok(())
                         });
@@ -601,6 +602,12 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         }
         Self::rebuild_menu(self.manager.app_handle())
     }
+}
+
+/// Redraws the icon in its current state, after the panel's colours changed.
+#[cfg(target_os = "linux")]
+pub(crate) fn refresh_tray_icon(app: &AppHandle<tauri::Wry>) -> Result<()> {
+    Tray::<tauri::Wry, AppHandle<tauri::Wry>>::refresh_icon(app)
 }
 
 // Tauri's TrayIcon is Send, but cloning/dropping it touches tray-icon's Rc.

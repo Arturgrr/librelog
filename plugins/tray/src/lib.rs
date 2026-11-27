@@ -2,6 +2,8 @@ mod commands;
 mod ext;
 mod feedback;
 mod labels;
+#[cfg(target_os = "linux")]
+mod linux_theme;
 mod macos_position;
 mod menu_items;
 mod title;
@@ -26,7 +28,10 @@ pub fn init(enable_updates: bool) -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(|app, _api| {
             #[cfg(target_os = "linux")]
-            ext::watch_tray_host(app);
+            {
+                ext::watch_tray_host(app);
+                linux_theme::watch(app);
+            }
             if updates_enabled() {
                 setup_update_listeners(app);
             }
