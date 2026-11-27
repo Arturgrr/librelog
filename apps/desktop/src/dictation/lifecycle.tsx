@@ -31,6 +31,7 @@ import {
 } from "./learning";
 import {
   refineTranscript,
+  useSpokenRules,
   VoiceEditFailed,
   type RefineOptions,
 } from "./refine";
@@ -140,6 +141,7 @@ function ActiveDictation() {
   const learning = useConfigValue("dictation_learning");
   const cleanup = useConfigValue("dictation_cleanup");
   const voiceEdit = useConfigValue("dictation_voice_edit");
+  const spoken = useSpokenRules();
   const context = useConfigValue("dictation_context");
   const exclusions = useConfigValue("dictation_context_exclusions");
   const model = useLanguageModel();
@@ -166,6 +168,7 @@ function ActiveDictation() {
     learning,
     cleanup,
     voiceEdit,
+    spoken,
     context,
     exclusions,
     model,
@@ -187,6 +190,7 @@ function ActiveDictation() {
     learning,
     cleanup,
     voiceEdit,
+    spoken,
     context,
     exclusions,
     model,
@@ -280,13 +284,14 @@ function ActiveDictation() {
       start: async (signal) => {
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
-        const { learning, cleanup, voiceEdit, context, exclusions } =
+        const { learning, cleanup, voiceEdit, spoken, context, exclusions } =
           current.current;
         const options: RefineOptions = {
           cleanup,
           voiceEdit,
           context,
           replacements: current.current.replacements || [],
+          spoken,
         };
         const operationId = crypto.randomUUID();
         // What the field held before dictating, read natively only for the

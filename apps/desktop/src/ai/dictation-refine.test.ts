@@ -126,6 +126,7 @@ function request(text: string, selection: string | null = null): RefineRequest {
     instructions: null,
     before: null,
     context: null,
+    spoken: null,
   };
 }
 

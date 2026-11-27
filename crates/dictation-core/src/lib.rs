@@ -2,14 +2,16 @@
 //! phrase replacements, fitting text at the caret, cleanup and voice-edit prompts with the
 //! checks a model reply must pass, privacy decisions and bounds for window context, term
 //! ranking with decayed use counts, and reviewable dictionary suggestions from the person's own
-//! edits. Pure: no I/O, clock, randomness or network. Behavior ported from Char; see
-//! PROVENANCE.md.
+//! edits, and spoken commands (hesitations, line breaks, quotes, symbols) applied without a
+//! model. Pure: no I/O, clock, randomness or network. Behavior ported from Char (see
+//! PROVENANCE.md) and, for spoken commands, Hex (see THIRD_PARTY_NOTICES.md).
 
 mod caret;
 pub mod context;
 pub mod corrections;
 mod refine;
 mod replace;
+mod spoken;
 pub mod terms;
 mod text;
 mod weights;
@@ -22,6 +24,7 @@ pub use refine::{
     resolve_refinement,
 };
 pub use replace::{Replacement, apply_replacements};
+pub use spoken::{SpokenRules, apply_spoken_rules};
 pub use weights::{RankRequest, RecordRequest, TermEvent, rank_terms, record_terms};
 
 use text::is_unspaced_writing;

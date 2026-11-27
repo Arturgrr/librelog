@@ -1030,6 +1030,63 @@ describe("dictation access and lifecycle", () => {
     );
   });
 
+  it("applies the spoken commands turned on, in the dictated languages, with no model call", async () => {
+    const doGenerate = vi.fn();
+    mocks.model = new MockLanguageModelV3({ doGenerate });
+    Object.assign(mocks.settings, {
+      ai_language: "en",
+      spoken_languages: ["pt-BR"],
+      dictation_cleanup: false,
+      dictation_remove_fillers: true,
+      dictation_spoken_formatting: true,
+      dictation_spoken_symbols: false,
+    });
+    mocks.prepareDictationRefinement.mockResolvedValue({
+      type: "done",
+      outcome: { type: "raw", text: "Eu acho.\nTchau", reason: "cleanupOff" },
+    });
+    mocks.runBatch.mockImplementation(hears("É... eu acho. Nova linha. Tchau"));
+    try {
+      render(<DictationLifecycle />);
+      await waitFor(() =>
+        expect(useDictationStatus.getState().ready).toBe(true),
+      );
+      await shortcut("pressed");
+      await shortcut("released");
+      await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+      expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "É... eu acho. Nova linha. Tchau",
+          policy: { cleanup: false, voiceEdit: false },
+          spoken: {
+            languages: ["en", "pt-BR"],
+            fillers: true,
+            formatting: true,
+            symbols: false,
+          },
+        }),
+      );
+      expect(mocks.recordDictation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          finalText: "Eu acho.\nTchau",
+          inserted: true,
+        }),
+      );
+      expect(doGenerate).not.toHaveBeenCalled();
+    } finally {
+      for (const key of [
+        "ai_language",
+        "spoken_languages",
+        "dictation_cleanup",
+        "dictation_remove_fillers",
+        "dictation_spoken_formatting",
+        "dictation_spoken_symbols",
+      ]) {
+        delete mocks.settings[key];
+      }
+    }
+  });
+
   it("keeps a cancelled dictation out of the history even when its text was ready", async () => {
     const finishFirst = holdFirstTranscription();
     render(<DictationLifecycle />);

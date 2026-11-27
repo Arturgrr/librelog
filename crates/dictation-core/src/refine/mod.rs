@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::context::{ContextSnapshot, MAX_BEFORE_LENGTH};
 use crate::replace::{Replacement, apply_replacements};
+use crate::spoken::{SpokenRules, apply_spoken_rules};
 use crate::terms::{MAX_TERMS, rank_sources};
 use crate::text::{char_len, tail_chars};
 
@@ -51,6 +52,9 @@ pub struct RefineRequest {
     pub before: Option<String>,
     /// What the native side read for this operation, after its privacy decision.
     pub context: Option<ContextSnapshot>,
+    /// Spoken commands to apply to a dictation that edits nothing, before the replacements and
+    /// any cleanup, so they hold even with cleanup off.
+    pub spoken: Option<SpokenRules>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -157,11 +161,17 @@ fn bounded(text: Option<&str>, limit: usize) -> Option<String> {
 /// operation, or too old, is left out.
 pub fn prepare_refinement(request: RefineRequest) -> RefinePlan {
     let done = |outcome| RefinePlan::Done { outcome };
-    let raw = request.text.trim();
+    let selection = request.selection.as_deref().filter(|s| !s.is_empty());
+    // An instruction to edit a selection is the model's to read as said.
+    let spoken = request.spoken.as_ref().filter(|_| selection.is_none());
+    let ruled = match spoken {
+        Some(rules) => apply_spoken_rules(request.text.trim(), rules),
+        None => request.text.clone(),
+    };
+    let raw = ruled.trim();
     if raw.is_empty() {
         return done(RefineOutcome::Empty);
     }
-    let selection = request.selection.as_deref().filter(|s| !s.is_empty());
     let fallback = |reason| RefineOutcome::Raw {
         text: apply_replacements(raw, &request.replacements),
         reason,
@@ -239,6 +249,7 @@ pub fn prepare_refinement(request: RefineRequest) -> RefinePlan {
         screen,
         before.as_deref(),
         instructions.as_deref(),
+        spoken.is_some_and(SpokenRules::writes_marks),
     );
     RefinePlan::Ask {
         call: ModelCall {

@@ -15,6 +15,7 @@ import { DictationIndicatorSetting } from "./dictation-indicator";
 import { DictationPasteLastSettings } from "./dictation-paste-last";
 import { DictationSendSettings } from "./dictation-send";
 import { DictationShortcuts, isDoubleTapShortcut } from "./dictation-shortcut";
+import { DictationSpokenSettings } from "./dictation-spoken";
 
 import { useDictationStatus } from "~/dictation/state";
 import { AudioDeviceRow } from "~/settings/general/audio-settings";
@@ -163,6 +164,7 @@ export function SettingsDictation() {
         <DictationAudioSettings />
         <DictationPasteLastSettings />
         <DictationSendSettings />
+        <DictationSpokenSettings />
         <DictationAiSettings />
         {status.lastTranscript && (
           <div className="flex flex-col gap-3">

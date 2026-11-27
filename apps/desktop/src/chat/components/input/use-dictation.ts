@@ -7,7 +7,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
-import { refineTranscript } from "~/dictation/refine";
+import { refineTranscript, useSpokenRules } from "~/dictation/refine";
 import { useConfigValue } from "~/shared/config";
 import { useTabs } from "~/store/zustand/tabs";
 import { useRunBatch } from "~/stt/useRunBatch";
@@ -29,6 +29,7 @@ export function useDictation({
   const runBatch = useRunBatch(transcriptionSessionId);
   const microphoneDevice = useConfigValue("microphone_device");
   const cleanup = useConfigValue("dictation_cleanup");
+  const spoken = useSpokenRules();
   const replacements = useConfigValue(
     "personalization_dictionary_replacements",
   );
@@ -175,13 +176,19 @@ export function useDictation({
       if (!transcript) {
         throw new Error("No speech was detected in the audio.");
       }
-      // The composer has no selection to edit by voice: cleanup and saved
-      // replacements only.
+      // The composer has no selection to edit by voice: spoken commands,
+      // cleanup and saved replacements only.
       const refined = await refineTranscript({
         operationId: transcriptionSessionId,
         text: transcript,
         terms: [],
-        options: { cleanup, voiceEdit: false, context: false, replacements },
+        options: {
+          cleanup,
+          voiceEdit: false,
+          context: false,
+          replacements,
+          spoken,
+        },
         field: null,
         model,
         signal: new AbortController().signal,
@@ -220,6 +227,7 @@ export function useDictation({
     replacements,
     runBatch,
     setPhase,
+    spoken,
     stopElapsedTimer,
     t,
     transcriptionSessionId,

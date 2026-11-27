@@ -19,6 +19,7 @@ fn request(text: &str) -> RefineRequest {
         instructions: None,
         before: None,
         context: None,
+        spoken: None,
     }
 }
 
@@ -434,4 +435,77 @@ fn uses_context_only_from_its_own_fresh_operation_and_bounds_what_it_sends() {
         ..request("bye")
     });
     assert_eq!(pending.before.as_deref(), Some("Thanks."));
+}
+
+fn spoken() -> Option<SpokenRules> {
+    Some(SpokenRules {
+        languages: vec!["pt-BR".into()],
+        fillers: true,
+        formatting: true,
+        symbols: true,
+    })
+}
+
+#[test]
+fn spoken_commands_run_before_replacements_and_cleanup_and_without_a_model() {
+    let dictation = RefineRequest {
+        spoken: spoken(),
+        replacements: vec![Replacement {
+            from: "Acme".into(),
+            to: "ACME".into(),
+        }],
+        ..request("É... manda pro joao arroba Acme. Nova linha. Valeu")
+    };
+    let typed = "Manda pro joao @ACME.\nValeu";
+    assert_eq!(
+        done(RefineRequest {
+            policy: Some(TextPolicy::default()),
+            ..dictation.clone()
+        }),
+        raw(typed, RefineReason::CleanupOff)
+    );
+    assert_eq!(
+        done(RefineRequest {
+            model_ready: false,
+            ..dictation.clone()
+        }),
+        raw(typed, RefineReason::NoModel)
+    );
+
+    let (call, pending) = ask(dictation.clone());
+    assert_eq!(call.prompt, "Manda pro joao @Acme.\nValeu");
+    assert!(call.system.contains("as spoken commands"));
+    assert_eq!(
+        resolve_refinement(pending.clone(), ModelReply::TimedOut),
+        raw(typed, RefineReason::TimedOut)
+    );
+    assert_eq!(
+        resolve_refinement(
+            pending,
+            ModelReply::Text {
+                text: "Manda pro joao @Acme.\nValeu!".into()
+            }
+        ),
+        kept("Manda pro joao @ACME.\nValeu!")
+    );
+    let (call, _) = ask(request("Manda pro joao arroba Acme"));
+    assert!(!call.system.contains("as spoken commands"));
+}
+
+#[test]
+fn spoken_commands_leave_an_edit_instruction_as_said_and_a_dictation_of_only_fillers_is_empty() {
+    let (call, pending) = ask(RefineRequest {
+        spoken: spoken(),
+        selection: Some("o texto".into()),
+        ..request("hum, coloca abre aspas no começo")
+    });
+    assert!(call.prompt.contains("hum, coloca abre aspas no começo"));
+    assert_eq!(pending.raw, "hum, coloca abre aspas no começo");
+    assert_eq!(
+        done(RefineRequest {
+            spoken: spoken(),
+            ..request(" Éé... hã. ")
+        }),
+        RefineOutcome::Empty
+    );
 }

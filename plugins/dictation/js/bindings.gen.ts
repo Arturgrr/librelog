@@ -589,7 +589,12 @@ before: string | null;
 /**
  * What the native side read for this operation, after its privacy decision.
  */
-context: ContextSnapshot | null }
+context: ContextSnapshot | null; 
+/**
+ * Spoken commands to apply to a dictation that edits nothing, before the replacements and
+ * any cleanup, so they hold even with cleanup off.
+ */
+spoken: SpokenRules | null }
 /**
  * A phrase said in dictation, and what is typed in its place.
  */
@@ -603,6 +608,27 @@ export type SendAfterInsert = {
  * case-insensitively; empty sends in every app.
  */
 apps: string[] }
+/**
+ * Which spoken commands apply to a dictation, and the languages it is dictated in.
+ */
+export type SpokenRules = { 
+/**
+ * The dictation's languages as BCP 47 tags ("pt-BR", "en"); languages other than English
+ * and Portuguese bring no words.
+ */
+languages: string[]; 
+/**
+ * Drop hesitations such as "um" or "éé".
+ */
+fillers: boolean; 
+/**
+ * "new line", "abre aspas" and the like become line breaks, quotes and parentheses.
+ */
+formatting: boolean; 
+/**
+ * "at sign", "arroba", "underscore" and the like become symbols joined to their words.
+ */
+symbols: boolean }
 export type SuggestRequest = { 
 /**
  * What the dictation typed.

@@ -113,6 +113,24 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "voice_edit"],
     default: false as boolean,
   },
+  // Spoken commands applied without a model, in English and Portuguese:
+  // hesitations dropped, spoken line breaks, quotes and parentheses, and spoken
+  // symbols such as "at sign" or "arroba".
+  dictation_remove_fillers: {
+    type: "boolean",
+    path: ["dictation", "remove_fillers"],
+    default: false as boolean,
+  },
+  dictation_spoken_formatting: {
+    type: "boolean",
+    path: ["dictation", "spoken_formatting"],
+    default: false as boolean,
+  },
+  dictation_spoken_symbols: {
+    type: "boolean",
+    path: ["dictation", "spoken_symbols"],
+    default: false as boolean,
+  },
   // Reads the window being dictated into, to spell its names and terms.
   dictation_context: {
     type: "boolean",
