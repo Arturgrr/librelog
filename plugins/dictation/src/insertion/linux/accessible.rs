@@ -139,6 +139,7 @@ async fn describe(connection: &AccessibilityConnection, application: &ObjectRef)
         executable: pid.and_then(executable),
         pid,
         toolkit: toolkit(connection, application).await,
+        class: None,
     })
 }
 

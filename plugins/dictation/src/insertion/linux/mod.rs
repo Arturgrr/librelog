@@ -5,6 +5,11 @@
 //! its text unchanged, gets the clipboard and the paste keys, as on macOS:
 //! see [`paste`]. Only a password field refuses, and a field that took part
 //! of the text is reported rather than pasted into again.
+//!
+//! Where AT-SPI sees no app, KWin or X11 names the active window, so a
+//! terminal still gets Control+Shift+V. Plasma keeps Qt apps off AT-SPI unless
+//! accessibility is on, so a password field in a Qt app can't be told there
+//! and gets the paste.
 
 mod accessible;
 mod paste;
@@ -24,10 +29,15 @@ const INCOMPLETE: &str = "The app may not have inserted all of the dictation. Ch
 
 async fn focused_target() -> Result<Target, String> {
     let focus = accessible::focus().await;
+    // Plasma keeps Qt apps off AT-SPI unless accessibility is turned on.
+    let kwin = match focus {
+        accessible::Focus::Unknown { app: None } => crate::kwin::active_window().await,
+        _ => None,
+    };
     tauri::async_runtime::spawn_blocking(move || {
         route::target(
             focus,
-            system::x11_active_app,
+            || kwin.map(system::kwin_app).or_else(system::x11_active_app),
             std::process::id(),
             system::exists,
         )

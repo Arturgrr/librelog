@@ -332,7 +332,24 @@ pub fn x11_active_app() -> Option<App> {
         pid,
         executable: pid.and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok()),
         toolkit: None,
+        class: None,
     })
+}
+
+/// KWin's active window as an app, with its executable when its process can
+/// be read.
+pub fn kwin_app(window: crate::kwin::Window) -> App {
+    App {
+        name: window.name,
+        pid: window.pid,
+        executable: window
+            .pid
+            .and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok()),
+        toolkit: None,
+        class: Some(window.class)
+            .filter(|class| !class.is_empty())
+            .or(window.desktop_file),
+    }
 }
 
 pub fn exists(path: &Path) -> bool {

@@ -7,7 +7,7 @@ use super::accessible::Focus;
 
 pub const PASSWORD: &str = "Dictation is unavailable in password fields.";
 
-/// An app AT-SPI names, with its process when the bus knows it.
+/// An app AT-SPI, X11 or KWin names, with its process when known.
 #[derive(Clone, Debug, Default)]
 pub struct App {
     pub name: String,
@@ -15,6 +15,9 @@ pub struct App {
     pub executable: Option<PathBuf>,
     /// The toolkit the app reports to AT-SPI.
     pub toolkit: Option<String>,
+    /// The app id or desktop entry the window manager knows it by
+    /// (`org.kde.konsole`), from KWin.
+    pub class: Option<String>,
 }
 
 /// Where a dictation goes, read when it starts and again right before it is
@@ -129,9 +132,17 @@ fn kind(app: &App, own_pid: u32, exists: &impl Fn(&Path) -> bool) -> Kind {
         .and_then(Path::file_name)
         .map(|name| name.to_string_lossy().to_lowercase());
     let name = app.name.to_lowercase();
+    // `org.kde.konsole`, `org.wezfurlong.wezterm`: a Flatpak's executable
+    // may be a launcher.
+    let class = app
+        .class
+        .as_deref()
+        .and_then(|class| class.rsplit('.').next())
+        .map(str::to_lowercase);
     if executable
         .iter()
         .chain([&name])
+        .chain(class.iter())
         .any(|name| TERMINALS.contains(&name.as_str()))
     {
         return Kind::Terminal;
@@ -159,7 +170,7 @@ fn kind(app: &App, own_pid: u32, exists: &impl Fn(&Path) -> bool) -> Kind {
 }
 
 /// The route for what AT-SPI saw; `active` is the active window's app by
-/// other means (X11), for when AT-SPI knows of none. Only a password field
+/// other means (KWin, X11), for when AT-SPI knows of none. Only a password field
 /// refuses: everything else that is not an editable native field pastes.
 pub fn target(
     focus: Focus,
@@ -244,6 +255,7 @@ mod tests {
             pid: Some(10),
             executable: Some(executable.into()),
             toolkit: None,
+            class: None,
         }
     }
 
@@ -359,6 +371,55 @@ mod tests {
             target,
             Ok(Target::Paste {
                 terminal: true,
+                app: Some(10)
+            })
+        );
+    }
+
+    /// On Plasma AT-SPI sees no Qt app and XWayland no Wayland window:
+    /// Konsole got Control+V, which bash reads as a literal next character.
+    #[test]
+    fn kwins_active_window_picks_the_paste_keys_where_at_spi_sees_nothing() {
+        let kwin = |class: &str, executable: Option<&str>| {
+            let window = App {
+                name: class.rsplit('.').next().unwrap_or_default().into(),
+                pid: Some(20),
+                executable: executable.map(Into::into),
+                toolkit: None,
+                class: Some(class.into()),
+            };
+            target(Focus::Unknown { app: None }, || Some(window), 1, |_| false)
+        };
+        let paste = |terminal| {
+            Ok(Target::Paste {
+                terminal,
+                app: Some(20),
+            })
+        };
+        assert_eq!(
+            kwin("org.kde.konsole", Some("/usr/bin/konsole")),
+            paste(true)
+        );
+        assert_eq!(
+            kwin("org.kde.yakuake", Some("/usr/bin/yakuake")),
+            paste(true)
+        );
+        // A Flatpak terminal whose process can't be read.
+        assert_eq!(kwin("org.wezfurlong.wezterm", None), paste(true));
+        assert_eq!(kwin("org.kde.kate", Some("/usr/bin/kate")), paste(false));
+        // AT-SPI's own answer still comes first.
+        let routed = target(
+            Focus::Other {
+                app: app("Files", "/usr/bin/nautilus"),
+            },
+            || unreachable!(),
+            1,
+            |_| false,
+        );
+        assert_eq!(
+            routed,
+            Ok(Target::Paste {
+                terminal: false,
                 app: Some(10)
             })
         );
