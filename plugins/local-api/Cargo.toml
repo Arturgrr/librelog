@@ -3,6 +3,7 @@ name = "tauri-plugin-local-api"
 version = "0.1.0"
 edition = "2024"
 exclude = ["/js", "/node_modules"]
+license.workspace = true
 links = "tauri-plugin-local-api"
 description = "Outbound meeting webhooks and markdown export"
 

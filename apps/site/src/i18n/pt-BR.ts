@@ -4,7 +4,7 @@ export const ptBR: Dictionary = {
   meta: {
     title: "Librelog · Reuniões, ditado e tela, no seu Mac",
     description:
-      "Librelog anota suas reuniões, dita em qualquer app e grava o que você mostra na tela. Tudo num banco local no seu Mac. Sem conta, sem nuvem, sem telemetria. Open source, MIT.",
+      "Librelog anota suas reuniões, dita em qualquer app e grava o que você mostra na tela. Tudo num banco local no seu Mac. Sem conta, sem nuvem, sem telemetria. Open source, AGPL-3.0.",
     ogTitle: "Librelog · Reuniões de um. Ditado do outro. Nuvem de nenhum.",
     ogAlt: "A página do Librelog revisada à mão com caneta vermelha.",
     ogLocale: "pt_BR",
@@ -28,7 +28,8 @@ export const ptBR: Dictionary = {
     rec: "annotate · riscando",
   },
   hero: {
-    eyebrow: "beta {version} · macOS 15+ · Apple silicon · sem conta · MIT",
+    eyebrow:
+      "beta {version} · macOS 15+ · Apple silicon · sem conta · AGPL-3.0",
     old: "O notetaker de IA para reuniões.",
     hmm: "hmm… será?",
     oldSub: "Notas de reunião com IA, seguras e sob o seu controle.",
@@ -323,7 +324,7 @@ export const ptBR: Dictionary = {
     credits: {
       before: "Fork do ",
       link: "Anarlog",
-      after: ", da Fastrepl, com ideias do Hex. Código aberto, MIT.",
+      after: ", da Fastrepl, com ideias do Hex. Código aberto, AGPL-3.0.",
     },
     noJs: "Este site não tem analytics.",
     elapsed: "Você está aqui há {t}. Isso não foi registrado em lugar nenhum.",

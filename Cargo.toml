@@ -17,6 +17,9 @@ members = [
   "plugins/*",
 ]
 
+[workspace.package]
+license = "AGPL-3.0-or-later"
+
 [workspace.dependencies]
 anlg-aec = { path = "crates/aec", package = "aec" }
 anlg-afconvert = { path = "crates/afconvert", package = "afconvert" }

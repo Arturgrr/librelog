@@ -2,6 +2,7 @@
 name = "desktop-portal"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }

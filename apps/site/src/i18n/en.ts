@@ -2,7 +2,7 @@ export const en = {
   meta: {
     title: "Librelog · Meetings, dictation and your screen, on your Mac",
     description:
-      "Librelog takes notes in your meetings, dictates into any app and records what you show on screen. Everything stays in a local database on your Mac. No account, no cloud, no telemetry. Open source, MIT.",
+      "Librelog takes notes in your meetings, dictates into any app and records what you show on screen. Everything stays in a local database on your Mac. No account, no cloud, no telemetry. Open source, AGPL-3.0.",
     ogTitle:
       "Librelog · Meetings from one. Dictation from the other. Cloud from neither.",
     ogAlt: "The Librelog page, revised by hand in red pen.",
@@ -27,7 +27,8 @@ export const en = {
     rec: "annotate · drawing",
   },
   hero: {
-    eyebrow: "beta {version} · macOS 15+ · Apple silicon · no account · MIT",
+    eyebrow:
+      "beta {version} · macOS 15+ · Apple silicon · no account · AGPL-3.0",
     old: "The AI meeting notetaker.",
     hmm: "hmm… really?",
     oldSub: "AI meeting notes, secure and under your control.",
@@ -324,7 +325,7 @@ export const en = {
     credits: {
       before: "A fork of ",
       link: "Anarlog",
-      after: " by Fastrepl, with ideas from Hex. Open source, MIT.",
+      after: " by Fastrepl, with ideas from Hex. Open source, AGPL-3.0.",
     },
     noJs: "This site has no analytics.",
     elapsed: "You've been here for {t}. That wasn't recorded anywhere.",

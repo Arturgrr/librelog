@@ -3,6 +3,7 @@ name = "tauri-plugin-annotate"
 version = "0.1.0"
 edition = "2024"
 exclude = ["/js", "/node_modules"]
+license.workspace = true
 links = "tauri-plugin-annotate"
 
 [build-dependencies]

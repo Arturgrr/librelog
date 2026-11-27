@@ -118,4 +118,4 @@ When the macOS build never starts because GitHub has no runner for it ("The job 
 
 ## License
 
-By submitting a contribution, you agree that it may be distributed under the repository's [MIT License](LICENSE). Only submit material you have the right to license this way, and record the upstream revision and license of any third-party code you reuse.
+Librelog is licensed under the [GNU Affero General Public License, version 3 or later](LICENSE) (`AGPL-3.0-or-later`); the code that came from Anarlog remains available under the MIT License, as [LICENSE-MIT](LICENSE-MIT) explains. By submitting a contribution, you agree that it may be distributed under AGPL-3.0-or-later. Only submit material you have the right to license this way, and record the upstream revision and license of any third-party code you reuse; it must be compatible with AGPL-3.0-or-later.

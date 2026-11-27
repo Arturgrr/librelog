@@ -285,7 +285,7 @@ export function Footer({ t }: { t: Dictionary["footer"] }) {
     [t.releases, `${REPO}/releases`],
     [t.docs, `${REPO}/tree/main/docs`],
     [t.issues, `${REPO}/issues`],
-    ["MIT", `${REPO}/blob/main/LICENSE`],
+    ["AGPL-3.0", `${REPO}/blob/main/LICENSE`],
     [t.fonts, `${REPO}/blob/main/THIRD_PARTY_NOTICES.md#fonts`],
   ];
   return (

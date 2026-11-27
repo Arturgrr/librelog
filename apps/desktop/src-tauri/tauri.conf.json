@@ -34,7 +34,7 @@
     "shortDescription": "Local-first AI meeting notepad",
     "longDescription": "Librelog records and transcribes meetings on your computer and turns them into notes. No account, no billing, no telemetry: your audio, your notes, your keys.",
     "homepage": "https://github.com/Arturgrr/librelog",
-    "license": "MIT",
+    "license": "AGPL-3.0-or-later",
     "linux": {
       "deb": {
         "desktopTemplate": "linux/librelog.desktop",
@@ -98,6 +98,7 @@
       "resources/light/AppIcon.icns": "icons/light.icns",
       "resources/notification-icons": "notification-icons",
       "../../../LICENSE": "licenses/LICENSE",
+      "../../../LICENSE-MIT": "licenses/LICENSE-MIT",
       "../../../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
       "../../../licenses/Apache-2.0.txt": "licenses/Apache-2.0.txt",
       "../../../licenses/BSD-2-Clause-AudioCap.txt": "licenses/BSD-2-Clause-AudioCap.txt",

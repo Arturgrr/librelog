@@ -139,4 +139,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and the development workflow.
 
 Librelog is a fork of Anarlog, which [Fastrepl](https://github.com/fastrepl) created as Hyprnote and later released as [fastrepl/anarlog](https://github.com/fastrepl/anarlog) under the MIT license. Librelog is maintained by [Artur Guerra](https://github.com/Arturgrr) and is not affiliated with Fastrepl.
 
-Licensed under the [MIT License](LICENSE). Third-party components keep their own licenses.
+Copyright (C) 2026-present Artur Guerra.
+
+Librelog is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the license for details.
+
+In practice: you may use, study, change and share Librelog. If you distribute it, changed or not, or let people use a changed version over a network, you must offer them its complete source code under the same license. To mark a file you add, use `SPDX-License-Identifier: AGPL-3.0-or-later` or the notice under "How to Apply These Terms to Your New Programs" at the end of the license.
+
+The code that came from Anarlog remains available under the MIT License; [LICENSE-MIT](LICENSE-MIT) says which parts those are and keeps their notices. Librelog versions published before the move to AGPL-3.0-or-later remain available under the MIT License they were released with. Third-party components keep their own licenses, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); [LICENSING.md](LICENSING.md) has the details.
