@@ -10,6 +10,7 @@ Default permissions for the plugin
 - `allow-stop-recording`
 - `allow-cancel-recording`
 - `allow-discard-recording`
+- `allow-set-warm-microphone`
 - `allow-check-insertion`
 - `allow-insert-text`
 - `allow-insert-dictation`
@@ -662,6 +663,32 @@ Enables the resolve_dictation_refinement command without any pre-configured scop
 <td>
 
 Denies the resolve_dictation_refinement command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-set-warm-microphone`
+
+</td>
+<td>
+
+Enables the set_warm_microphone command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-set-warm-microphone`
+
+</td>
+<td>
+
+Denies the set_warm_microphone command without any pre-configured scope.
 
 </td>
 </tr>

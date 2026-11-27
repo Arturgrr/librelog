@@ -8,7 +8,9 @@ mod history;
 mod insertion;
 mod preview;
 mod recorder;
+mod tail;
 mod target_app;
+mod warm;
 
 pub use error::*;
 pub use events::*;
@@ -30,6 +32,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::stop_recording::<tauri::Wry>,
             commands::cancel_recording::<tauri::Wry>,
             commands::discard_recording::<tauri::Wry>,
+            commands::set_warm_microphone::<tauri::Wry>,
             commands::check_insertion,
             commands::insert_text,
             commands::insert_dictation,

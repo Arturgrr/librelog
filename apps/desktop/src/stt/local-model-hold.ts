@@ -42,3 +42,28 @@ export function holdLocalModel(
       );
   };
 }
+
+// Renewed well inside each hold, so a hold never lapses between renewals.
+const RENEWING_HOLD_MS = 10 * 60_000;
+const RENEW_EVERY_MS = 5 * 60_000;
+
+/**
+ * Keeps the on-device model `conn` transcribes with loaded until the release
+ * is called, however long that takes: a dictation has no time limit, and one
+ * hold lasts at most 30 minutes. Each renewal takes a new hold before letting
+ * the last one go.
+ */
+export function holdLocalModelUntilReleased(
+  conn: { provider: string; model: string } | null,
+): () => void {
+  let release = holdLocalModel(conn, RENEWING_HOLD_MS);
+  const renewal = setInterval(() => {
+    const previous = release;
+    release = holdLocalModel(conn, RENEWING_HOLD_MS);
+    previous();
+  }, RENEW_EVERY_MS);
+  return () => {
+    clearInterval(renewal);
+    release();
+  };
+}

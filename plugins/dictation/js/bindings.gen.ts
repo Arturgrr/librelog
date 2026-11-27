@@ -25,11 +25,12 @@ async startRecording(microphoneDevice: string | null, owner: string) : Promise<R
 /**
  * Records for system-wide dictation: the HUD follows the microphone, the
  * live preview's words arrive over `updates`, and `environment` quiets other
- * audio and keeps the computer awake until the recording ends.
+ * audio and keeps the computer awake until the recording ends. `pressed_at_ms`
+ * is when the shortcut went down, in milliseconds since the Unix epoch.
  */
-async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null) : Promise<Result<null, string>> {
+async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -54,6 +55,18 @@ async cancelRecording(owner: string) : Promise<Result<null, string>> {
 async discardRecording(filePath: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|discard_recording", { filePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Keeps the dictation microphone open between dictations, so each one
+ * includes a moment from before its shortcut, or closes it.
+ */
+async setWarmMicrophone(enabled: boolean, microphoneDevice: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|set_warm_microphone", { enabled, microphoneDevice }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

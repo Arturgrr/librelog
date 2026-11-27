@@ -5,6 +5,7 @@ const COMMANDS: &[&str] = &[
     "stop_recording",
     "cancel_recording",
     "discard_recording",
+    "set_warm_microphone",
     "check_insertion",
     "insert_text",
     "insert_dictation",

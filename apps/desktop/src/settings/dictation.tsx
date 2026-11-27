@@ -34,6 +34,8 @@ export function SettingsDictation() {
   const handsFree = useConfigValue("dictation_hands_free");
   const livePreview = useConfigValue("dictation_live_preview");
   const setLivePreview = useSetSettingValue("dictation_live_preview");
+  const warmMicrophone = useConfigValue("dictation_warm_microphone");
+  const setWarmMicrophone = useSetSettingValue("dictation_warm_microphone");
   const setEnabled = useSetSettingValue("dictation_enabled");
   const setHandsFree = useSetSettingValue("dictation_hands_free");
   const sounds = useConfigValue("dictation_sounds");
@@ -96,6 +98,19 @@ export function SettingsDictation() {
           value={microphone}
           devices={microphones.data ?? []}
           onChange={setMicrophone}
+        />
+        <SettingSwitchRow
+          title={<Trans>Keep microphone ready</Trans>}
+          description={
+            <Trans>
+              Keeps the microphone open while dictation is on, so each dictation
+              also catches the moment before you press the shortcut. Your
+              system's microphone indicator stays on the whole time. No audio is
+              kept unless you dictate.
+            </Trans>
+          }
+          checked={warmMicrophone}
+          onChange={setWarmMicrophone}
         />
         <SettingSwitchRow
           title={<Trans>Live transcript preview</Trans>}

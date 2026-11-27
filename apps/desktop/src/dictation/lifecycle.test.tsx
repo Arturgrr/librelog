@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   checkInsertion: vi.fn(),
   frontmostApp: vi.fn(),
   startSystemRecording: vi.fn(),
+  setWarmMicrophone: vi.fn(async () => ({ status: "ok", data: null })),
   stopRecording: vi.fn(),
   cancelRecording: vi.fn(),
   discardRecording: vi.fn(),
@@ -70,7 +71,7 @@ vi.mock("~/stt/contexts", () => ({
 }));
 vi.mock("~/stt/useRunBatch", () => ({ useRunBatch: () => mocks.runBatch }));
 vi.mock("~/stt/local-model-hold", () => ({
-  holdLocalModel: mocks.holdLocalModel,
+  holdLocalModelUntilReleased: mocks.holdLocalModel,
 }));
 vi.mock("@anlg/plugin-shortcut", () => ({
   commands: { configure: mocks.configure, setActive: mocks.setActive },
@@ -97,6 +98,7 @@ vi.mock("@anlg/plugin-dictation", () => ({
     checkInsertion: mocks.checkInsertion,
     frontmostApp: mocks.frontmostApp,
     startSystemRecording: mocks.startSystemRecording,
+    setWarmMicrophone: mocks.setWarmMicrophone,
     stopRecording: mocks.stopRecording,
     cancelRecording: mocks.cancelRecording,
     discardRecording: mocks.discardRecording,
@@ -205,6 +207,7 @@ describe("dictation access and lifecycle", () => {
     mocks.settings.dictation_hud_position = "top";
     mocks.settings.dictation_presets = "[]";
     mocks.settings.dictation_learning = false;
+    mocks.settings.dictation_warm_microphone = false;
     mocks.meeting = { status: "inactive", loading: false };
     mocks.listener = null;
     for (const fn of [
@@ -358,8 +361,29 @@ describe("dictation access and lifecycle", () => {
       null,
       expect.anything(),
       expect.anything(),
+      expect.any(Number),
     );
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/dictation.wav");
+  });
+
+  it("keeps the microphone open only while Keep microphone ready is on", async () => {
+    mocks.settings.dictation_warm_microphone = true;
+    mocks.settings.microphone_device = "USB microphone";
+    mocks.checkPermission.mockResolvedValue({
+      status: "ok",
+      data: "authorized",
+    });
+    const view = render(<DictationLifecycle />);
+    await waitFor(() =>
+      expect(mocks.setWarmMicrophone).toHaveBeenCalledWith(
+        true,
+        "USB microphone",
+      ),
+    );
+    view.unmount();
+    await waitFor(() =>
+      expect(mocks.setWarmMicrophone).toHaveBeenLastCalledWith(false, null),
+    );
   });
 
   it("shows the HUD before the microphone opens and tells it how the dictation ends", async () => {
@@ -619,6 +643,7 @@ describe("dictation access and lifecycle", () => {
         null,
         expect.anything(),
         expect.anything(),
+        expect.any(Number),
       );
     },
   );

@@ -12,14 +12,19 @@ use tokio_util::sync::CancellationToken;
 use crate::Error;
 use crate::environment::{Quiet, RecordingEnvironment};
 use crate::preview::{Preview, PreviewConfig, RecordingUpdate};
+use crate::tail::{MAX_RELEASE_TAIL, RELEASE_TAIL, ReleaseTail, TAIL_DELIVERY_GRACE, Voice};
+use crate::warm::{Samples, WarmMicrophone};
 use tauri::ipc::Channel;
 
-const SAMPLE_RATE: u32 = 16_000;
+pub(crate) const SAMPLE_RATE: u32 = 16_000;
 /// 20 ms buffers, so the HUD meters the voice as often as Hex does.
 const CHUNK_SIZE: usize = 320;
 /// The live preview streams 100 ms packets, as it always has.
 const PREVIEW_CHUNK_SIZE: usize = 1_600;
-const MAX_RECORDING_SECONDS: u64 = 300;
+/// Only a safety net for a capture nobody stops: the WAV streams to disk at
+/// 64 KB/s (about 460 MB in two hours) and nothing grows in memory, and long
+/// clips are transcribed in chunks.
+const MAX_RECORDING: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
 
 /// Receives the RMS of each captured buffer.
 pub type Meter = Arc<dyn Fn(f32) + Send + Sync>;
@@ -40,11 +45,16 @@ pub struct Feedback {
     pub updates: Option<Channel<RecordingUpdate>>,
     pub meter: Option<Meter>,
     pub environment: Option<RecordingEnvironment>,
+    /// When the shortcut that started this capture went down. From the open
+    /// microphone, the recording then starts a pre-roll before it.
+    pub pressed_at: Option<std::time::SystemTime>,
 }
 
 struct ActiveRecording {
     owner: String,
     cancellation: CancellationToken,
+    /// Ends the recording after its release tail.
+    release: CancellationToken,
     task: JoinHandle<Result<RecordedAudio, Error>>,
     finalize: Arc<AtomicBool>,
 }
@@ -52,6 +62,7 @@ struct ActiveRecording {
 pub struct Recorder {
     active: Mutex<Option<ActiveRecording>>,
     completed: Mutex<HashSet<PathBuf>>,
+    warm: Mutex<Option<WarmMicrophone>>,
 }
 
 impl Recorder {
@@ -59,7 +70,66 @@ impl Recorder {
         Self {
             active: Mutex::new(None),
             completed: Mutex::new(HashSet::new()),
+            warm: Mutex::new(None),
         }
+    }
+
+    /// Keeps `microphone_device` open between dictations, or closes it. A
+    /// recording that reads it ends if it closes or changes device.
+    pub fn set_warm_microphone(
+        &self,
+        audio: Arc<dyn anlg_audio::AudioProvider>,
+        microphone_device: Option<String>,
+        enabled: bool,
+    ) -> Result<(), Error> {
+        let mut warm = self.warm.lock().unwrap_or_else(|error| error.into_inner());
+        if enabled
+            && warm
+                .as_ref()
+                .is_some_and(|warm| warm.device == microphone_device && warm.is_open())
+        {
+            return Ok(());
+        }
+        // The old stream closes before another one opens.
+        *warm = None;
+        if enabled {
+            *warm = Some(WarmMicrophone::open(
+                audio.as_ref(),
+                microphone_device,
+                CHUNK_SIZE,
+            )?);
+        }
+        Ok(())
+    }
+
+    /// The open microphone's audio from `lookback` ago, when it is open on
+    /// `microphone_device`; otherwise the microphone opened now.
+    fn open_source(
+        &self,
+        audio: &dyn anlg_audio::AudioProvider,
+        microphone_device: Option<String>,
+        lookback: std::time::Duration,
+    ) -> Result<Samples, Error> {
+        let warm = self
+            .warm
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .filter(|warm| warm.device == microphone_device)
+            .and_then(|warm| warm.listen(lookback));
+        if let Some(warm) = warm {
+            return Ok(warm);
+        }
+        let stream = audio
+            .open_mic_capture(microphone_device, SAMPLE_RATE, CHUNK_SIZE)
+            .map_err(|error| Error::Capture(error.to_string()))?;
+        Ok(stream
+            .map(|frame| {
+                frame
+                    .map(|frame| frame.preferred_mic())
+                    .map_err(|error| Error::Capture(error.to_string()))
+            })
+            .boxed())
     }
 
     pub fn start(
@@ -81,6 +151,7 @@ impl Recorder {
             updates,
             meter,
             environment,
+            pressed_at,
         }: Feedback,
     ) -> Result<(), Error> {
         let mut active = self
@@ -91,10 +162,17 @@ impl Recorder {
             return Err(Error::AlreadyRecording);
         }
 
+        let since_press = pressed_at
+            .and_then(|pressed_at| pressed_at.elapsed().ok())
+            .unwrap_or_default();
+        let lookback = crate::warm::lookback(
+            since_press,
+            environment
+                .as_ref()
+                .map(|environment| &environment.config.behavior),
+        );
         let quiet = Quiet::new(environment, updates.clone());
-        let stream = audio
-            .open_mic_capture(microphone_device, SAMPLE_RATE, CHUNK_SIZE)
-            .map_err(|error| Error::Capture(error.to_string()))?;
+        let stream = self.open_source(audio.as_ref(), microphone_device, lookback)?;
         let temporary_file = tempfile::Builder::new()
             .prefix("librelog-dictation-")
             .suffix(".wav")
@@ -106,6 +184,8 @@ impl Recorder {
 
         let cancellation = CancellationToken::new();
         let task_cancellation = cancellation.clone();
+        let release = CancellationToken::new();
+        let task_release = release.clone();
         let task_path = path.clone();
         let finalize = Arc::new(AtomicBool::new(false));
         let task_finalize = finalize.clone();
@@ -115,7 +195,10 @@ impl Recorder {
                 .map(|(config, updates)| Preview::start(config, updates));
             let result = record_to_file(
                 stream,
-                task_cancellation,
+                Stop {
+                    cancel: task_cancellation,
+                    release: task_release,
+                },
                 &task_path,
                 preview,
                 meter,
@@ -132,6 +215,7 @@ impl Recorder {
         *active = Some(ActiveRecording {
             owner,
             cancellation,
+            release,
             task,
             finalize,
         });
@@ -141,7 +225,7 @@ impl Recorder {
     pub async fn stop(&self, owner: &str) -> Result<RecordedAudio, Error> {
         let active = self.take_active(owner)?.ok_or(Error::NotRecording)?;
         active.finalize.store(true, Ordering::SeqCst);
-        active.cancellation.cancel();
+        active.release.cancel();
         let recorded = active
             .task
             .await
@@ -202,9 +286,15 @@ impl Recorder {
     }
 }
 
+/// How a recording ends: cancelled at once, or released, keeping its tail.
+struct Stop {
+    cancel: CancellationToken,
+    release: CancellationToken,
+}
+
 async fn record_to_file(
-    mut stream: anlg_audio::CaptureStream,
-    cancellation: CancellationToken,
+    mut stream: Samples,
+    stop: Stop,
     path: &Path,
     mut preview: Option<Preview>,
     meter: Option<Meter>,
@@ -219,21 +309,50 @@ async fn record_to_file(
     };
     let mut writer = hound::WavWriter::create(path, specification)
         .map_err(|error| Error::Recording(error.to_string()))?;
-    let deadline = tokio::time::sleep(std::time::Duration::from_secs(MAX_RECORDING_SECONDS));
+    let deadline = tokio::time::sleep(MAX_RECORDING);
     tokio::pin!(deadline);
+    // A microphone that stalls during the tail still ends the recording.
+    let tail_deadline = tokio::time::sleep(MAX_RECORDING);
+    tokio::pin!(tail_deadline);
+    let mut released: Option<(tokio::time::Instant, ReleaseTail)> = None;
+    let mut voice = Voice::default();
     let mut sample_count = 0_u64;
     let mut pending = Vec::with_capacity(PREVIEW_CHUNK_SIZE);
 
     loop {
         tokio::select! {
-            _ = cancellation.cancelled() => break,
+            _ = stop.cancel.cancelled() => break,
+            _ = stop.release.cancelled(), if released.is_none() => {
+                let now = tokio::time::Instant::now();
+                tail_deadline.as_mut().reset(now + RELEASE_TAIL + TAIL_DELIVERY_GRACE);
+                released = Some((now, ReleaseTail::default()));
+            }
+            _ = &mut tail_deadline, if released.is_some() => break,
             _ = &mut deadline => break,
             next = stream.next() => {
-                let Some(frame) = next else {
+                let Some(samples) = next else {
                     break;
                 };
-                let frame = frame.map_err(|error| Error::Capture(error.to_string()))?;
-                let samples = frame.preferred_mic();
+                let mut samples = samples?;
+                let mut done = false;
+                match &mut released {
+                    None => {
+                        voice.extend(&samples);
+                    }
+                    Some((at, tail)) => {
+                        let extending = tail.extending();
+                        let fed = tail.feed(&samples, &mut voice);
+                        if !extending && tail.extending() {
+                            tail_deadline
+                                .as_mut()
+                                .reset(*at + MAX_RELEASE_TAIL + TAIL_DELIVERY_GRACE);
+                        }
+                        if fed.keep < samples.len() {
+                            samples = samples[..fed.keep].into();
+                        }
+                        done = fed.done;
+                    }
+                }
                 for sample in samples.iter() {
                     writer
                         .write_sample(*sample)
@@ -251,6 +370,9 @@ async fn record_to_file(
                         }
                         pending.clear();
                     }
+                }
+                if done {
+                    break;
                 }
             }
         }

@@ -122,9 +122,28 @@ pub(crate) async fn discard_recording<R: tauri::Runtime>(
         .map_err(|error| error.to_string())
 }
 
+/// Keeps the dictation microphone open between dictations, so each one
+/// includes a moment from before its shortcut, or closes it.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    enabled: bool,
+    microphone_device: Option<String>,
+) -> Result<(), String> {
+    let audio = app
+        .state::<Arc<dyn anlg_audio::AudioProvider>>()
+        .inner()
+        .clone();
+    app.state::<Recorder>()
+        .set_warm_microphone(audio, microphone_device, enabled)
+        .map_err(|error| error.to_string())
+}
+
 /// Records for system-wide dictation: the HUD follows the microphone, the
 /// live preview's words arrive over `updates`, and `environment` quiets other
-/// audio and keeps the computer awake until the recording ends.
+/// audio and keeps the computer awake until the recording ends. `pressed_at_ms`
+/// is when the shortcut went down, in milliseconds since the Unix epoch.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn start_system_recording<R: tauri::Runtime>(
@@ -134,6 +153,7 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
     preview: Option<crate::preview::PreviewConfig>,
     updates: tauri::ipc::Channel<crate::preview::RecordingUpdate>,
     environment: Option<crate::environment::RecordingEnvironment>,
+    pressed_at_ms: Option<f64>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
@@ -151,6 +171,11 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
                 updates: Some(updates),
                 meter: Some(meter),
                 environment,
+                pressed_at: pressed_at_ms
+                    .filter(|ms| ms.is_finite() && *ms >= 0.0)
+                    .map(|ms| {
+                        std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(ms / 1_000.0)
+                    }),
             },
         )
         .map_err(|error| error.to_string())

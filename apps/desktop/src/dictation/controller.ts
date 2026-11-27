@@ -3,7 +3,6 @@ import { t } from "@lingui/core/macro";
 export type DictationPhase = "idle" | "starting" | "recording" | "transcribing";
 
 const MAX_PENDING_JOBS = 5;
-export const MAX_CAPTURE_MS = 300_000;
 
 /** A transcript and what made it. */
 type Transcript = {
@@ -26,7 +25,6 @@ type Capture<Context> = {
   /** What `start` resolved, once the microphone is open. */
   opened: { context: Context } | null;
   released: boolean;
-  timer?: ReturnType<typeof setTimeout>;
   operation: Promise<void>;
   ended: Promise<void>;
   end: () => void;
@@ -155,7 +153,6 @@ export class DictationController<Context> {
     if (!capture) return Promise.resolve();
     if (!capture.abort.signal.aborted) {
       capture.abort.abort();
-      clearTimeout(capture.timer);
       this.outcome = "cancelled";
       // A starting capture cancels itself once the microphone has opened.
       if (capture.opened) {
@@ -194,7 +191,6 @@ export class DictationController<Context> {
   }
 
   private endCapture(capture: Capture<Context>) {
-    clearTimeout(capture.timer);
     capture.end();
     if (this.capture !== capture) return;
     this.capture = null;
@@ -225,8 +221,8 @@ export class DictationController<Context> {
       this.endCapture(capture);
       return;
     }
+    // No time limit: a capture records until it is stopped or cancelled.
     capture.opened = { context };
-    capture.timer = setTimeout(() => this.stopCapture(capture), MAX_CAPTURE_MS);
     this.emit();
     if (capture.released) this.accept(capture, context);
   }

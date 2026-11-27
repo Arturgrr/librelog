@@ -43,6 +43,13 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "shortcuts"],
     default: JSON.stringify([DEFAULT_DICTATION_SHORTCUT]) as string,
   },
+  // Keeps the microphone open between dictations for a pre-roll; off by
+  // default, since the system's microphone indicator then stays on.
+  dictation_warm_microphone: {
+    type: "boolean",
+    path: ["dictation", "warm_microphone"],
+    default: false as boolean,
+  },
   dictation_hands_free: {
     type: "boolean",
     path: ["dictation", "hands_free"],

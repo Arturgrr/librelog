@@ -16,7 +16,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { keepOnClipboard } from "./clipboard";
-import { DictationController, MAX_CAPTURE_MS } from "./controller";
+import { DictationController } from "./controller";
 import {
   dictationAudioBehaviors,
   recordingEnvironmentConfig,
@@ -45,7 +45,7 @@ import { useSettingsReady } from "~/settings/queries";
 import { isAppStoreBuild } from "~/shared/app-store";
 import { useConfigValue } from "~/shared/config";
 import { useListener } from "~/stt/contexts";
-import { holdLocalModel } from "~/stt/local-model-hold";
+import { holdLocalModelUntilReleased } from "~/stt/local-model-hold";
 import { useRunBatch } from "~/stt/useRunBatch";
 import { useSTTConnection } from "~/stt/useSTTConnection";
 export { useDictationStatus } from "./state";
@@ -68,9 +68,49 @@ export function DictationLifecycle() {
   if (!settingsReady || !enabled) return null;
   return (
     <TranscriptRetention>
+      <WarmMicrophone />
       <ActiveDictation />
     </TranscriptRetention>
   );
+}
+
+// Opens and closes the open microphone one change at a time, in order.
+let warmMicrophone: Promise<void> = Promise.resolve();
+
+function setWarmMicrophone(enabled: boolean, device: string | null) {
+  warmMicrophone = warmMicrophone
+    .then(async () => {
+      // Without microphone access, opening it would prompt out of the blue.
+      if (
+        enabled &&
+        platform() === "macos" &&
+        unwrap(await permissions.checkPermission("microphone")) !== "authorized"
+      )
+        return;
+      unwrap(await dictation.setWarmMicrophone(enabled, device));
+    })
+    .catch((error: unknown) =>
+      console.warn("[dictation] the microphone could not stay open", error),
+    );
+}
+
+/**
+ * Keeps the microphone open while dictation is on and "Keep microphone
+ * ready" is, so each dictation starts a moment before its shortcut.
+ */
+function WarmMicrophone() {
+  const enabled = useConfigValue("dictation_warm_microphone");
+  const microphone = useConfigValue("microphone_device");
+  if (!enabled) return null;
+  return <OpenMicrophone key={microphone} device={microphone || null} />;
+}
+
+function OpenMicrophone({ device }: { device: string | null }) {
+  useMountEffect(() => {
+    setWarmMicrophone(true, device);
+    return () => setWarmMicrophone(false, null);
+  });
+  return null;
 }
 
 /** What the registered shortcuts drive; it outlives their registration. */
@@ -288,6 +328,8 @@ function ActiveDictation() {
         return current.current.handsFree;
       },
       start: async (signal) => {
+        // The press, which the open microphone's pre-roll counts back from.
+        const pressedAtMs = Date.now();
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
         const { learning, cleanup, voiceEdit, spoken, context, exclusions } =
@@ -388,7 +430,7 @@ function ActiveDictation() {
         // Loads while it records, so the stop transcribes at once. Taken once
         // nothing but the microphone can still fail the start.
         releaseModel();
-        releaseModel = holdLocalModel(conn, MAX_CAPTURE_MS + 60_000);
+        releaseModel = holdLocalModelUntilReleased(conn);
         const capture = {
           stopped: false,
           preview: conn &&
@@ -428,6 +470,7 @@ function ActiveDictation() {
                 });
               }),
               environment,
+              pressedAtMs,
             ),
           );
         } catch (error) {
