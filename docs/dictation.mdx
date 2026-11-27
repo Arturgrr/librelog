@@ -114,7 +114,7 @@ On KDE Plasma, KDE apps join accessibility only while a screen reader runs, so L
 
 To press the paste keys for you, Librelog uses:
 
-- On GNOME and KDE Plasma on Wayland, the desktop's remote control (RemoteDesktop) portal. The first time a dictation that needs a paste starts, your desktop asks whether to allow Librelog to control the keyboard. Librelog keeps the desktop's approval in its data folder, so it asks once; revoke it in your desktop's settings. GNOME shows its remote control indicator while Librelog may press keys, until 15 seconds after the last paste.
+- On GNOME and KDE Plasma on Wayland, the desktop's remote control (RemoteDesktop) portal. The first time a dictation that needs a paste starts, your desktop asks whether to allow Librelog to control the keyboard. Librelog keeps the desktop's approval in its data folder, so it asks once; revoke it in your desktop's settings. GNOME and KDE show their remote control indicator while Librelog may press keys, until 15 seconds after the last paste. When KDE can't keep the approval (it offers to remember remote control only in newer Plasma releases), the indicator stays until 10 minutes after the last paste, and the next dictation asks again while you speak.
 - On other Wayland compositors, such as Sway or Hyprland, `wtype` when it is installed, then the remote control portal.
 - In an X11 session, the X server's XTest extension, after you release the shortcut's modifier keys (up to two seconds).
 
