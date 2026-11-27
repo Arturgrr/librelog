@@ -514,14 +514,17 @@ impl Keys {
 
     /// Replaces the preset shortcut; `None` only removes it. It may not be
     /// any other Librelog shortcut, and gives its key up to one registered
-    /// later.
+    /// later. A key that is refused leaves the current one registered.
     fn set_preset(&mut self, backend: &impl Backend, key: Option<Shortcut>) -> Result<(), String> {
-        if let Some(current) = self.preset.take() {
-            backend.unregister(current)?;
-        }
         let Some(key) = key else {
+            if let Some(current) = self.preset.take() {
+                backend.unregister(current)?;
+            }
             return Ok(());
         };
+        if self.preset == Some(key) {
+            return Ok(());
+        }
         if self.dictation.contains(&key) {
             return Err(TAKEN_BY_DICTATION.into());
         }
@@ -534,11 +537,22 @@ impl Keys {
         if self.capture.iter().any(|(_, held)| *held == key) {
             return Err(TAKEN_BY_CAPTURE.into());
         }
-        backend.register(key, Action::SwitchPreset).map_err(|e| {
-            format!(
-                "Could not register the dictation preset shortcut. It may be used by another app: {e}"
-            )
-        })?;
+        let previous = self.preset;
+        if let Some(current) = previous {
+            backend.unregister(current)?;
+            self.preset = None;
+        }
+        // Another app holding the key leaves the preset on the one it had.
+        if let Err(error) = backend.register(key, Action::SwitchPreset) {
+            if let Some(previous) = previous
+                && backend.register(previous, Action::SwitchPreset).is_ok()
+            {
+                self.preset = Some(previous);
+            }
+            return Err(format!(
+                "Could not register the dictation preset shortcut. It may be used by another app: {error}"
+            ));
+        }
         self.preset = Some(key);
         Ok(())
     }
@@ -1688,6 +1702,16 @@ mod registration_tests {
             assert_eq!(keys.set_preset(&os, Some(key(taken))), Err(error.into()));
         }
         keys.set_preset(&os, Some(key("Alt+Shift+KeyL"))).unwrap();
+        keys.set_preset(&os, Some(key("Alt+Shift+KeyL"))).unwrap();
+        // A refused key, Librelog's own or another app's, leaves the current one registered.
+        assert_eq!(
+            keys.set_preset(&os, Some(key("Alt+Control+Space"))),
+            Err(TAKEN_BY_DICTATION.into())
+        );
+        os.0.borrow_mut().insert(key("Alt+Shift+KeyM"));
+        assert!(keys.set_preset(&os, Some(key("Alt+Shift+KeyM"))).is_err());
+        assert_eq!(keys.preset, Some(key("Alt+Shift+KeyL")));
+        assert!(os.0.borrow().contains(&key("Alt+Shift+KeyL")));
         keys.set_preset(&os, Some(key("Alt+Shift+KeyK"))).unwrap();
         assert!(!os.0.borrow().contains(&key("Alt+Shift+KeyL")));
 
