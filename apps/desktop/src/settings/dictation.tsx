@@ -13,6 +13,7 @@ import { DictationAiSettings } from "./dictation-ai";
 import { DictationAudioSettings } from "./dictation-audio";
 import { DictationIndicatorSetting } from "./dictation-indicator";
 import { DictationPasteLastSettings } from "./dictation-paste-last";
+import { DictationPresetSettings } from "./dictation-presets";
 import { DictationSendSettings } from "./dictation-send";
 import { DictationShortcuts, isDoubleTapShortcut } from "./dictation-shortcut";
 import { DictationSpokenSettings } from "./dictation-spoken";
@@ -163,6 +164,7 @@ export function SettingsDictation() {
         <DictationIndicatorSetting />
         <DictationAudioSettings />
         <DictationPasteLastSettings />
+        <DictationPresetSettings />
         <DictationSendSettings />
         <DictationSpokenSettings />
         <DictationAiSettings />

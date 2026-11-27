@@ -9,7 +9,8 @@ use tauri_specta::Event;
 
 use crate::{
     AnnotateShortcutEvent, CaptureAction, CaptureShortcutEvent, CaptureShortcuts,
-    PasteLastAnnotationEvent, PasteLastEvent, ShortcutEvent, ShortcutPluginExt, annotate, press,
+    DictationPresetEvent, PasteLastAnnotationEvent, PasteLastEvent, ShortcutEvent,
+    ShortcutPluginExt, annotate, press,
 };
 
 pub fn uses_portal() -> bool {
@@ -24,6 +25,8 @@ const TAKEN_BY_PASTE_LAST: &str =
     "This shortcut already pastes the last dictation. Choose another one.";
 const TAKEN_BY_ANNOTATE: &str = "This shortcut is already used by Annotate. Choose another one.";
 const TAKEN_BY_CAPTURE: &str = "This shortcut is already used by Screenshots. Choose another one.";
+const TAKEN_BY_PRESET: &str =
+    "This shortcut already switches the dictation preset. Choose another one.";
 const TAKEN: &str =
     "This shortcut is already used by another Librelog shortcut. Choose another one.";
 
@@ -150,6 +153,8 @@ struct Keys {
     annotate_pen_held: Option<Shortcut>,
     /// An Annotate recording runs.
     annotate_recording: bool,
+    /// Switches the dictation preset; gives way to every other family's.
+    preset: Option<Shortcut>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -165,6 +170,8 @@ enum Action {
     /// Annotate's pen, on and off, while a recording runs.
     AnnotatePen,
     Capture(CaptureAction),
+    /// Switches dictation to its next preset.
+    SwitchPreset,
 }
 
 trait Backend {
@@ -184,6 +191,7 @@ impl Keys {
             }
             self.yield_annotate(backend, key)?;
             self.yield_capture(backend, key)?;
+            self.yield_preset(backend, key)?;
             backend
                 .register(key, Action::Dictate(source))
                 .map_err(|e| {
@@ -238,6 +246,17 @@ impl Keys {
                 shortcut = action.name(),
                 "a Capture shortcut gave way to another Librelog shortcut"
             );
+        }
+        Ok(())
+    }
+
+    /// The preset shortcut never keeps a key another Librelog shortcut asks
+    /// for, as Capture's.
+    fn yield_preset(&mut self, backend: &impl Backend, key: Shortcut) -> Result<(), String> {
+        if self.preset == Some(key) {
+            backend.unregister(key)?;
+            self.preset = None;
+            tracing::warn!("the dictation preset shortcut gave way to another Librelog shortcut");
         }
         Ok(())
     }
@@ -312,6 +331,7 @@ impl Keys {
         }
         self.yield_annotate(backend, key)?;
         self.yield_capture(backend, key)?;
+        self.yield_preset(backend, key)?;
         backend.register(key, Action::PasteLast).map_err(|e| {
             format!(
                 "Could not register the paste last dictation shortcut. It may be used by another app: {e}"
@@ -352,6 +372,7 @@ impl Keys {
                 return Err(TAKEN_BY_PASTE_LAST.into());
             }
             self.yield_capture(backend, key)?;
+            self.yield_preset(backend, key)?;
             self.yield_pen(backend, key)?;
             backend.register(key, action).map_err(|e| {
                 format!(
@@ -399,6 +420,9 @@ impl Keys {
             }
             if self.capture.iter().any(|(_, held)| *held == key) {
                 return Err(TAKEN_BY_CAPTURE.into());
+            }
+            if self.preset == Some(key) {
+                return Err(TAKEN_BY_PRESET.into());
             }
         }
         self.annotate_pen = key;
@@ -467,6 +491,7 @@ impl Keys {
                 if self.capture.iter().any(|(_, held)| *held == key) {
                     return Err(TAKEN.to_string());
                 }
+                self.yield_preset(backend, key)?;
                 backend
                     .register(key, Action::Capture(action))
                     .map_err(|e| format!("It may be used by another app: {e}"))?;
@@ -485,6 +510,37 @@ impl Keys {
         } else {
             Err(failed.join("\n"))
         }
+    }
+
+    /// Replaces the preset shortcut; `None` only removes it. It may not be
+    /// any other Librelog shortcut, and gives its key up to one registered
+    /// later.
+    fn set_preset(&mut self, backend: &impl Backend, key: Option<Shortcut>) -> Result<(), String> {
+        if let Some(current) = self.preset.take() {
+            backend.unregister(current)?;
+        }
+        let Some(key) = key else {
+            return Ok(());
+        };
+        if self.dictation.contains(&key) {
+            return Err(TAKEN_BY_DICTATION.into());
+        }
+        if self.paste_last == Some(key) {
+            return Err(TAKEN_BY_PASTE_LAST.into());
+        }
+        if [self.annotate, self.annotate_paste, self.annotate_pen].contains(&Some(key)) {
+            return Err(TAKEN_BY_ANNOTATE.into());
+        }
+        if self.capture.iter().any(|(_, held)| *held == key) {
+            return Err(TAKEN_BY_CAPTURE.into());
+        }
+        backend.register(key, Action::SwitchPreset).map_err(|e| {
+            format!(
+                "Could not register the dictation preset shortcut. It may be used by another app: {e}"
+            )
+        })?;
+        self.preset = Some(key);
+        Ok(())
     }
 }
 
@@ -553,6 +609,11 @@ impl Backend for Global<'_> {
             Action::Capture(action) => self.shortcuts.on_shortcut(key, move |app, _, event| {
                 if event.state == ShortcutState::Pressed {
                     let _ = CaptureShortcutEvent { action }.emit(app);
+                }
+            }),
+            Action::SwitchPreset => self.shortcuts.on_shortcut(key, |app, _, event| {
+                if event.state == ShortcutState::Pressed {
+                    let _ = DictationPresetEvent { preset: None }.emit(app);
                 }
             }),
         };
@@ -925,6 +986,57 @@ pub fn validate_capture(
     )
 }
 
+/// Registers the shortcut that switches dictation to its next preset,
+/// replacing the previous one; `None` unregisters it. It needs a key with
+/// modifiers, and gives way to every other Librelog shortcut. Fires on key
+/// press only.
+#[tauri::command]
+#[specta::specta]
+pub async fn configure_dictation_preset(
+    app: tauri::AppHandle,
+    shortcut: Option<String>,
+) -> Result<(), String> {
+    let global_available = app.try_state::<GlobalShortcut>().is_some();
+    let shortcut = shortcut.filter(|shortcut| !shortcut.trim().is_empty());
+    let key = shortcut
+        .as_deref()
+        .map(|shortcut| paste_last_key(shortcut, global_available))
+        .transpose()?;
+    let state = app.state::<GlobalState>();
+    let mut guard = state.registration.lock().await;
+    let registration = &mut *guard;
+    #[cfg(target_os = "linux")]
+    if uses_portal() {
+        if let (Some(key), Some(shortcut)) = (key, shortcut.as_deref()) {
+            label(&app, key, shortcut);
+        }
+        let result = registration.keys.set_preset(&registration.portal.held, key);
+        wanted_changed(&app);
+        return result;
+    }
+    match global(&app, &state) {
+        Some(global) => registration.keys.set_preset(&global, key),
+        None if key.is_some() => Err(UNAVAILABLE.into()),
+        None => Ok(()),
+    }
+}
+
+/// Checks a dictation preset shortcut: a key with modifiers that none of
+/// `taken` (the other Librelog shortcuts) uses.
+#[tauri::command]
+#[specta::specta]
+pub fn validate_dictation_preset(
+    app: tauri::AppHandle,
+    shortcut: String,
+    taken: Vec<String>,
+) -> Result<(), String> {
+    validate_annotate_shortcut(
+        &shortcut,
+        &taken,
+        app.try_state::<GlobalShortcut>().is_some(),
+    )
+}
+
 #[cfg(any(target_os = "linux", test))]
 mod bindings;
 #[cfg(any(target_os = "linux", test))]
@@ -937,8 +1049,8 @@ mod trigger;
 
 /// Checks a dictation shortcut, which must differ from the `paste_last`
 /// shortcut when there is one, from Annotate's shortcuts (`annotate`, empty
-/// while Annotate is off) and from Capture's (`capture`, empty while Capture
-/// is off).
+/// while Annotate is off), from Capture's (`capture`, empty while Capture
+/// is off) and from the dictation preset one (`preset`).
 #[tauri::command]
 #[specta::specta]
 pub fn validate(
@@ -947,6 +1059,7 @@ pub fn validate(
     paste_last: Option<String>,
     annotate: Vec<String>,
     capture: Vec<String>,
+    preset: Option<String>,
 ) -> Result<(), String> {
     validate_dictation(
         &shortcut,
@@ -954,12 +1067,13 @@ pub fn validate(
         &annotate,
         &capture,
         app.try_state::<GlobalShortcut>().is_some(),
-    )
+    )?;
+    not_the_preset(&shortcut, preset.as_deref())
 }
 
 /// Checks a paste-last shortcut: a key with modifiers that none of the
-/// `dictation` shortcuts, Annotate's (`annotate`) or Capture's (`capture`)
-/// uses.
+/// `dictation` shortcuts, Annotate's (`annotate`), Capture's (`capture`) or
+/// the dictation preset one (`preset`) uses.
 #[tauri::command]
 #[specta::specta]
 pub fn validate_paste_last(
@@ -968,6 +1082,7 @@ pub fn validate_paste_last(
     dictation: Vec<String>,
     annotate: Vec<String>,
     capture: Vec<String>,
+    preset: Option<String>,
 ) -> Result<(), String> {
     validate_paste_last_shortcut(
         &shortcut,
@@ -975,7 +1090,18 @@ pub fn validate_paste_last(
         &annotate,
         &capture,
         app.try_state::<GlobalShortcut>().is_some(),
-    )
+    )?;
+    not_the_preset(&shortcut, preset.as_deref())
+}
+
+/// The preset shortcut gives way to the others as they register, so Settings
+/// refuses its key for them instead of silently unbinding it.
+fn not_the_preset(shortcut: &str, preset: Option<&str>) -> Result<(), String> {
+    let preset = preset.filter(|preset| !preset.trim().is_empty());
+    match (parse_shortcut(shortcut), preset.map(parse_shortcut)) {
+        (Ok(key), Some(Ok(other))) if key == other => Err(TAKEN_BY_PRESET.into()),
+        _ => Ok(()),
+    }
 }
 
 fn uses(shortcuts: &[String], key: Shortcut) -> bool {
@@ -1538,5 +1664,48 @@ mod registration_tests {
             validate_paste_last_shortcut("Alt+Shift+Digit3", &[], &[], &capture, true),
             Err(TAKEN_BY_CAPTURE.into())
         );
+    }
+
+    #[test]
+    fn the_preset_shortcut_never_takes_another_shortcut_and_gives_its_key_up() {
+        let key = |shortcut: &str| parse_shortcut(shortcut).unwrap();
+        let os = Os::default();
+        let mut keys = Keys::default();
+        keys.add_dictation(&os, vec![(0, key("Control+Alt+Space"))])
+            .unwrap();
+        keys.set_paste_last(&os, Some(key("Alt+Shift+KeyV")))
+            .unwrap();
+        keys.set_capture(
+            &os,
+            vec![(CaptureAction::Area, Ok(key("Alt+Shift+Digit4")))],
+        )
+        .unwrap();
+        for (taken, error) in [
+            ("Alt+Control+Space", TAKEN_BY_DICTATION),
+            ("Shift+Alt+KeyV", TAKEN_BY_PASTE_LAST),
+            ("Shift+Alt+Digit4", TAKEN_BY_CAPTURE),
+        ] {
+            assert_eq!(keys.set_preset(&os, Some(key(taken))), Err(error.into()));
+        }
+        keys.set_preset(&os, Some(key("Alt+Shift+KeyL"))).unwrap();
+        keys.set_preset(&os, Some(key("Alt+Shift+KeyK"))).unwrap();
+        assert!(!os.0.borrow().contains(&key("Alt+Shift+KeyL")));
+
+        // A shortcut registered later takes its key, as Capture's.
+        keys.set_annotate(&os, Some(key("Shift+Alt+KeyK")), None)
+            .unwrap();
+        assert_eq!(keys.preset, None);
+        assert_eq!(keys.annotate, Some(key("Alt+Shift+KeyK")));
+
+        // So Settings refuses the preset's key for the others.
+        assert_eq!(
+            not_the_preset("Shift+Alt+KeyK", Some("Alt+Shift+KeyK")),
+            Err(TAKEN_BY_PRESET.into())
+        );
+        assert_eq!(
+            not_the_preset("Alt+Shift+KeyJ", Some("Alt+Shift+KeyK")),
+            Ok(())
+        );
+        assert_eq!(not_the_preset("Alt+Shift+KeyK", Some("")), Ok(()));
     }
 }

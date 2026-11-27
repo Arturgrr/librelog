@@ -101,6 +101,7 @@ describe("dictation shortcut recorder", () => {
       "Alt+Shift+KeyV",
       [],
       [],
+      null,
     );
     await waitFor(() =>
       expect(useDictationStatus.getState().capturingShortcut).toBe(false),

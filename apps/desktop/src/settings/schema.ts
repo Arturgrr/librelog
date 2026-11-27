@@ -63,6 +63,26 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "paste_last_shortcut"],
     default: DEFAULT_PASTE_LAST_SHORTCUT as string,
   },
+  // JSON `[{ id, language, provider, model }]`: what the preset shortcut and
+  // the tray menu switch dictation between.
+  dictation_presets: {
+    type: "string",
+    path: ["dictation", "presets"],
+    default: "[]" as string,
+  },
+  // No default: no key combination is free in every app and layout.
+  dictation_preset_shortcut: {
+    type: "string",
+    path: ["dictation", "preset_shortcut"],
+    default: "" as string,
+  },
+  // The id of the preset last switched to; it counts while its model is the
+  // current one.
+  dictation_preset_active: {
+    type: "string",
+    path: ["dictation", "preset_active"],
+    default: "" as string,
+  },
   dictation_keep_on_clipboard: {
     type: "boolean",
     path: ["dictation", "keep_on_clipboard"],

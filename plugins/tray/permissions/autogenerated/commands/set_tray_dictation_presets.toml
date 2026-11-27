@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-tray-dictation-presets"
+description = "Enables the set_tray_dictation_presets command without any pre-configured scope."
+commands.allow = ["set_tray_dictation_presets"]
+
+[[permission]]
+identifier = "deny-set-tray-dictation-presets"
+description = "Denies the set_tray_dictation_presets command without any pre-configured scope."
+commands.deny = ["set_tray_dictation_presets"]

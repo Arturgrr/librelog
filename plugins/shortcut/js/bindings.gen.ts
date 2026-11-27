@@ -51,14 +51,15 @@ export const commands = {
   /**
    * Checks a dictation shortcut, which must differ from the `paste_last`
    * shortcut when there is one, from Annotate's shortcuts (`annotate`, empty
-   * while Annotate is off) and from Capture's (`capture`, empty while Capture
-   * is off).
+   * while Annotate is off), from Capture's (`capture`, empty while Capture
+   * is off) and from the dictation preset one (`preset`).
    */
   async validate(
     shortcut: string,
     pasteLast: string | null,
     annotate: string[],
     capture: string[],
+    preset: string | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -68,6 +69,7 @@ export const commands = {
           pasteLast,
           annotate,
           capture,
+          preset,
         }),
       };
     } catch (e) {
@@ -108,14 +110,15 @@ export const commands = {
   },
   /**
    * Checks a paste-last shortcut: a key with modifiers that none of the
-   * `dictation` shortcuts, Annotate's (`annotate`) or Capture's (`capture`)
-   * uses.
+   * `dictation` shortcuts, Annotate's (`annotate`), Capture's (`capture`) or
+   * the dictation preset one (`preset`) uses.
    */
   async validatePasteLast(
     shortcut: string,
     dictation: string[],
     annotate: string[],
     capture: string[],
+    preset: string | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -125,6 +128,7 @@ export const commands = {
           dictation,
           annotate,
           capture,
+          preset,
         }),
       };
     } catch (e) {
@@ -245,6 +249,48 @@ export const commands = {
     }
   },
   /**
+   * Registers the shortcut that switches dictation to its next preset,
+   * replacing the previous one; `None` unregisters it. It needs a key with
+   * modifiers, and gives way to every other Librelog shortcut. Fires on key
+   * press only.
+   */
+  async configureDictationPreset(
+    shortcut: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:shortcut|configure_dictation_preset", {
+          shortcut,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Checks a dictation preset shortcut: a key with modifiers that none of
+   * `taken` (the other Librelog shortcuts) uses.
+   */
+  async validateDictationPreset(
+    shortcut: string,
+    taken: string[],
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:shortcut|validate_dictation_preset", {
+          shortcut,
+          taken,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
    * What the desktop did with the shortcuts on Wayland. `unused` elsewhere,
    * and while no shortcut is set.
    */
@@ -266,6 +312,7 @@ export const events = __makeEvents__<{
   annotateShortcutEvent: AnnotateShortcutEvent;
   captureShortcutEvent: CaptureShortcutEvent;
   desktopShortcutsEvent: DesktopShortcutsEvent;
+  dictationPresetEvent: DictationPresetEvent;
   pasteLastAnnotationEvent: PasteLastAnnotationEvent;
   pasteLastEvent: PasteLastEvent;
   shortcutEvent: ShortcutEvent;
@@ -273,6 +320,7 @@ export const events = __makeEvents__<{
   annotateShortcutEvent: "plugin:shortcut:annotate-shortcut-event",
   captureShortcutEvent: "plugin:shortcut:capture-shortcut-event",
   desktopShortcutsEvent: "plugin:shortcut:desktop-shortcuts-event",
+  dictationPresetEvent: "plugin:shortcut:dictation-preset-event",
   pasteLastAnnotationEvent: "plugin:shortcut:paste-last-annotation-event",
   pasteLastEvent: "plugin:shortcut:paste-last-event",
   shortcutEvent: "plugin:shortcut:shortcut-event",
@@ -363,6 +411,12 @@ export type DesktopShortcutsState =
    */
   | { type: "dismissed" }
   | { type: "failed"; message: string };
+/**
+ * Switch dictation to another preset: the next one when its shortcut
+ * was pressed (`preset` is none), or the one at `preset` when it was
+ * chosen in the tray menu.
+ */
+export type DictationPresetEvent = { preset: number | null };
 export type HotKey = { key: number | null; modifiers: Modifier[] };
 export type Modifier =
   | "command"

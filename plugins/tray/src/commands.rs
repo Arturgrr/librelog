@@ -48,6 +48,19 @@ pub async fn set_tray_capture_visible(
         .map_err(|error| error.to_string())
 }
 
+/// Shows the dictation presets in a submenu of the tray menu, the one in use
+/// checked, so one can be picked there; `null` or fewer than two hides it.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tray_dictation_presets(
+    app: tauri::AppHandle<tauri::Wry>,
+    presets: Option<crate::TrayDictationPresets>,
+) -> Result<(), String> {
+    app.tray()
+        .set_dictation_presets(presets)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_recording_title(

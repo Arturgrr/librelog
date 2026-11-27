@@ -15,8 +15,8 @@ use super::Action;
 use super::bindings::{Binding, Does, RELEASE_WAIT, ReleaseGate};
 
 use crate::{
-    AnnotateShortcutEvent, CaptureShortcutEvent, PasteLastAnnotationEvent, PasteLastEvent,
-    ShortcutEvent, annotate, press,
+    AnnotateShortcutEvent, CaptureShortcutEvent, DictationPresetEvent, PasteLastAnnotationEvent,
+    PasteLastEvent, ShortcutEvent, annotate, press,
 };
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -271,7 +271,10 @@ impl Handler {
             Action::Capture(action) if pressed => {
                 let _ = CaptureShortcutEvent { action }.emit(app);
             }
-            Action::Capture(_) | Action::Cancel | Action::AnnotatePen => {}
+            Action::SwitchPreset if pressed => {
+                let _ = DictationPresetEvent { preset: None }.emit(app);
+            }
+            Action::Capture(_) | Action::SwitchPreset | Action::Cancel | Action::AnnotatePen => {}
         }
     }
 

@@ -33,6 +33,8 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             global::set_annotate_recording,
             global::configure_capture,
             global::validate_capture,
+            global::configure_dictation_preset,
+            global::validate_dictation_preset,
             global::status::desktop_shortcuts,
             global::status::ask_desktop_again,
         ])
@@ -42,6 +44,7 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             AnnotateShortcutEvent,
             PasteLastAnnotationEvent,
             CaptureShortcutEvent,
+            DictationPresetEvent,
             DesktopShortcutsEvent
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)

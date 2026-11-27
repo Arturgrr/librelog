@@ -29,6 +29,7 @@ import {
   recordUsedTerms,
   watchCorrection,
 } from "./learning";
+import { useActiveDictationPreset } from "./presets";
 import {
   refineTranscript,
   useSpokenRules,
@@ -146,7 +147,10 @@ function ActiveDictation() {
   const exclusions = useConfigValue("dictation_context_exclusions");
   const model = useLanguageModel();
   const weights = useConfigValue("dictation_term_weights");
-  const languages = useConfigValue("spoken_languages");
+  const spokenLanguages = useConfigValue("spoken_languages");
+  // A preset's language replaces the spoken languages for dictation only.
+  const preset = useActiveDictationPreset();
+  const languages = preset ? [preset.language] : spokenLanguages;
   const sounds = useConfigValue("dictation_sounds");
   const hudPosition = useConfigValue("dictation_hud_position");
   const audio = {
@@ -163,6 +167,7 @@ function ActiveDictation() {
     microphone,
     livePreview,
     languages,
+    preset,
     dictionary,
     replacements,
     learning,
@@ -185,6 +190,7 @@ function ActiveDictation() {
     microphone,
     livePreview,
     languages,
+    preset,
     dictionary,
     replacements,
     learning,
@@ -461,6 +467,9 @@ function ActiveDictation() {
           notifyOnCompletion: false,
           numSpeakers: 1,
           keywords: await keywords(),
+          languages: current.current.preset
+            ? [current.current.preset.language]
+            : undefined,
           handlePersist: (words) => {
             text = words
               .slice()

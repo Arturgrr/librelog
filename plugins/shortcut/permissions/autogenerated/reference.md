@@ -14,6 +14,8 @@ Default permissions for the plugin
 - `allow-set-annotate-recording`
 - `allow-configure-capture`
 - `allow-validate-capture`
+- `allow-configure-dictation-preset`
+- `allow-validate-dictation-preset`
 - `allow-desktop-shortcuts`
 - `allow-ask-desktop-again`
 - `allow-register-hotkey`
@@ -128,6 +130,32 @@ Enables the configure_capture command without any pre-configured scope.
 <td>
 
 Denies the configure_capture command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:allow-configure-dictation-preset`
+
+</td>
+<td>
+
+Enables the configure_dictation_preset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:deny-configure-dictation-preset`
+
+</td>
+<td>
+
+Denies the configure_dictation_preset command without any pre-configured scope.
 
 </td>
 </tr>
@@ -362,6 +390,32 @@ Enables the validate_capture command without any pre-configured scope.
 <td>
 
 Denies the validate_capture command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:allow-validate-dictation-preset`
+
+</td>
+<td>
+
+Enables the validate_dictation_preset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`shortcut:deny-validate-dictation-preset`
+
+</td>
+<td>
+
+Denies the validate_dictation_preset command without any pre-configured scope.
 
 </td>
 </tr>

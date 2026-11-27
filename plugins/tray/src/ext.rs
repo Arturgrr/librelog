@@ -428,6 +428,9 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
             menu.append(&TrayCaptureArea::build(app)?)?;
             menu.append(&TrayRecordScreen::build(app)?)?;
         }
+        if let Some(presets) = crate::menu_items::tray_dictation_presets::build(app)? {
+            menu.append(&presets)?;
+        }
         menu.append(&TraySettings::build(app)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         menu.append(&TrayVersion::build(app)?)?;
@@ -577,6 +580,16 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
 
     pub fn set_paste_last_visible(&self, visible: bool) -> Result<()> {
         if PASTE_LAST_VISIBLE.swap(visible, Ordering::SeqCst) == visible {
+            return Ok(());
+        }
+        Self::rebuild_menu(self.manager.app_handle())
+    }
+
+    pub fn set_dictation_presets(
+        &self,
+        presets: Option<crate::TrayDictationPresets>,
+    ) -> Result<()> {
+        if !crate::menu_items::tray_dictation_presets::set(presets) {
             return Ok(());
         }
         Self::rebuild_menu(self.manager.app_handle())

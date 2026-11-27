@@ -79,6 +79,8 @@ export function localizeExternalMessage(message: string): string {
       return t`This shortcut already starts dictation. Choose another one.`;
     case "This shortcut already pastes the last dictation. Choose another one.":
       return t`This shortcut already pastes the last dictation. Choose another one.`;
+    case "This shortcut already switches the dictation preset. Choose another one.":
+      return t`This shortcut already switches the dictation preset. Choose another one.`;
     case "This shortcut is already used by Annotate. Choose another one.":
       return t`This shortcut is already used by Annotate. Choose another one.`;
     case "This shortcut is already used by another Librelog shortcut. Choose another one.":

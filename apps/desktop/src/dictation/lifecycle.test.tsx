@@ -203,6 +203,7 @@ describe("dictation access and lifecycle", () => {
     mocks.settings.microphone_device = "";
     mocks.settings.dictation_audio_behavior = "nothing";
     mocks.settings.dictation_hud_position = "top";
+    mocks.settings.dictation_presets = "[]";
     mocks.settings.dictation_learning = false;
     mocks.meeting = { status: "inactive", loading: false };
     mocks.listener = null;
@@ -860,6 +861,45 @@ describe("dictation access and lifecycle", () => {
       expect.objectContaining({ baseUrl: "http://127.0.0.1:1234", apiKey: "" }),
     );
   });
+  it("dictates in the active preset's language instead of the spoken languages", async () => {
+    mocks.settings.dictation_live_preview = true;
+    mocks.settings.spoken_languages = ["en"];
+    mocks.settings.current_stt_provider = "soniqo";
+    mocks.settings.current_stt_model = "soniqo-parakeet-streaming";
+    mocks.settings.dictation_preset_active = "pt";
+    mocks.settings.dictation_presets = JSON.stringify([
+      {
+        id: "pt",
+        language: "pt",
+        provider: "soniqo",
+        model: "soniqo-parakeet-streaming",
+        modelLabel: "Parakeet",
+      },
+    ]);
+    mocks.connection = {
+      provider: "soniqo",
+      model: "soniqo-parakeet-streaming",
+      apiKey: "",
+      baseUrl: "https://stt.example.com",
+    };
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await shortcut("pressed");
+    expect(mocks.startSystemRecording.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        params: expect.objectContaining({ languages: ["pt"] }),
+      }),
+    );
+    endCapture();
+    await shortcut("released");
+    await waitFor(() =>
+      expect(mocks.runBatch).toHaveBeenCalledWith(
+        "/tmp/dictation.wav",
+        expect.objectContaining({ languages: ["pt"] }),
+      ),
+    );
+  });
+
   it("sends the ranked dictionary to batch transcription and weighs the terms once inserted", async () => {
     mocks.settings.personalization_dictionary_terms = ["Librelog"];
     mocks.settings.personalization_dictionary_replacements = [

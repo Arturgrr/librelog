@@ -94,6 +94,15 @@ common_event_derives! {
     pub struct PasteLastEvent {}
 }
 
+common_event_derives! {
+    /// Switch dictation to another preset: the next one when its shortcut
+    /// was pressed (`preset` is none), or the one at `preset` when it was
+    /// chosen in the tray menu.
+    pub struct DictationPresetEvent {
+        pub preset: Option<u32>,
+    }
+}
+
 /// What a Capture shortcut, or its menu bar item, asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
