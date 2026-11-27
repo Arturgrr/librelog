@@ -14,6 +14,12 @@ const mocks = vi.hoisted(() => ({
   useRunBatch: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    constructor(public onmessage: (event: unknown) => void) {}
+  },
+}));
+
 vi.mock("@anlg/plugin-dictation", () => ({
   commands: {
     cancelRecording: mocks.cancelRecording,
@@ -115,6 +121,7 @@ describe("useDictation", () => {
       "Built-in Microphone",
       mocks.useRunBatch.mock.calls[0][0],
       null,
+      expect.anything(),
     );
 
     await act(async () => {
@@ -132,6 +139,39 @@ describe("useDictation", () => {
     expect(editor.insertText).toHaveBeenCalledWith("Hello world.");
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/voice.wav");
     expect(result.current.phase).toBe("idle");
+  });
+
+  it("transcribes what was recorded when the microphone fails mid-recording", async () => {
+    mocks.stopRecording.mockResolvedValue({
+      status: "ok",
+      data: {
+        filePath: "/tmp/voice.wav",
+        durationMs: 1_200,
+        interrupted: true,
+      },
+    });
+    const editor = {
+      focus: vi.fn(() => true),
+      insertText: vi.fn(),
+    } as unknown as ChatEditorHandle;
+    const { result } = renderHook(() =>
+      useDictation({ editorRef: { current: editor } }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      mocks.startRecording.mock.lastCall?.[3].onmessage({
+        type: "interrupted",
+      });
+    });
+
+    await waitFor(() =>
+      expect(editor.insertText).toHaveBeenCalledWith("Hello world."),
+    );
+    expect(mocks.toastWarning).toHaveBeenCalledWith(expect.any(String));
+    expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/voice.wav");
   });
 
   it("keeps voice input available while a meeting records", async () => {

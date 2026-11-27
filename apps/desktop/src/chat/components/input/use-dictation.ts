@@ -1,8 +1,12 @@
 import { useLingui } from "@lingui/react/macro";
+import { Channel } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 
 import type { ChatEditorHandle } from "@anlg/editor/chat";
-import { commands as dictationCommands } from "@anlg/plugin-dictation";
+import {
+  commands as dictationCommands,
+  type RecordingUpdate,
+} from "@anlg/plugin-dictation";
 import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
@@ -90,10 +94,18 @@ export function useDictation({
         return;
       }
 
+      // A failing microphone ends the recording; what it captured is
+      // transcribed as if stopped.
+      let interrupted = false;
       const result = await dictationCommands.startRecording(
         microphoneDevice || null,
         transcriptionSessionId,
         avoidBluetooth ?? null,
+        new Channel<RecordingUpdate>((update) => {
+          if (update.type !== "interrupted") return;
+          interrupted = true;
+          if (generation === generationRef.current) void stopRef.current();
+        }),
       );
       if (result.status === "error") {
         throw new Error(result.error);
@@ -116,6 +128,7 @@ export function useDictation({
           void stopRef.current();
         }
       }, 250);
+      if (interrupted) void stopRef.current();
     } catch (error) {
       await cancelRecording();
       if (!mountedRef.current || generation !== generationRef.current) {
@@ -158,6 +171,11 @@ export function useDictation({
         throw new Error(result.error);
       }
       recordedPath = result.data.filePath;
+      if (result.data.interrupted) {
+        toast.warning(
+          t`The microphone stopped. Transcribing what was recorded.`,
+        );
+      }
 
       let transcript = "";
       await runBatch(recordedPath, {

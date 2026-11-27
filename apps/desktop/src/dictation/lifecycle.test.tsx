@@ -128,8 +128,10 @@ vi.mock("@anlg/plugin-transcription", () => ({
 }));
 vi.mock("@anlg/plugin-sfx", () => ({ commands: { play: mocks.play } }));
 vi.mock("@anlg/ui/components/ui/toast", () => ({
-  toast: { error: vi.fn() },
+  toast: { error: vi.fn(), warning: vi.fn() },
 }));
+
+import { toast } from "@anlg/ui/components/ui/toast";
 
 import {
   DictationLifecycle,
@@ -373,6 +375,40 @@ describe("dictation access and lifecycle", () => {
     expect(cue.startMs).toBeGreaterThanOrEqual(pressedAtMs);
     expect(cue.endMs).toBeGreaterThan(cue.startMs);
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/dictation.wav");
+  });
+
+  it("transcribes and inserts what was recorded when the microphone fails mid-dictation", async () => {
+    mocks.stopRecording.mockImplementation(async () => {
+      endCapture();
+      return {
+        status: "ok",
+        data: {
+          filePath: "/tmp/dictation.wav",
+          durationMs: 1_000,
+          transcript: null,
+          interrupted: true,
+        },
+      };
+    });
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await act(async () => {
+      mocks.listener?.({ payload: { type: "pressed" } });
+    });
+    await waitFor(() =>
+      expect(useDictationStatus.getState().phase).toBe("recording"),
+    );
+    await act(async () => {
+      mocks.startSystemRecording.mock.lastCall?.[3].onmessage({
+        type: "interrupted",
+      });
+    });
+    await waitFor(() => expect(mocks.insertText).toHaveBeenCalledWith("Hello"));
+    expect(mocks.runBatch).toHaveBeenCalledWith(
+      "/tmp/dictation.wav",
+      expect.anything(),
+    );
+    expect(toast.warning).toHaveBeenCalledWith(expect.any(String));
   });
 
   it("keeps the microphone open only while Keep microphone ready is on", async () => {
