@@ -34,6 +34,7 @@ import {
   VoiceEditFailed,
   type RefineOptions,
 } from "./refine";
+import { sendAfterInsert } from "./send";
 import { useDictationStatus } from "./state";
 
 import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
@@ -490,6 +491,8 @@ function ActiveDictation() {
       },
       insert: async (text, { context, edit }) => {
         const fingerprint = edit ? (await context.read)?.fingerprint : null;
+        // A rewritten selection is read before anything is sent.
+        const send = edit ? null : await sendAfterInsert().catch(() => null);
         try {
           return unwrap(
             await dictation.insertDictation(
@@ -498,6 +501,7 @@ function ActiveDictation() {
                 ? { type: "replaceSelection", fingerprint }
                 : { type: "fit" },
               context.exclusions,
+              send,
             ),
           );
         } finally {

@@ -22,9 +22,9 @@ const FOCUS_CHANGED: &str =
 /// Pasting after a partial edit would insert part of the text twice.
 const INCOMPLETE: &str = "The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation.";
 
-pub async fn capture() -> Result<String, String> {
+async fn focused_target() -> Result<Target, String> {
     let focus = accessible::focus().await;
-    let target = tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         route::target(
             focus,
             system::x11_active_app,
@@ -33,7 +33,11 @@ pub async fn capture() -> Result<String, String> {
         )
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+}
+
+pub async fn capture() -> Result<String, String> {
+    let target = focused_target().await?;
     // The first paste may need the desktop's approval: ask while the user
     // speaks rather than when the transcript is ready.
     if matches!(target, Target::Paste { .. }) && system::key_paths().contains(&KeyPath::Portal) {
@@ -45,7 +49,7 @@ pub async fn capture() -> Result<String, String> {
 pub async fn insert(target: String, text: String) -> Result<(), String> {
     let target: Target = serde_json::from_str(&target).map_err(|e| e.to_string())?;
     let chord = match target {
-        Target::Paste { terminal } => Chord::for_terminal(terminal),
+        Target::Paste { terminal, .. } => Chord::for_terminal(terminal),
         Target::Accessible { object } => {
             let object = serde_json::from_str(&object).map_err(|e| e.to_string())?;
             match accessible::insert(object, &text).await {
@@ -79,6 +83,27 @@ pub async fn insert(target: String, text: String) -> Result<(), String> {
             Ok(&mut keys)
         };
         paste::paste(&mut clipboard, keyboard, &text, chord, std::thread::sleep)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Presses Return where `target`'s insertion went, while it is still focused there. The portal
+/// is used only once approved: its dialog would take the focus Return is meant for.
+pub async fn press_return(target: String) -> Result<(), String> {
+    let target: Target = serde_json::from_str(&target).map_err(|e| e.to_string())?;
+    if !target.still_focused(&focused_target().await?) {
+        return Err(FOCUS_CHANGED.into());
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        let paths: Vec<_> = system::key_paths()
+            .into_iter()
+            .filter(|path| *path != KeyPath::Portal || remote::approved())
+            .collect();
+        if paths.is_empty() {
+            return Err("no approved way to send keys in this session".to_string());
+        }
+        paste::Keyboard::send(&mut system::Keys(paths), Chord::Return)
     })
     .await
     .map_err(|e| e.to_string())?

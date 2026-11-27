@@ -76,6 +76,18 @@ enum KeyboardInput {
     return [down, up]
   }
 
+  /// Return with no modifier, which sends in chats and runs the line in terminals.
+  static func returnKeystroke() -> [CGEvent]? {
+    let key = CGKeyCode(kVK_Return)
+    guard let source = CGEventSource(stateID: .combinedSessionState),
+      let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+      let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
+    else { return nil }
+    down.flags = []
+    up.flags = []
+    return [down, up]
+  }
+
   static func post(_ events: [CGEvent]) {
     for event in events { event.post(tap: .cghidEventTap) }
   }

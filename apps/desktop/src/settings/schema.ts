@@ -126,6 +126,19 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "context_exclusions"],
     default: "" as string,
   },
+  // "off" | "all" | "apps": presses Return after a dictation is inserted, in
+  // every app or only in `dictation_send_after_paste_apps`.
+  dictation_send_after_paste: {
+    type: "string",
+    path: ["dictation", "send_after_paste"],
+    default: "off" as string,
+  },
+  // JSON string[] of app names or bundle ids.
+  dictation_send_after_paste_apps: {
+    type: "string",
+    path: ["dictation", "send_after_paste_apps"],
+    default: "[]" as string,
+  },
   // Learns which Dictionary terms are used and suggests new ones from
   // corrections.
   dictation_learning: {

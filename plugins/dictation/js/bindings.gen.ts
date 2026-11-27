@@ -86,11 +86,12 @@ async insertText(text: string) : Promise<Result<null, string>> {
 /**
  * Inserts a dictation where the focus is when its turn comes, fitted to the text before the
  * caret or over the selection a voice edit read; returns what was typed. `exclusions` keeps
- * the field of an excluded app unread.
+ * the field of an excluded app unread. `send` presses Return once the whole dictation is in,
+ * while the field it went into still has focus.
  */
-async insertDictation(text: string, mode: InsertMode, exclusions: ContextExclusions | null) : Promise<Result<string, string>> {
+async insertDictation(text: string, mode: InsertMode, exclusions: ContextExclusions | null, send: SendAfterInsert | null) : Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|insert_dictation", { text, mode, exclusions }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|insert_dictation", { text, mode, exclusions, send }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -593,6 +594,15 @@ context: ContextSnapshot | null }
  * A phrase said in dictation, and what is typed in its place.
  */
 export type Replacement = { from: string; to: string }
+/**
+ * Pressing Return once a dictation is in, so a chat or a coding agent sends it.
+ */
+export type SendAfterInsert = { 
+/**
+ * App names or bundle ids (executables on Windows and Linux) where it sends, matched
+ * case-insensitively; empty sends in every app.
+ */
+apps: string[] }
 export type SuggestRequest = { 
 /**
  * What the dictation typed.

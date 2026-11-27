@@ -56,6 +56,7 @@ const JSON_ARRAY_KEYS = new Set<SettingKey>([
   "personalization_dictionary_terms",
   "ignored_platforms",
   "included_platforms",
+  "dictation_send_after_paste_apps",
 ]);
 const LEGACY_SUMMARY_TEMPLATE_TOKEN = /\{\{\s*template\s*\}\}/g;
 const LEGACY_DEFAULT_SUMMARY_INSTRUCTION =

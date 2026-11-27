@@ -25,8 +25,17 @@ pub enum Target {
     /// Through AT-SPI's `EditableText` into this field, or by pasting if it
     /// does not take the text.
     Accessible { object: String },
-    /// Clipboard and the paste keys, `terminal` choosing Control+Shift+V.
-    Paste { terminal: bool },
+    /// Clipboard and the paste keys, `terminal` choosing Control+Shift+V. `app` is the focused
+    /// app's process, when known.
+    Paste { terminal: bool, app: Option<u32> },
+}
+
+impl Target {
+    /// Whether `now`, read after inserting, is where this insertion went: the same field, or
+    /// for a paste the same app. A paste into an app that can't be told never matches.
+    pub fn still_focused(&self, now: &Target) -> bool {
+        self == now && !matches!(self, Target::Paste { app: None, .. })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +44,8 @@ pub enum Chord {
     Paste,
     /// Control+Shift+V: Control+V in a terminal is a literal next character.
     TerminalPaste,
+    /// Return alone, which sends in chats and terminals alike.
+    Return,
 }
 
 impl Chord {
@@ -165,14 +176,20 @@ pub fn target(
             },
             kind => Target::Paste {
                 terminal: kind == Kind::Terminal,
+                app: app.pid,
             },
         },
         Focus::Other { app } => Target::Paste {
             terminal: terminal(&app),
+            app: app.pid,
         },
-        Focus::Unknown { app } => Target::Paste {
-            terminal: app.or_else(active).is_some_and(|app| terminal(&app)),
-        },
+        Focus::Unknown { app } => {
+            let app = app.or_else(active);
+            Target::Paste {
+                terminal: app.as_ref().is_some_and(terminal),
+                app: app.and_then(|app| app.pid),
+            }
+        }
     })
 }
 
@@ -323,7 +340,11 @@ mod tests {
                 false,
             ),
         ] {
-            assert_eq!(route(focus), Ok(Target::Paste { terminal }));
+            let routed = route(focus);
+            assert!(
+                matches!(routed, Ok(Target::Paste { terminal: pastes, .. }) if pastes == terminal),
+                "{routed:?}"
+            );
         }
         assert_eq!(route(Focus::Password), Err(PASSWORD.into()));
 
@@ -334,7 +355,34 @@ mod tests {
             1,
             |_| false,
         );
-        assert_eq!(target, Ok(Target::Paste { terminal: true }));
+        assert_eq!(
+            target,
+            Ok(Target::Paste {
+                terminal: true,
+                app: Some(10)
+            })
+        );
+    }
+
+    /// Return after a paste must reach the app that took it: a target that names no app could
+    /// be any window by the time Return goes.
+    #[test]
+    fn return_goes_only_where_the_insertion_went() {
+        let field = || {
+            route(Focus::Editable {
+                object: object(),
+                app: app("gedit", "/usr/bin/gnome-text-editor"),
+            })
+        };
+        assert!(field().unwrap().still_focused(&field().unwrap()));
+        let terminal = |pid| Target::Paste {
+            terminal: true,
+            app: pid,
+        };
+        assert!(terminal(Some(10)).still_focused(&terminal(Some(10))));
+        assert!(!terminal(Some(10)).still_focused(&terminal(Some(11))));
+        assert!(!terminal(Some(10)).still_focused(&field().unwrap()));
+        assert!(!terminal(None).still_focused(&terminal(None)));
     }
 
     #[test]

@@ -32,13 +32,15 @@ pub(crate) async fn insert_text(text: String) -> Result<(), String> {
 
 /// Inserts a dictation where the focus is when its turn comes, fitted to the text before the
 /// caret or over the selection a voice edit read; returns what was typed. `exclusions` keeps
-/// the field of an excluded app unread.
+/// the field of an excluded app unread. `send` presses Return once the whole dictation is in,
+/// while the field it went into still has focus.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn insert_dictation(
     text: String,
     mode: crate::insertion::InsertMode,
     exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
+    send: Option<crate::insertion::SendAfterInsert>,
 ) -> Result<String, String> {
     if text.contains('\0') {
         return Err("Dictation text contains an unsupported NUL character".into());
@@ -46,7 +48,7 @@ pub(crate) async fn insert_dictation(
     if text.is_empty() || text.len() > 100_000 {
         return Err("Dictation text is empty or too long".into());
     }
-    crate::insertion::insert_dictation(text, mode, exclusions).await
+    crate::insertion::insert_dictation(text, mode, exclusions, send).await
 }
 
 /// The focused field as a dictation starts: its text around the caret, the selection a voice

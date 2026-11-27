@@ -155,15 +155,13 @@ fn find_program(name: &str) -> Option<PathBuf> {
 
 fn wtype(chord: Chord) -> Result<(), String> {
     let program = find_program("wtype").ok_or("wtype is not installed")?;
-    let mut args = vec!["-M", "ctrl"];
-    if chord == Chord::TerminalPaste {
-        args.extend(["-M", "shift"]);
-    }
-    args.extend(["-k", "v"]);
-    if chord == Chord::TerminalPaste {
-        args.extend(["-m", "shift"]);
-    }
-    args.extend(["-m", "ctrl"]);
+    let args = match chord {
+        Chord::Return => vec!["-k", "Return"],
+        Chord::Paste => vec!["-M", "ctrl", "-k", "v", "-m", "ctrl"],
+        Chord::TerminalPaste => vec![
+            "-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl",
+        ],
+    };
     let mut child = std::process::Command::new(program)
         .args(args)
         .stdin(std::process::Stdio::null())
@@ -190,6 +188,7 @@ fn wtype(chord: Chord) -> Result<(), String> {
 const XK_CONTROL_L: u32 = 0xffe3;
 const XK_SHIFT_L: u32 = 0xffe1;
 const XK_V: u32 = 0x76;
+const XK_RETURN: u32 = 0xff0d;
 const KEY_PRESS: u8 = 2;
 const KEY_RELEASE: u8 = 3;
 /// How long a paste waits for the shortcut's modifiers to come up.
@@ -203,11 +202,11 @@ fn xtest(chord: Chord) -> Result<(), String> {
     let shift = keycode(XK_SHIFT_L)?;
     let v = keycode(XK_V)?;
     wait_for_modifiers(&connection)?;
-    let mut keys = vec![control];
-    if chord == Chord::TerminalPaste {
-        keys.push(shift);
-    }
-    keys.push(v);
+    let keys = match chord {
+        Chord::Return => vec![keycode(XK_RETURN)?],
+        Chord::Paste => vec![control, v],
+        Chord::TerminalPaste => vec![control, shift, v],
+    };
     let fake = |kind, code| {
         connection
             .xtest_fake_input(kind, code, x11rb::CURRENT_TIME, root, 0, 0, 0)

@@ -8,6 +8,7 @@ swift!(fn _dictation_hud_meter(rms: f64));
 swift!(fn _capture_dictation_target() -> SRString);
 swift!(fn _insert_dictation_text(target: &SRString, text: &SRString) -> SRString);
 swift!(fn _wait_for_dictation_paste_read(timeout: f64) -> Bool);
+swift!(fn _press_dictation_return() -> SRString);
 swift!(fn _dictation_field_facts() -> SRString);
 swift!(fn _dictation_field_read(window: isize, deep: Bool) -> SRString);
 swift!(fn _dictation_window_text(max: isize) -> SRString);
@@ -20,6 +21,14 @@ pub fn capture_target() -> Result<String, String> {
 pub fn insert_text(target: &str, text: &str) -> Result<(), String> {
     let value = unsafe { _insert_dictation_text(&SRString::from(target), &SRString::from(text)) }
         .to_string();
+    if value.is_empty() { Ok(()) } else { Err(value) }
+}
+
+/// Presses Return where the last [`insert_text`] went, only while that app and field still
+/// have focus and it is not a secure field. Waits for the shortcut's keys to come up, so call it
+/// off the main thread.
+pub fn press_return() -> Result<(), String> {
+    let value = unsafe { _press_dictation_return() }.to_string();
     if value.is_empty() { Ok(()) } else { Err(value) }
 }
 

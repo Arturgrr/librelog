@@ -157,3 +157,47 @@ fn type_into(target: &str, text: &str) -> Result<(), String> {
         _ => Err(PARTLY_TYPED.into()),
     }
 }
+
+pub async fn press_return(target: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || return_into(&target))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Return, only while the field the dictation was typed into still has focus. A modifier held
+/// would make it Shift+Return (a new line) or another shortcut.
+fn return_into(target: &str) -> Result<(), String> {
+    let deadline = Instant::now() + KEYS_RELEASE_WAIT;
+    while modifiers_held() {
+        if Instant::now() >= deadline {
+            return Err(KEYS_HELD.into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if !focused(target) {
+        return Err(FIELD_CHANGED.into());
+    }
+    let scan = unsafe { MapVirtualKeyW(u32::from(VK_RETURN.0), MAPVK_VK_TO_VSC) } as u16;
+    let inputs = [KEYBD_EVENT_FLAGS(0), KEYEVENTF_KEYUP].map(|flags| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_RETURN,
+                wScan: scan,
+                dwFlags: flags,
+                ..Default::default()
+            },
+        },
+    });
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) } as usize;
+    if sent == 1 {
+        // A key left down would repeat.
+        unsafe { SendInput(&inputs[1..], std::mem::size_of::<INPUT>() as i32) };
+    }
+    if sent == inputs.len() {
+        Ok(())
+    } else {
+        // Elevated apps refuse synthesized input from a normal process.
+        Err(format!("Windows accepted {sent} of 2 Return key events"))
+    }
+}
