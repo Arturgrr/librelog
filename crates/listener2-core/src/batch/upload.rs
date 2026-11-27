@@ -46,12 +46,14 @@ pub(super) fn segment_plan(
 
 pub(super) struct SegmentedUpload {
     _temp_dir: tempfile::TempDir,
-    paths: Vec<PathBuf>,
+    segments: Vec<anlg_mp3::Segment>,
 }
 
 impl SegmentedUpload {
-    pub(super) fn paths(&self) -> &[PathBuf] {
-        &self.paths
+    /// Each segment's file and where it starts in the recording. Segments end
+    /// at a quiet moment near the limit, so they differ in length.
+    pub(super) fn segments(&self) -> &[anlg_mp3::Segment] {
+        &self.segments
     }
 }
 
@@ -75,7 +77,7 @@ pub(super) async fn split_batch_upload(
 
     let source = PathBuf::from(file_path);
     let output_dir = temp_dir.path().to_path_buf();
-    let paths = tokio::task::spawn_blocking(move || {
+    let segments = tokio::task::spawn_blocking(move || {
         anlg_mp3::encode_mono_segments(&source, &output_dir, segment_duration)
     })
     .await
@@ -94,19 +96,19 @@ pub(super) async fn split_batch_upload(
         failure("Librelog couldn't split this recording for transcription.")
     })?;
 
-    if paths.is_empty() {
+    if segments.is_empty() {
         return Err(failure("This recording has no audio to transcribe.").into());
     }
 
     tracing::info!(
-        segments = paths.len(),
+        segments = segments.len(),
         segment_seconds = segment_duration.as_secs(),
         "batch audio split for provider upload limits"
     );
 
     Ok(SegmentedUpload {
         _temp_dir: temp_dir,
-        paths,
+        segments,
     })
 }
 

@@ -15,7 +15,6 @@ const SEGMENT_OPEN_KEEPALIVE: Duration = Duration::from_secs(10);
 
 pub(super) struct SegmentedPlan {
     upload: SegmentedUpload,
-    segment_duration: Duration,
     total_duration: Option<Duration>,
 }
 
@@ -37,7 +36,6 @@ pub(super) async fn plan_openai_segments(
 
     Ok(Some(SegmentedPlan {
         upload,
-        segment_duration,
         total_duration,
     }))
 }
@@ -54,20 +52,24 @@ pub(super) async fn open_segmented_stream(
 ) -> Result<StreamingBatchStream, owhisper_client::Error> {
     let SegmentedPlan {
         upload,
-        segment_duration,
         total_duration,
     } = plan;
     listen_params.channels = 1;
 
-    let paths: Vec<PathBuf> = upload.paths().to_vec();
-    let total = paths.len();
+    let segments: Vec<(PathBuf, f64)> = upload
+        .segments()
+        .iter()
+        .map(|segment| (segment.path.clone(), segment.start.as_secs_f64()))
+        .collect();
+    let total = segments.len();
     let first = OpenAIAdapter::transcribe_file_streaming(
         &base_url,
         &api_key,
         &listen_params,
-        paths
+        &segments
             .first()
-            .expect("split_batch_upload rejects no segments"),
+            .expect("split_batch_upload rejects no segments")
+            .0,
     )
     .await?;
 
@@ -76,8 +78,8 @@ pub(super) async fn open_segmented_stream(
         let mut merged = MergedSegments::default();
         let mut opened = Some(first);
 
-        for (index, path) in paths.iter().enumerate() {
-            let offset = segment_duration.as_secs_f64() * index as f64;
+        for (index, (path, offset)) in segments.iter().enumerate() {
+            let offset = *offset;
 
             let mut segment = match opened.take() {
                 Some(segment) => segment,
@@ -358,10 +360,17 @@ mod tests {
             sample_format: hound::SampleFormat::Float,
         };
         let mut writer = hound::WavWriter::create(&source, spec).unwrap();
-        for frame in 0..16_000 * 3 {
-            writer
-                .write_sample(((frame as f32) * 0.01).sin() * 0.5)
-                .unwrap();
+        // Quiet near the end of the first two one-second windows, where the
+        // recording is cut.
+        let quiet =
+            |frame: usize| (14_400..16_000).contains(&frame) || (28_800..30_400).contains(&frame);
+        for frame in 0..16_000 * 14 / 5 {
+            let sample = if quiet(frame) {
+                0.0
+            } else {
+                ((frame as f32) * 0.01).sin() * 0.5
+            };
+            writer.write_sample(sample).unwrap();
         }
         writer.finalize().unwrap();
 
@@ -376,12 +385,11 @@ mod tests {
         let upload = split_batch_upload(source.to_str().unwrap(), Duration::from_secs(1), "openai")
             .await
             .unwrap();
-        assert_eq!(upload.paths().len(), 3);
+        assert_eq!(upload.segments().len(), 3);
 
         let mut stream = open_segmented_stream(
             SegmentedPlan {
                 upload,
-                segment_duration: Duration::from_secs(1),
                 total_duration: Some(Duration::from_secs(3)),
             },
             format!("http://{address}/v1"),

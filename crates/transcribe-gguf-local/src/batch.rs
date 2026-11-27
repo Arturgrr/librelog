@@ -29,7 +29,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::engine::{BoxedTranscriber, EngineSlot};
 
-const MAX_BATCH_AUDIO_BODY_BYTES: usize = 100 * 1024 * 1024;
+/// Spooled to disk, never held in memory. A two-hour dictation, the longest
+/// one records, is about 460 MB of 16 kHz float WAV.
+const MAX_BATCH_AUDIO_BODY_BYTES: usize = 512 * 1024 * 1024;
 const MAX_BATCH_CHANNELS: usize = 8;
 const MAX_CONCURRENT_HTTP_BATCH_JOBS: usize = 1;
 /// Long enough for a dictation to wait out a meeting's minute-long chunk, and
@@ -510,6 +512,8 @@ struct ChannelChunkIterator {
     _file: tempfile::NamedTempFile,
     pending: std::vec::IntoIter<anlg_audio_chunking::AudioChunk>,
     next_window_start: usize,
+    /// What followed the last window's cut, read already.
+    carry: Vec<f32>,
     merge: bool,
     finished: bool,
 }
@@ -522,17 +526,25 @@ impl ChannelChunkIterator {
             _file: channel.file,
             pending: Vec::new().into_iter(),
             next_window_start: 0,
+            carry: Vec::new(),
             merge,
             finished: false,
         })
     }
 
+    /// The next window, ended at a quiet moment near its limit so speech
+    /// running across it is not cut mid-word into two chunks.
     fn read_next_window(&mut self) -> Result<Option<Vec<f32>>, crate::Error> {
-        let samples = self
-            .reader
-            .samples::<f32>()
-            .take(CHANNEL_WINDOW_SAMPLES)
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut samples = std::mem::take(&mut self.carry);
+        let wanted = CHANNEL_WINDOW_SAMPLES.saturating_sub(samples.len());
+        for sample in self.reader.samples::<f32>().take(wanted) {
+            samples.push(sample?);
+        }
+        if samples.len() >= CHANNEL_WINDOW_SAMPLES {
+            let cut =
+                anlg_audio_utils::quiet_cut(&samples, CHANNEL_WINDOW_SAMPLES, TARGET_SAMPLE_RATE);
+            self.carry = samples.split_off(cut);
+        }
         Ok((!samples.is_empty()).then_some(samples))
     }
 }

@@ -46,9 +46,9 @@ pub(super) async fn run(
                 DIRECT_BATCH_TIMEOUT_FLOOR,
             )
             .await?;
-            responses.push(output.response);
+            responses.push((output.response, SEGMENT_DURATION * responses.len() as u32));
         }
-        let merged = merge_segment_responses(responses, SEGMENT_DURATION);
+        let merged = merge_segment_responses(responses);
         for mut channel in merged.results.channels {
             for alternative in &mut channel.alternatives {
                 for word in &mut alternative.words {
