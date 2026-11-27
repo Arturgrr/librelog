@@ -93,6 +93,11 @@ const FIELD_CHANGED: &str =
 const KEYS_HELD: &str = "Release the shortcut keys before inserting text. Copy your last dictation from Settings > Dictation.";
 /// Nothing reached the field.
 const BLOCKED: &str = "Windows blocked the dictation, so nothing was inserted. Elevated apps may block text insertion. Copy your last dictation from Settings > Dictation.";
+/// Windows types every character as two key events, which a field takes a while to read; past
+/// this many UTF-16 units it would be busy for longer than anyone waits.
+const MAX_TYPED_UNITS: usize = 100_000;
+const TOO_LONG_TO_TYPE: &str =
+    "This dictation is too long to type. Copy your last dictation from Settings > Dictation.";
 /// Part of the text may be in the field.
 const PARTLY_TYPED: &str = "Windows could not insert the entire dictation. Check the field before copying your last dictation from Settings > Dictation. Elevated apps may block text insertion.";
 
@@ -115,6 +120,9 @@ fn modifiers_held() -> bool {
 }
 
 fn type_into(target: &str, text: &str) -> Result<(), String> {
+    if text.encode_utf16().count() > MAX_TYPED_UNITS {
+        return Err(TOO_LONG_TO_TYPE.into());
+    }
     // Fail at once for a field that changed rather than after the key wait.
     if !focused(target) {
         return Err(FIELD_CHANGED.into());

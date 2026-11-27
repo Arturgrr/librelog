@@ -56,8 +56,12 @@ export function localizeExternalMessage(message: string): string {
       return t`The app may not have inserted all of the dictation. Check the field, or copy your last dictation from Settings > Dictation.`;
     case "The selected text changed before the edit was ready. It was left unchanged.":
       return t`The selected text changed before the edit was ready. It was left unchanged.`;
-    case "Dictation text is empty or too long":
-      return t`The dictation is empty or too long to insert.`;
+    case "Dictation text is empty":
+      return t`The dictation is empty, so nothing was inserted.`;
+    case "This dictation is too long to insert. Copy your last dictation from Settings > Dictation.":
+      return t`This dictation is too long to insert. Copy your last dictation from Settings > Dictation.`;
+    case "This dictation is too long to type. Copy your last dictation from Settings > Dictation.":
+      return t`This dictation is too long to type. Copy your last dictation from Settings > Dictation.`;
     case "Dictation text contains an unsupported NUL character":
       return t`The dictation contains a character that cannot be inserted.`;
     case "voice recording is already active":

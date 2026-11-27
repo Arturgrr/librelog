@@ -16,17 +16,32 @@ pub(crate) async fn check_insertion() -> Result<(), String> {
     crate::insertion::check().await
 }
 
+/// The most a dictation or paste-last inserts: hours of speech, well within what a paste or an
+/// Accessibility edit takes at once.
+const MAX_INSERT_BYTES: usize = 2_000_000;
+
+fn insertable(text: &str) -> Result<(), String> {
+    if text.contains('\0') {
+        return Err("Dictation text contains an unsupported NUL character".into());
+    }
+    if text.is_empty() {
+        return Err("Dictation text is empty".into());
+    }
+    if text.len() > MAX_INSERT_BYTES {
+        return Err(
+            "This dictation is too long to insert. Copy your last dictation from Settings > Dictation."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 /// Inserts `text` where the focus is when its turn comes: insertions run one
 /// at a time, in the order they were asked for.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn insert_text(text: String) -> Result<(), String> {
-    if text.contains('\0') {
-        return Err("Dictation text contains an unsupported NUL character".into());
-    }
-    if text.is_empty() || text.len() > 100_000 {
-        return Err("Dictation text is empty or too long".into());
-    }
+    insertable(&text)?;
     crate::insertion::insert(text).await
 }
 
@@ -42,12 +57,7 @@ pub(crate) async fn insert_dictation(
     exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
     send: Option<crate::insertion::SendAfterInsert>,
 ) -> Result<String, String> {
-    if text.contains('\0') {
-        return Err("Dictation text contains an unsupported NUL character".into());
-    }
-    if text.is_empty() || text.len() > 100_000 {
-        return Err("Dictation text is empty or too long".into());
-    }
+    insertable(&text)?;
     crate::insertion::insert_dictation(text, mode, exclusions, send).await
 }
 
@@ -380,4 +390,21 @@ pub(crate) async fn kept_dictation_text(
     now: anlg_dictation_core::corrections::FieldText,
 ) -> Option<String> {
     anlg_dictation_core::corrections::kept_text(&start, &now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_dictation_inserts_and_only_an_empty_or_huge_one_is_refused() {
+        assert!(insertable(&"palavra ".repeat(50_000)).is_ok());
+        assert_eq!(insertable(""), Err("Dictation text is empty".into()));
+        assert!(
+            insertable(&"a".repeat(MAX_INSERT_BYTES + 1))
+                .unwrap_err()
+                .contains("too long to insert")
+        );
+        assert!(insertable("a\0b").is_err());
+    }
 }
