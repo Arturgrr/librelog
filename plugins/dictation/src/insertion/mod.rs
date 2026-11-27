@@ -63,8 +63,17 @@ pub struct SendAfterInsert {
 
 impl SendAfterInsert {
     /// Whether a dictation into `app` sends. With apps listed, an app that can't be told never
-    /// does.
-    fn allows(&self, app: Option<&crate::target_app::TargetApp>) -> bool {
+    /// does, and Librelog's own windows, `own`, never do: Return there could send a chat
+    /// message or submit a form nobody meant to.
+    fn allows(&self, app: Option<&crate::target_app::TargetApp>, own: Option<&str>) -> bool {
+        if let (Some(app), Some(own)) = (app, own)
+            && app
+                .id
+                .as_deref()
+                .is_some_and(|id| app_key(id) == app_key(own))
+        {
+            return false;
+        }
         if self.apps.is_empty() {
             return true;
         }
@@ -260,7 +269,7 @@ async fn prepared_insert_in(
         return Ok(text);
     }
     let sends = match send {
-        Some(send) => send.allows(focus.app().await.as_ref()),
+        Some(send) => send.allows(focus.app().await.as_ref(), crate::target_app::own_id()),
         None => false,
     };
     focus.insert(target.clone(), text.clone()).await?;
@@ -541,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn an_app_is_listed_by_its_name_or_id_and_an_unknown_one_never_is() {
+    fn an_app_is_listed_by_its_name_or_id_and_neither_an_unknown_one_nor_librelog_sends() {
         use crate::target_app::TargetApp;
         let ghostty = TargetApp {
             name: "Ghostty".into(),
@@ -551,7 +560,7 @@ mod tests {
             SendAfterInsert {
                 apps: apps.iter().map(|app| (*app).into()).collect(),
             }
-            .allows(app)
+            .allows(app, Some("Librelog.exe"))
         };
         assert!(listed(&[], None));
         assert!(listed(&[" Ghostty.app "], Some(&ghostty)));
@@ -559,6 +568,13 @@ mod tests {
         assert!(!listed(&["Ghost"], Some(&ghostty)));
         assert!(!listed(&["", "  "], Some(&ghostty)));
         assert!(!listed(&["Ghostty"], None));
+        // Librelog's own windows never send, even when every app does or it is listed.
+        let librelog = TargetApp {
+            name: "Librelog".into(),
+            id: Some("librelog.exe".into()),
+        };
+        assert!(!listed(&[], Some(&librelog)));
+        assert!(!listed(&["Librelog"], Some(&librelog)));
     }
 
     #[tokio::test]
