@@ -532,6 +532,10 @@ msgstr "Adicionar uma ação"
 msgid "Add and configure at least one action first."
 msgstr "Adicione e configure pelo menos uma ação primeiro."
 
+#: src/settings/dictation-presets.tsx
+msgid "Add another preset to switch between them."
+msgstr "Adicione outro preset para alternar entre eles."
+
 #: src/settings/automations/workflow-builder.tsx
 msgid "Add at least one configured action before enabling."
 msgstr "Adicione pelo menos uma ação configurada antes de ativar."
@@ -583,6 +587,10 @@ msgstr "Adicionar participantes"
 #: src/contacts/new-person-form.tsx
 msgid "Add person"
 msgstr "Adicionar pessoa"
+
+#: src/settings/dictation-presets.tsx
+msgid "Add preset"
+msgstr "Adicionar preset"
 
 #: src/templates/sections-editor.tsx
 msgid "Add Section"
@@ -701,6 +709,10 @@ msgstr "Todas as Notas"
 msgid "All time"
 msgstr "Todo o período"
 
+#: src/settings/dictation-microphone.tsx
+msgid "Allow access"
+msgstr "Permitir acesso"
+
 #: src/i18n/native-labels.tsx
 msgid "Allow Accessibility"
 msgstr "Permitir Acessibilidade"
@@ -713,6 +725,10 @@ msgstr "Permita o Librelog em Ajustes do Sistema › Privacidade e Segurança �
 #: src/stt/start-failure.ts
 msgid "Allow microphone access for Librelog, then try again."
 msgstr "Permita o acesso ao microfone para o Librelog e tente novamente."
+
+#: src/settings/dictation-microphone.tsx
+msgid "Allow microphone access to check its level here."
+msgstr "Permita o acesso ao microfone para ver o nível dele aqui."
 
 #: src/settings/dictation-audio.tsx
 msgid "Allow…"
@@ -864,6 +880,10 @@ msgstr "Apple Foundation Models requer macOS 26 ou posterior."
 #: src/main/windows-title-bar.tsx
 msgid "Application menu"
 msgstr "Menu do aplicativo"
+
+#: src/settings/dictation-spoken.tsx
+msgid "Applied instantly on this computer, without AI, when you dictate in English or Portuguese."
+msgstr "Aplicados na hora, neste computador e sem IA, quando você dita em inglês ou português."
 
 #: src/settings/automations/workflow-builder.tsx
 msgid "Applies to"
@@ -1111,6 +1131,10 @@ msgstr "Modelos disponíveis"
 msgid "Average across the capture days counted above."
 msgstr "Média entre os dias de captura contados acima."
 
+#: src/settings/dictation-microphone.tsx
+msgid "Avoid Bluetooth headset microphone"
+msgstr "Evitar o microfone do fone Bluetooth"
+
 #: src/onboarding/model-setup.tsx
 #: src/settings/todo/permission.tsx
 #: src/sidebar/custom-sidebar-header.tsx
@@ -1352,6 +1376,7 @@ msgstr "Alterar foto"
 #: src/settings/annotate.tsx
 #: src/settings/capture-shortcuts.tsx
 #: src/settings/dictation-paste-last.tsx
+#: src/settings/dictation-presets.tsx
 #: src/settings/dictation-shortcut.tsx
 msgid "Change shortcut {keys}"
 msgstr "Alterar atalho {keys}"
@@ -1377,6 +1402,7 @@ msgid "ChatGPT plans"
 msgstr "Planos do ChatGPT"
 
 #: src/settings/capture-shortcuts.tsx
+#: src/settings/dictation-microphone.tsx
 msgid "Check again"
 msgstr "Verificar de novo"
 
@@ -1580,7 +1606,7 @@ msgstr "Escolher pessoa"
 msgid "Choose template icon"
 msgstr "Escolher ícone do modelo"
 
-#: src/settings/dictation.tsx
+#: src/settings/dictation-microphone.tsx
 #: src/settings/general/audio-settings.tsx
 msgid "Choose the microphone that captures your voice."
 msgstr "Escolha o microfone que capta sua voz."
@@ -1654,6 +1680,7 @@ msgid "Clear selection"
 msgstr "Limpar seleção"
 
 #: src/settings/capture-shortcuts.tsx
+#: src/settings/dictation-presets.tsx
 msgid "Clear shortcut"
 msgstr "Limpar atalho"
 
@@ -2534,6 +2561,18 @@ msgstr "O ditado não está disponível em campos de senha nem com a Entrada de 
 msgid "Dictation is unavailable in password fields."
 msgstr "O ditado não está disponível em campos de senha."
 
+#: src/settings/dictation-microphone.tsx
+msgid "Dictation is using the microphone."
+msgstr "O ditado está usando o microfone."
+
+#: src/dictation/preset-switch.tsx
+msgid "Dictation preset"
+msgstr "Preset de ditado"
+
+#: src/settings/dictation-presets.tsx
+msgid "Dictation presets"
+msgstr "Presets de ditado"
+
 #: src/settings/dictation-ai.tsx
 msgid "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
 msgstr "O ditado lê o texto em volta do cursor para ajustar o que digita, e lê campos e janelas para as opções acima. Ele nunca lê os apps e sites listados aqui."
@@ -2758,6 +2797,10 @@ msgstr "Desenhar"
 #: src/session/components/note-input/audio-drop-target.tsx
 msgid "Drop to upload and transcribe audio"
 msgstr "Solte para enviar e transcrever o áudio"
+
+#: src/settings/dictation-spoken.tsx
+msgid "Drops sounds like \"um\", \"uh\", \"éé\" and \"hã\" from what you dictate. Real words, such as \"é\" in \"ele é bom\", are kept."
+msgstr "Tira sons como \"éé\", \"hã\", \"um\" e \"uh\" do que você dita. Palavras de verdade, como o \"é\" de \"ele é bom\", ficam."
 
 #: src/settings/general/timezone.tsx
 msgid "Dubai"
@@ -3596,6 +3639,10 @@ msgstr "em {months} meses"
 msgid "in {weeks} weeks"
 msgstr "em {weeks} semanas"
 
+#: src/settings/dictation-send.tsx
+msgid "In every app"
+msgstr "Em todos os apps"
+
 #: src/settings/ai/shared/in-use-bar.tsx
 #: src/settings/ai/shared/provider-list.tsx
 msgid "In use"
@@ -3621,6 +3668,10 @@ msgstr "Incluir o ponteiro"
 #: src/settings/general/timezone.tsx
 msgid "India"
 msgstr "Índia"
+
+#: src/settings/dictation-microphone.tsx
+msgid "Input level"
+msgstr "Nível de entrada"
 
 #: src/templates/sections-editor.tsx
 msgid "Insert above"
@@ -3729,6 +3780,10 @@ msgstr "Mantenha o Librelog aberto para usar os atalhos do Anotar em outros apps
 msgid "Keep Librelog running to use your dictation shortcuts in other apps."
 msgstr "Mantenha o Librelog aberto para usar seus atalhos de ditado em outros apps."
 
+#: src/settings/dictation.tsx
+msgid "Keep microphone ready"
+msgstr "Manter o microfone pronto"
+
 #: src/settings/capture-shortcuts.tsx
 msgid "Keep the macOS shortcuts"
 msgstr "Manter os atalhos do macOS"
@@ -3736,6 +3791,10 @@ msgstr "Manter os atalhos do macOS"
 #: src/session/components/note-conflict-banner.tsx
 msgid "Keep this version"
 msgstr "Manter esta versão"
+
+#: src/settings/dictation.tsx
+msgid "Keeps the microphone open while dictation is on, so each dictation also catches the moment before you press the shortcut. Your system's microphone indicator stays on the whole time. No audio is kept unless you dictate."
+msgstr "Mantém o microfone aberto enquanto o ditado está ativado, para que cada ditado também pegue o instante antes de você apertar o atalho. O indicador de microfone do sistema fica aceso o tempo todo. Nenhum áudio é guardado a não ser quando você dita."
 
 #: src/settings/ai/llm/index.tsx
 #: src/settings/ai/stt/index.tsx
@@ -4368,7 +4427,7 @@ msgid "Metadata"
 msgstr "Metadados"
 
 #: src/onboarding/permissions.tsx
-#: src/settings/dictation.tsx
+#: src/settings/dictation-microphone.tsx
 #: src/settings/general/audio-settings.tsx
 #: src/settings/general/permissions.tsx
 msgid "Microphone"
@@ -4646,6 +4705,10 @@ msgstr "Nova gravação"
 #: src/settings/note-types/index.tsx
 msgid "New subtype name"
 msgstr "Nome do novo subtipo"
+
+#: src/settings/dictation-presets.tsx
+msgid "New switch preset shortcut"
+msgstr "Novo atalho para trocar de preset"
 
 #: src/session/components/note-input/raw.tsx
 msgid "New template"
@@ -5015,6 +5078,7 @@ msgid "Not running. It starts with the first summary or chat and stops after 5 i
 msgstr "Parado. Ele inicia no primeiro resumo ou conversa e para depois de 5 minutos sem uso para liberar memória."
 
 #: src/settings/capture-shortcuts.tsx
+#: src/settings/dictation-presets.tsx
 msgid "Not set"
 msgstr "Não definido"
 
@@ -5081,6 +5145,10 @@ msgstr "Nada aqui ainda."
 msgid "Nothing is deleted automatically."
 msgstr "Nada é apagado automaticamente."
 
+#: src/settings/dictation-send.tsx
+msgid "Nothing is sent until you list an app."
+msgstr "Nada é enviado até você listar um app."
+
 #: src/settings/dictation-indicator.tsx
 msgid "Nothing is shown; the start and stop sounds, if on, are the only cue."
 msgstr "Nada é mostrado; os sons de início e fim do ditado, se ativados, são o único sinal."
@@ -5108,6 +5176,7 @@ msgstr "Do volume que o computador tinha quando o ditado começou."
 
 #: src/dictation/history/page.tsx
 #: src/settings/capture.tsx
+#: src/settings/dictation-send.tsx
 msgid "Off"
 msgstr "Desativado"
 
@@ -5159,12 +5228,21 @@ msgid "On-device models can take a few minutes to warm up before text appears."
 msgstr "Modelos no dispositivo podem levar alguns minutos para inicializar antes que o texto apareça."
 
 #: src/settings/dictation-ai.tsx
+#: src/settings/dictation-send.tsx
 msgid "One app name or bundle ID per line"
 msgstr "Um nome de app ou bundle ID por linha"
+
+#: src/settings/dictation-send.tsx
+msgid "One app or program name per line, like Slack or code"
+msgstr "Um nome de app ou programa por linha, como Slack ou code"
 
 #: src/settings/dictation-ai.tsx
 msgid "One domain per line, like bank.example"
 msgstr "Um domínio por linha, como banco.exemplo"
+
+#: src/settings/dictation-send.tsx
+msgid "Only in these apps"
+msgstr "Só nestes apps"
 
 #: src/settings/automations/workflow-builder.tsx
 msgid "Only notes of this subtype."
@@ -5565,6 +5643,14 @@ msgstr "Preparando transcrição..."
 msgid "Preparing…"
 msgstr "Preparando…"
 
+#: src/settings/dictation-presets.tsx
+msgid "Preset {number} language"
+msgstr "Idioma do preset {number}"
+
+#: src/settings/dictation-presets.tsx
+msgid "Preset {number} speech model"
+msgstr "Modelo de fala do preset {number}"
+
 #: src/settings/dictation.tsx
 msgid "Press a shortcut key twice and keep holding it while speaking, then release it to finish."
 msgstr "Pressione uma tecla de atalho duas vezes e mantenha pressionada enquanto fala; solte para finalizar."
@@ -5608,6 +5694,10 @@ msgstr "Pressione para começar a gravar a tela sob o ponteiro e de novo para te
 #: src/settings/annotate.tsx
 msgid "Press to start recording the screen you share, and again to finish. While recording, hold it to draw in red where the pointer goes, for up to 8 seconds at a time; let go, click or right click to stop drawing."
 msgstr "Pressione para começar a gravar a tela que você compartilha e de novo para terminar. Durante a gravação, segure para desenhar em vermelho por onde o ponteiro passa, por até 8 segundos de cada vez; solte, clique ou clique com o botão direito para parar de desenhar."
+
+#: src/settings/dictation-send.tsx
+msgid "Presses Return after your dictation is inserted, so chats and coding agents send it. Only when the whole dictation went into the field that still has focus; never in password fields or after editing a selection by voice."
+msgstr "Aperta Return depois que o ditado é inserido, para que chats e agentes de código o enviem. Só quando o ditado inteiro entrou no campo que continua em foco; nunca em campos de senha nem depois de editar uma seleção por voz."
 
 #: src/settings/general/notification.tsx
 msgid "Prevent selected apps from triggering meeting detection."
@@ -6001,9 +6091,17 @@ msgstr "Remover e-mail"
 msgid "Remove example {0}"
 msgstr "Remover exemplo {0}"
 
+#: src/settings/dictation-spoken.tsx
+msgid "Remove hesitations"
+msgstr "Tirar hesitações"
+
 #: src/contacts/contact-page-header.tsx
 msgid "Remove photo"
 msgstr "Remover foto"
+
+#: src/settings/dictation-presets.tsx
+msgid "Remove preset {number}"
+msgstr "Remover o preset {number}"
 
 #. placeholder {0}: message.content
 #: src/chat/components/content.tsx
@@ -6319,6 +6417,14 @@ msgstr "Salvo"
 msgid "Saving…"
 msgstr "Salvando…"
 
+#: src/settings/dictation-spoken.tsx
+msgid "Say \"at sign\" or \"arroba\" for @, \"hashtag\" for #, \"underline\" in Portuguese for _, and \"dot com\" or \"ponto com\" for .com, joined to the words next to them."
+msgstr "Diga \"arroba\" ou \"at sign\" para @, \"hashtag\" para #, \"underline\" em português para _ e \"ponto com\" ou \"dot com\" para .com, grudados nas palavras ao lado."
+
+#: src/settings/dictation-spoken.tsx
+msgid "Say \"new line\", \"new paragraph\", \"open quote\" … \"close quote\" or \"open parenthesis\" … \"close parenthesis\" (\"nova linha\", \"novo parágrafo\", \"abre aspas\" … \"fecha aspas\", \"abre parênteses\" … \"fecha parênteses\") to type them."
+msgstr "Diga \"nova linha\", \"novo parágrafo\", \"abre aspas\" … \"fecha aspas\" ou \"abre parênteses\" … \"fecha parênteses\" (ou \"new line\", \"new paragraph\", \"open quote\" … \"close quote\", \"open parenthesis\" … \"close parenthesis\") para digitá-los."
+
 #: src/settings/annotate.tsx
 #: src/settings/capture.tsx
 msgid "Screen Recording"
@@ -6553,6 +6659,10 @@ msgstr "O modelo selecionado não foi baixado."
 msgid "Self-hosted"
 msgstr "Auto-hospedado"
 
+#: src/settings/dictation-send.tsx
+msgid "Send after pasting"
+msgstr "Enviar depois de colar"
+
 #: src/contacts/organization-details.tsx
 msgid "Send email"
 msgstr "Enviar e-mail"
@@ -6560,6 +6670,10 @@ msgstr "Enviar e-mail"
 #: src/settings/general/about.tsx
 msgid "Send feedback"
 msgstr "Enviar feedback"
+
+#: src/settings/dictation-send.tsx
+msgid "Send in these apps"
+msgstr "Enviar nestes apps"
 
 #: src/chat/components/input/index.tsx
 msgid "Send message"
@@ -6608,6 +6722,7 @@ msgid "Set {providerName} as the current provider?"
 msgstr "Definir {providerName} como o provedor atual?"
 
 #: src/settings/capture-shortcuts.tsx
+#: src/settings/dictation-presets.tsx
 msgid "Set a shortcut"
 msgstr "Definir um atalho"
 
@@ -6961,6 +7076,18 @@ msgstr "Mecanismo de fala"
 msgid "Speech models"
 msgstr "Modelos de fala"
 
+#: src/settings/dictation-spoken.tsx
+msgid "Spoken commands"
+msgstr "Comandos falados"
+
+#: src/settings/dictation-spoken.tsx
+msgid "Spoken formatting"
+msgstr "Formatação falada"
+
+#: src/settings/dictation-spoken.tsx
+msgid "Spoken symbols"
+msgstr "Símbolos falados"
+
 #: src/settings/general/storage/legacy-cleanup.tsx
 msgid "SQLite migration verification is incomplete"
 msgstr "A verificação da migração para o SQLite está incompleta"
@@ -7197,6 +7324,26 @@ msgstr "Domingo"
 msgid "SuperGrok"
 msgstr "SuperGrok"
 
+#: src/settings/dictation-presets.tsx
+msgid "Switch preset shortcut"
+msgstr "Atalho para trocar de preset"
+
+#: src/settings/dictation-presets.tsx
+msgid "Switch the dictation language and speech model with one shortcut, or from the tray menu, without opening Settings. A preset's speech model is also the one meetings use."
+msgstr "Troque o idioma e o modelo de fala do ditado com um atalho, ou pelo menu da bandeja, sem abrir as Configurações. O modelo de fala do preset também é o que as reuniões usam."
+
+#: src/settings/dictation-presets.tsx
+msgid "Switches dictation to the next preset. During a dictation, the switch waits until it finishes."
+msgstr "Passa o ditado para o próximo preset. Durante um ditado, a troca espera ele terminar."
+
+#: src/dictation/preset-switch.tsx
+msgid "Switching to {label} after this dictation."
+msgstr "Trocando para {label} depois deste ditado."
+
+#: src/dictation/preset-switch.tsx
+msgid "Switching to {label} after this meeting."
+msgstr "Trocando para {label} depois desta reunião."
+
 #: src/settings/ai/stt/in-use.tsx
 msgid "Switching to {pendingLabel} when its download finishes ({pendingPercent})."
 msgstr "Mudando para {pendingLabel} quando o download terminar ({pendingPercent})."
@@ -7359,8 +7506,8 @@ msgid "The dictation contains a character that cannot be inserted."
 msgstr "O ditado contém um caractere que não pode ser inserido."
 
 #: src/i18n/external-messages.ts
-msgid "The dictation is empty or too long to insert."
-msgstr "O ditado está vazio ou é longo demais para ser inserido."
+msgid "The dictation is empty, so nothing was inserted."
+msgstr "O ditado está vazio, então nada foi inserido."
 
 #: src/onboarding/model-setup.tsx
 msgid "The download stopped before it finished."
@@ -7398,6 +7545,18 @@ msgstr "A transcrição ao vivo foi mantida. Transcreva a reunião novamente par
 #: src/i18n/external-messages.ts
 msgid "The macOS shortcut settings could not be read."
 msgstr "Não foi possível ler os ajustes de atalhos do macOS."
+
+#: src/settings/dictation-microphone.tsx
+msgid "The microphone could not be opened."
+msgstr "Não foi possível abrir o microfone."
+
+#: src/settings/dictation-microphone.tsx
+msgid "The microphone level shows once your meeting ends."
+msgstr "O nível do microfone aparece quando sua reunião terminar."
+
+#: src/settings/dictation-microphone.tsx
+msgid "The microphone level stopped."
+msgstr "O nível do microfone parou."
 
 #: src/settings/ai/llm/builtin.tsx
 msgid "The model file is removed from this computer. You can download it again later."
@@ -7589,6 +7748,14 @@ msgstr "Este ditado não tem áudio."
 msgid "This dictation is no longer in your history."
 msgstr "Este ditado não está mais no seu histórico."
 
+#: src/i18n/external-messages.ts
+msgid "This dictation is too long to insert. Copy your last dictation from Settings > Dictation."
+msgstr "Este ditado é longo demais para inserir. Copie seu último ditado em Configurações > Ditado."
+
+#: src/i18n/external-messages.ts
+msgid "This dictation is too long to type. Copy your last dictation from Settings > Dictation."
+msgstr "Este ditado é longo demais para digitar. Copie seu último ditado em Configurações > Ditado."
+
 #: src/edit/tab-content.tsx
 msgid "This edit is no longer pending."
 msgstr "Esta edição não está mais pendente."
@@ -7656,6 +7823,10 @@ msgstr "Este atalho já cola o último ditado. Escolha outro."
 #: src/i18n/external-messages.ts
 msgid "This shortcut already starts dictation. Choose another one."
 msgstr "Este atalho já inicia o ditado. Escolha outro."
+
+#: src/i18n/external-messages.ts
+msgid "This shortcut already switches the dictation preset. Choose another one."
+msgstr "Este atalho já troca o preset de ditado. Escolha outro."
 
 #: src/settings/dictation-shortcut.tsx
 msgid "This shortcut is already in your list."
@@ -8299,6 +8470,10 @@ msgstr "Usa seu plano **SuperGrok ou X Premium+** por meio do login por assinatu
 msgid "Uses Z.AI's **OpenAI-compatible GLM API**. The default endpoint is the international service and can be changed under Advanced."
 msgstr "Usa a **API GLM compatível com OpenAI** da Z.AI. O endpoint padrão é o serviço internacional e pode ser alterado em Avançado."
 
+#: src/settings/dictation-microphone.tsx
+msgid "Using {used} instead of {passedOver} so your music keeps its quality."
+msgstr "Usando {used} em vez de {passedOver} para sua música manter a qualidade."
+
 #: src/stt/useRunBatch.ts
 msgid "Using a batch transcription provider"
 msgstr "Usando um provedor de transcrição em lote"
@@ -8482,6 +8657,10 @@ msgstr "Quando isso acontecer"
 #: src/settings/capture.tsx
 msgid "When this is off, captures are kept in Librelog's data folder and listed below."
 msgstr "Quando isto está desativado, as capturas ficam na pasta de dados do Librelog e aparecem abaixo."
+
+#: src/settings/dictation-microphone.tsx
+msgid "When your default microphone is a Bluetooth headset, dictate with your computer's built-in or wired microphone instead, so what plays in the headset doesn't drop to call quality. A microphone you choose above is always used."
+msgstr "Quando o microfone padrão é um fone Bluetooth, dita pelo microfone embutido ou com fio do computador, para que o que toca no fone não caia para a qualidade de chamada. Um microfone que você escolher acima é sempre usado."
 
 #: src/settings/ai/stt/index.tsx
 msgid "Where and how your meetings become text."
