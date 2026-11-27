@@ -6,6 +6,28 @@ pub struct TargetApp {
     pub id: Option<String>,
 }
 
+/// Librelog's own id as [`frontmost`] reports it: its bundle identifier on macOS, its
+/// executable elsewhere.
+pub fn own_id() -> Option<&'static str> {
+    static OWN: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    OWN.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            objc2::rc::autoreleasepool(|_| {
+                objc2_app_kit::NSRunningApplication::currentApplication()
+                    .bundleIdentifier()
+                    .map(|id| id.to_string())
+            })
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let path = std::env::current_exe().ok()?;
+            Some(path.file_name()?.to_string_lossy().into_owned())
+        }
+    })
+    .as_deref()
+}
+
 #[cfg(target_os = "macos")]
 pub async fn frontmost() -> Option<TargetApp> {
     tauri::async_runtime::spawn_blocking(|| {

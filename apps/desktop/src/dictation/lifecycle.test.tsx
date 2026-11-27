@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     dictation_shortcuts: ["Control+Alt+Space"],
     dictation_hands_free: false,
     microphone_device: "",
+    dictation_avoid_bluetooth_microphone: true,
   } as Record<string, unknown>,
   meeting: { status: "inactive", loading: false },
   configure: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   checkInsertion: vi.fn(),
   frontmostApp: vi.fn(),
   startSystemRecording: vi.fn(),
+  setWarmMicrophone: vi.fn(async () => ({ status: "ok", data: null })),
   stopRecording: vi.fn(),
   cancelRecording: vi.fn(),
   discardRecording: vi.fn(),
@@ -70,7 +72,7 @@ vi.mock("~/stt/contexts", () => ({
 }));
 vi.mock("~/stt/useRunBatch", () => ({ useRunBatch: () => mocks.runBatch }));
 vi.mock("~/stt/local-model-hold", () => ({
-  holdLocalModel: mocks.holdLocalModel,
+  holdLocalModelUntilReleased: mocks.holdLocalModel,
 }));
 vi.mock("@anlg/plugin-shortcut", () => ({
   commands: { configure: mocks.configure, setActive: mocks.setActive },
@@ -97,6 +99,7 @@ vi.mock("@anlg/plugin-dictation", () => ({
     checkInsertion: mocks.checkInsertion,
     frontmostApp: mocks.frontmostApp,
     startSystemRecording: mocks.startSystemRecording,
+    setWarmMicrophone: mocks.setWarmMicrophone,
     stopRecording: mocks.stopRecording,
     cancelRecording: mocks.cancelRecording,
     discardRecording: mocks.discardRecording,
@@ -203,7 +206,9 @@ describe("dictation access and lifecycle", () => {
     mocks.settings.microphone_device = "";
     mocks.settings.dictation_audio_behavior = "nothing";
     mocks.settings.dictation_hud_position = "top";
+    mocks.settings.dictation_presets = "[]";
     mocks.settings.dictation_learning = false;
+    mocks.settings.dictation_warm_microphone = false;
     mocks.meeting = { status: "inactive", loading: false };
     mocks.listener = null;
     for (const fn of [
@@ -357,8 +362,66 @@ describe("dictation access and lifecycle", () => {
       null,
       expect.anything(),
       expect.anything(),
+      expect.any(Number),
+      true,
+      expect.anything(),
     );
+    // The open microphone leaves the start cue, which follows the press,
+    // out of the pre-roll.
+    const [, , , , , pressedAtMs, , cue] =
+      mocks.startSystemRecording.mock.lastCall!;
+    expect(cue.startMs).toBeGreaterThanOrEqual(pressedAtMs);
+    expect(cue.endMs).toBeGreaterThan(cue.startMs);
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/dictation.wav");
+  });
+
+  it("keeps the microphone open only while Keep microphone ready is on", async () => {
+    mocks.settings.dictation_warm_microphone = true;
+    mocks.settings.microphone_device = "USB microphone";
+    mocks.checkPermission.mockResolvedValue({
+      status: "ok",
+      data: "authorized",
+    });
+    const view = render(<DictationLifecycle />);
+    await waitFor(() =>
+      expect(mocks.setWarmMicrophone).toHaveBeenCalledWith(
+        true,
+        "USB microphone",
+        true,
+      ),
+    );
+    view.unmount();
+    await waitFor(() =>
+      expect(mocks.setWarmMicrophone).toHaveBeenLastCalledWith(
+        false,
+        null,
+        true,
+      ),
+    );
+  });
+
+  it("opens the microphone kept ready once macOS allows access, without asking for it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.settings.dictation_warm_microphone = true;
+      mocks.checkPermission.mockResolvedValue({
+        status: "ok",
+        data: "notDetermined",
+      });
+      render(<DictationLifecycle />);
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      expect(mocks.setWarmMicrophone).not.toHaveBeenCalled();
+      mocks.checkPermission.mockResolvedValue({
+        status: "ok",
+        data: "authorized",
+      });
+      await act(() => vi.advanceTimersByTimeAsync(3_000));
+      await waitFor(() =>
+        expect(mocks.setWarmMicrophone).toHaveBeenCalledWith(true, null, true),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the HUD before the microphone opens and tells it how the dictation ends", async () => {
@@ -618,6 +681,9 @@ describe("dictation access and lifecycle", () => {
         null,
         expect.anything(),
         expect.anything(),
+        expect.any(Number),
+        true,
+        expect.anything(),
       );
     },
   );
@@ -860,6 +926,45 @@ describe("dictation access and lifecycle", () => {
       expect.objectContaining({ baseUrl: "http://127.0.0.1:1234", apiKey: "" }),
     );
   });
+  it("dictates in the active preset's language instead of the spoken languages", async () => {
+    mocks.settings.dictation_live_preview = true;
+    mocks.settings.spoken_languages = ["en"];
+    mocks.settings.current_stt_provider = "soniqo";
+    mocks.settings.current_stt_model = "soniqo-parakeet-streaming";
+    mocks.settings.dictation_preset_active = "pt";
+    mocks.settings.dictation_presets = JSON.stringify([
+      {
+        id: "pt",
+        language: "pt",
+        provider: "soniqo",
+        model: "soniqo-parakeet-streaming",
+        modelLabel: "Parakeet",
+      },
+    ]);
+    mocks.connection = {
+      provider: "soniqo",
+      model: "soniqo-parakeet-streaming",
+      apiKey: "",
+      baseUrl: "https://stt.example.com",
+    };
+    render(<DictationLifecycle />);
+    await waitFor(() => expect(useDictationStatus.getState().ready).toBe(true));
+    await shortcut("pressed");
+    expect(mocks.startSystemRecording.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        params: expect.objectContaining({ languages: ["pt"] }),
+      }),
+    );
+    endCapture();
+    await shortcut("released");
+    await waitFor(() =>
+      expect(mocks.runBatch).toHaveBeenCalledWith(
+        "/tmp/dictation.wav",
+        expect.objectContaining({ languages: ["pt"] }),
+      ),
+    );
+  });
+
   it("sends the ranked dictionary to batch transcription and weighs the terms once inserted", async () => {
     mocks.settings.personalization_dictionary_terms = ["Librelog"];
     mocks.settings.personalization_dictionary_replacements = [
@@ -1028,6 +1133,116 @@ describe("dictation access and lifecycle", () => {
         inserted: false,
       }),
     );
+  });
+
+  it("applies the spoken commands turned on, in the dictated languages, with no model call", async () => {
+    const doGenerate = vi.fn();
+    mocks.model = new MockLanguageModelV3({ doGenerate });
+    Object.assign(mocks.settings, {
+      ai_language: "en",
+      spoken_languages: ["pt-BR"],
+      dictation_cleanup: false,
+      dictation_remove_fillers: true,
+      dictation_spoken_formatting: true,
+      dictation_spoken_symbols: false,
+    });
+    mocks.prepareDictationRefinement.mockResolvedValue({
+      type: "done",
+      outcome: { type: "raw", text: "Eu acho.\nTchau", reason: "cleanupOff" },
+    });
+    mocks.runBatch.mockImplementation(hears("É... eu acho. Nova linha. Tchau"));
+    try {
+      render(<DictationLifecycle />);
+      await waitFor(() =>
+        expect(useDictationStatus.getState().ready).toBe(true),
+      );
+      await shortcut("pressed");
+      await shortcut("released");
+      await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+      expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "É... eu acho. Nova linha. Tchau",
+          policy: { cleanup: false, voiceEdit: false },
+          spoken: {
+            languages: ["en", "pt-BR"],
+            fillers: true,
+            formatting: true,
+            symbols: false,
+          },
+        }),
+      );
+      expect(mocks.recordDictation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          finalText: "Eu acho.\nTchau",
+          inserted: true,
+        }),
+      );
+      expect(doGenerate).not.toHaveBeenCalled();
+    } finally {
+      for (const key of [
+        "ai_language",
+        "spoken_languages",
+        "dictation_cleanup",
+        "dictation_remove_fillers",
+        "dictation_spoken_formatting",
+        "dictation_spoken_symbols",
+      ]) {
+        delete mocks.settings[key];
+      }
+    }
+  });
+
+  it("applies the spoken commands in the active preset's language", async () => {
+    Object.assign(mocks.settings, {
+      ai_language: "en",
+      spoken_languages: ["en"],
+      dictation_cleanup: false,
+      dictation_remove_fillers: true,
+      dictation_preset_active: "pt",
+      current_stt_provider: "deepgram",
+      current_stt_model: "nova-3",
+      dictation_presets: JSON.stringify([
+        {
+          id: "pt",
+          language: "pt",
+          provider: "deepgram",
+          model: "nova-3",
+          modelLabel: "Nova 3",
+        },
+      ]),
+    });
+    mocks.prepareDictationRefinement.mockResolvedValue({
+      type: "done",
+      outcome: { type: "raw", text: "Eu quero um café", reason: "cleanupOff" },
+    });
+    mocks.runBatch.mockImplementation(hears("Eu quero um café"));
+    try {
+      render(<DictationLifecycle />);
+      await waitFor(() =>
+        expect(useDictationStatus.getState().ready).toBe(true),
+      );
+      await shortcut("pressed");
+      await shortcut("released");
+      await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+      expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Eu quero um café",
+          spoken: expect.objectContaining({ languages: ["pt"], fillers: true }),
+        }),
+      );
+    } finally {
+      for (const key of [
+        "ai_language",
+        "spoken_languages",
+        "dictation_cleanup",
+        "dictation_remove_fillers",
+        "dictation_preset_active",
+        "current_stt_provider",
+        "current_stt_model",
+      ]) {
+        delete mocks.settings[key];
+      }
+    }
   });
 
   it("keeps a cancelled dictation out of the history even when its text was ready", async () => {

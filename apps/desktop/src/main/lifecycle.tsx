@@ -11,6 +11,7 @@ import { useRegisterTools } from "~/contexts/tool";
 import { DictationHistoryRetention } from "~/dictation/history/retention";
 import { DictationLifecycle } from "~/dictation/lifecycle";
 import { PasteLastLifecycle } from "~/dictation/paste-last";
+import { DictationPresetLifecycle } from "~/dictation/preset-switch";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { useSearchEngine } from "~/search/contexts/engine";
 import { initEnhancerService } from "~/services/enhancer";
@@ -53,6 +54,7 @@ export function ClassicMainServices() {
       <MainListenerControlBridge />
       <DictationLifecycle />
       <PasteLastLifecycle />
+      <DictationPresetLifecycle />
       <DictationHistoryRetention />
       <AnnotateLifecycle />
       <AnnotateRetention />

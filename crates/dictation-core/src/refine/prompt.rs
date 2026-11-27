@@ -63,6 +63,9 @@ const EDIT_RULES: &str = r##"
 
 Reply with only the replacement text inside <result></result>, with nothing before or after."##;
 
+// The spoken commands already ran on the transcript; cleanup must not undo them.
+const SPOKEN_MARKS: &str = "\n\nThe speaker dictated line breaks, quotation marks, parentheses, and symbols such as @, #, and _ as spoken commands, and the transcript already has them written out. Keep every line break and each of these marks where it is, joined to the same words, and never write the command words back.";
+
 // Chinese characters alone don't tell Chinese from Japanese written only in kanji.
 const HAN: &str = "Chinese or Japanese";
 
@@ -175,9 +178,11 @@ pub(super) fn cleanup(
     screen: Option<&str>,
     before: Option<&str>,
     instructions: Option<&str>,
+    spoken_marks: bool,
 ) -> Prompt {
     let system = format!(
-        "{CLEANUP_INTRO}{WRITTEN_FORMS}{CLEANUP_RULES}{}{}{}{}{}",
+        "{CLEANUP_INTRO}{WRITTEN_FORMS}{CLEANUP_RULES}{}{}{}{}{}{}",
+        if spoken_marks { SPOKEN_MARKS } else { "" },
         screen_block(screen),
         continuation(before),
         terms_block(terms),

@@ -5,6 +5,7 @@ permissions = [
     "allow-set-tray-labels",
     "allow-set-tray-paste-last-visible",
     "allow-set-tray-capture-visible",
+    "allow-set-tray-dictation-presets",
     "allow-set-tray-recording-title",
     "allow-take-pending-tray-start",
     "allow-tray-icon-shown-by-desktop",

@@ -10,7 +10,10 @@ mod tray_icon;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use ext::*;
-pub use menu_items::{AnlgMenuItem, UpdateMenuState, quit_completely};
+pub use menu_items::{
+    AnlgMenuItem, TrayDictationPresets, UpdateMenuState, handle_dictation_preset_menu_event,
+    quit_completely,
+};
 
 const PLUGIN_NAME: &str = "anlg-tray";
 static UPDATES_ENABLED: AtomicBool = AtomicBool::new(true);
@@ -82,6 +85,7 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::set_tray_labels,
             commands::set_tray_paste_last_visible,
             commands::set_tray_capture_visible,
+            commands::set_tray_dictation_presets,
             commands::take_pending_tray_start,
             commands::tray_icon_shown_by_desktop,
         ])

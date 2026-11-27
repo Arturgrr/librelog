@@ -48,6 +48,59 @@ pub async fn insert(text: String) -> Result<(), String> {
     insert_in(&LANE, &Native, text).await
 }
 
+/// How long after a dictation lands Return waits, so an app that reads a paste a moment later
+/// (Electron, browsers) does not see Return first and send an empty message.
+const SEND_SETTLE: Duration = Duration::from_millis(150);
+
+/// Pressing Return once a dictation is in, so a chat or a coding agent sends it.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SendAfterInsert {
+    /// App names or bundle ids (executables on Windows and Linux) where it sends, matched
+    /// case-insensitively; empty sends in every app.
+    pub apps: Vec<String>,
+}
+
+impl SendAfterInsert {
+    /// Whether a dictation into `app` sends. With apps listed, an app that can't be told never
+    /// does, and Librelog's own windows, `own`, never do: Return there could send a chat
+    /// message or submit a form nobody meant to.
+    fn allows(&self, app: Option<&crate::target_app::TargetApp>, own: Option<&str>) -> bool {
+        if let (Some(app), Some(own)) = (app, own)
+            && app
+                .id
+                .as_deref()
+                .is_some_and(|id| app_key(id) == app_key(own))
+        {
+            return false;
+        }
+        if self.apps.is_empty() {
+            return true;
+        }
+        let Some(app) = app else {
+            return false;
+        };
+        let names = [Some(app.name.as_str()), app.id.as_deref()];
+        self.apps
+            .iter()
+            .map(|listed| app_key(listed))
+            .any(|listed| {
+                !listed.is_empty() && names.iter().flatten().any(|name| app_key(name) == listed)
+            })
+    }
+}
+
+/// An app's name as listed or reported: Finder may show `Ghostty.app` and Windows `Code.exe`
+/// for the app that calls itself `Ghostty` or `Code`.
+fn app_key(name: &str) -> String {
+    let name = name.trim().to_lowercase();
+    [".app", ".exe"]
+        .iter()
+        .find_map(|extension| name.strip_suffix(extension))
+        .unwrap_or(&name)
+        .to_owned()
+}
+
 /// How a dictation's text goes into the focused field.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -59,14 +112,30 @@ pub enum InsertMode {
     ReplaceSelection { fingerprint: String },
 }
 
-/// Inserts a dictation where the focus is when its turn comes; returns what was typed.
+/// Inserts a dictation where the focus is when its turn comes; returns what was typed. `send`
+/// presses Return after it, never after a voice edit.
 pub async fn insert_dictation(
     text: String,
     mode: InsertMode,
     exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
+    send: Option<SendAfterInsert>,
 ) -> Result<String, String> {
-    prepared_insert_in(&LANE, &Native, async move {
-        let source = source().await;
+    dictation_in(&LANE, &Native, source(), text, mode, exclusions, send).await
+}
+
+async fn dictation_in(
+    lane: &Mutex<()>,
+    focus: &impl Focus,
+    source: impl Future<Output = impl field::FieldSource>,
+    text: String,
+    mode: InsertMode,
+    exclusions: Option<anlg_dictation_core::context::ContextExclusions>,
+    send: Option<SendAfterInsert>,
+) -> Result<String, String> {
+    // A voice edit rewrote a selection: the person reads it before anything is sent.
+    let send = send.filter(|_| matches!(mode, InsertMode::Fit));
+    prepared_insert_in(lane, focus, send.as_ref(), async move {
+        let source = source.await;
         match mode {
             InsertMode::Fit => Ok(field::fit(&source, &text, exclusions.as_ref()).await),
             InsertMode::ReplaceSelection { fingerprint } => {
@@ -161,8 +230,13 @@ trait Focus {
         text: String,
     ) -> impl Future<Output = Result<(), String>> + Send;
     /// Resolves once the app has read what the last insertion pasted, at
-    /// once when it pasted nothing.
-    fn paste_read(&self) -> impl Future<Output = ()> + Send;
+    /// once when it pasted nothing; false when it never did.
+    fn paste_read(&self) -> impl Future<Output = bool> + Send;
+    /// The app that has keyboard focus now, for the apps a dictation sends in.
+    fn app(&self) -> impl Future<Output = Option<crate::target_app::TargetApp>> + Send;
+    /// Presses Return where `target`'s insertion went, only while that field (or, where fields
+    /// can't be told apart, that app) still has focus and is not a password field.
+    fn press_return(&self, target: String) -> impl Future<Output = Result<(), String>> + Send;
 }
 
 async fn check_in(lane: &Mutex<()>, focus: &impl Focus) -> Result<(), String> {
@@ -173,16 +247,19 @@ async fn check_in(lane: &Mutex<()>, focus: &impl Focus) -> Result<(), String> {
 }
 
 async fn insert_in(lane: &Mutex<()>, focus: &impl Focus, text: String) -> Result<(), String> {
-    prepared_insert_in(lane, focus, std::future::ready(Ok(text)))
+    prepared_insert_in(lane, focus, None, std::future::ready(Ok(text)))
         .await
         .map(drop)
 }
 
 /// Inserts what `prepare` settles on once the focus is read, inside the insertion's turn, so it
-/// reads the field the text goes into; returns that text.
+/// reads the field the text goes into; returns that text. With `send`, Return follows a whole
+/// insertion the app took, in its turn, so the next insertion never lands before it. A Return
+/// that can't go is only logged: the text is in.
 async fn prepared_insert_in(
     lane: &Mutex<()>,
     focus: &impl Focus,
+    send: Option<&SendAfterInsert>,
     prepare: impl Future<Output = Result<String, String>>,
 ) -> Result<String, String> {
     let _turn = lane.lock().await;
@@ -191,8 +268,24 @@ async fn prepared_insert_in(
     if text.is_empty() {
         return Ok(text);
     }
-    focus.insert(target, text.clone()).await?;
-    let _ = tokio::time::timeout(PASTE_READ_TIMEOUT, focus.paste_read()).await;
+    let sends = match send {
+        Some(send) => send.allows(focus.app().await.as_ref(), crate::target_app::own_id()),
+        None => false,
+    };
+    focus.insert(target.clone(), text.clone()).await?;
+    let read = tokio::time::timeout(PASTE_READ_TIMEOUT, focus.paste_read())
+        .await
+        .unwrap_or(false);
+    if sends {
+        if read {
+            tokio::time::sleep(SEND_SETTLE).await;
+            if let Err(reason) = focus.press_return(target).await {
+                tracing::info!(%reason, "did not press Return after the dictation");
+            }
+        } else {
+            tracing::info!("the app never read the pasted dictation; Return was not pressed");
+        }
+    }
     Ok(text)
 }
 
@@ -214,11 +307,29 @@ impl Focus for Native {
         .map_err(|error| error.to_string())?
     }
 
-    async fn paste_read(&self) {
-        let _ = tauri::async_runtime::spawn_blocking(|| {
+    async fn paste_read(&self) -> bool {
+        tauri::async_runtime::spawn_blocking(|| {
             anlg_dictation_ui_macos::wait_for_paste_read(PASTE_READ_TIMEOUT)
         })
-        .await;
+        .await
+        .unwrap_or(false)
+    }
+
+    // The app Accessibility gives focus to, which follows panels such as Spotlight that the
+    // frontmost app does not.
+    async fn app(&self) -> Option<crate::target_app::TargetApp> {
+        use field::FieldSource as _;
+        let facts = MacField.facts().await?;
+        Some(crate::target_app::TargetApp {
+            name: facts.app_name.or_else(|| facts.bundle_id.clone())?,
+            id: facts.bundle_id,
+        })
+    }
+
+    async fn press_return(&self, _target: String) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(anlg_dictation_ui_macos::press_return)
+            .await
+            .map_err(|error| error.to_string())?
     }
 }
 
@@ -236,8 +347,16 @@ impl Focus for Native {
         linux::insert(target, text)
     }
 
-    fn paste_read(&self) -> impl Future<Output = ()> + Send {
-        std::future::ready(())
+    fn paste_read(&self) -> impl Future<Output = bool> + Send {
+        std::future::ready(true)
+    }
+
+    fn app(&self) -> impl Future<Output = Option<crate::target_app::TargetApp>> + Send {
+        crate::target_app::frontmost()
+    }
+
+    fn press_return(&self, target: String) -> impl Future<Output = Result<(), String>> + Send {
+        linux::press_return(target)
     }
 }
 
@@ -255,8 +374,16 @@ impl Focus for Native {
         windows::insert(target, text)
     }
 
-    fn paste_read(&self) -> impl Future<Output = ()> + Send {
-        std::future::ready(())
+    fn paste_read(&self) -> impl Future<Output = bool> + Send {
+        std::future::ready(true)
+    }
+
+    fn app(&self) -> impl Future<Output = Option<crate::target_app::TargetApp>> + Send {
+        crate::target_app::frontmost()
+    }
+
+    fn press_return(&self, target: String) -> impl Future<Output = Result<(), String>> + Send {
+        windows::press_return(target)
     }
 }
 
@@ -266,6 +393,7 @@ mod tests {
 
     use tokio::sync::Notify;
 
+    use super::field::FieldSource as _;
     use super::*;
 
     /// A focus where each target is a fresh token and only the newest one
@@ -279,6 +407,13 @@ mod tests {
         at: Arc<Log<Vec<tokio::time::Instant>>>,
         hold: Option<Arc<Notify>>,
         read: Option<Arc<Notify>>,
+        app: Option<&'static str>,
+        /// The app took only part of the text.
+        partial: bool,
+        /// The paste never reached the app.
+        unread: bool,
+        /// Focus moves to another field right after the text lands.
+        moves: bool,
     }
 
     impl Focus for Fake {
@@ -298,14 +433,148 @@ mod tests {
             }
             self.log.lock().unwrap().push(text);
             self.at.lock().unwrap().push(tokio::time::Instant::now());
+            if self.moves {
+                *self.token.lock().unwrap() += 1;
+            }
+            if self.partial {
+                return Err("part of it".into());
+            }
             Ok(())
         }
 
-        async fn paste_read(&self) {
+        async fn paste_read(&self) -> bool {
             if let Some(read) = &self.read {
                 read.notified().await;
             }
+            !self.unread
         }
+
+        async fn app(&self) -> Option<crate::target_app::TargetApp> {
+            self.app.map(|name| crate::target_app::TargetApp {
+                name: name.into(),
+                id: Some(format!("{}.exe", name.to_lowercase())),
+            })
+        }
+
+        async fn press_return(&self, target: String) -> Result<(), String> {
+            if target != self.token.lock().unwrap().to_string() {
+                return Err("focus moved".into());
+            }
+            self.log.lock().unwrap().push("⏎".into());
+            Ok(())
+        }
+    }
+
+    /// A focused field that reads `selected` as its selection.
+    struct Field(&'static str);
+
+    impl field::FieldSource for Field {
+        async fn facts(&self) -> Option<anlg_dictation_core::context::WindowFacts> {
+            None
+        }
+
+        async fn read(&self, _deep: bool) -> Option<field::FieldRead> {
+            Some(field::FieldRead {
+                length: self.0.len(),
+                start: 0,
+                before: String::new(),
+                selected: self.0.into(),
+                after: String::new(),
+            })
+        }
+
+        async fn window_text(&self, _max_chars: usize) -> Option<String> {
+            None
+        }
+    }
+
+    async fn dictate(focus: &Fake, mode: InsertMode, apps: &[&str]) -> Vec<String> {
+        let lane = Mutex::new(());
+        let send = SendAfterInsert {
+            apps: apps.iter().map(|app| (*app).into()).collect(),
+        };
+        let field = async { Field("Kubernetes") };
+        let _ = dictation_in(
+            &lane,
+            focus,
+            field,
+            "Ship it.".into(),
+            mode,
+            None,
+            Some(send),
+        )
+        .await;
+        focus.log.lock().unwrap().clone()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn return_follows_only_a_whole_dictation_into_the_still_focused_listed_app() {
+        let fit = || InsertMode::Fit;
+        let slack = || Fake {
+            app: Some("Slack"),
+            ..Fake::default()
+        };
+        assert_eq!(dictate(&slack(), fit(), &[]).await, ["Ship it.", "⏎"]);
+        assert_eq!(
+            dictate(&slack(), fit(), &["slack.app"]).await,
+            ["Ship it.", "⏎"]
+        );
+        assert_eq!(
+            dictate(&slack(), fit(), &["SLACK.EXE"]).await,
+            ["Ship it.", "⏎"]
+        );
+        assert_eq!(dictate(&slack(), fit(), &["Notes"]).await, ["Ship it."]);
+        assert_eq!(
+            dictate(&Fake::default(), fit(), &["Slack"]).await,
+            ["Ship it."]
+        );
+        for focus in [
+            Fake {
+                partial: true,
+                ..slack()
+            },
+            Fake {
+                unread: true,
+                ..slack()
+            },
+            Fake {
+                moves: true,
+                ..slack()
+            },
+        ] {
+            assert_eq!(dictate(&focus, fit(), &[]).await, ["Ship it."]);
+        }
+        let fingerprint = Field("Kubernetes").read(true).await.unwrap().fingerprint();
+        let edit = InsertMode::ReplaceSelection { fingerprint };
+        assert_eq!(dictate(&slack(), edit, &[]).await, ["Ship it."]);
+    }
+
+    #[test]
+    fn an_app_is_listed_by_its_name_or_id_and_neither_an_unknown_one_nor_librelog_sends() {
+        use crate::target_app::TargetApp;
+        let ghostty = TargetApp {
+            name: "Ghostty".into(),
+            id: Some("com.mitchellh.ghostty".into()),
+        };
+        let listed = |apps: &[&str], app: Option<&TargetApp>| {
+            SendAfterInsert {
+                apps: apps.iter().map(|app| (*app).into()).collect(),
+            }
+            .allows(app, Some("Librelog.exe"))
+        };
+        assert!(listed(&[], None));
+        assert!(listed(&[" Ghostty.app "], Some(&ghostty)));
+        assert!(listed(&["COM.MITCHELLH.GHOSTTY"], Some(&ghostty)));
+        assert!(!listed(&["Ghost"], Some(&ghostty)));
+        assert!(!listed(&["", "  "], Some(&ghostty)));
+        assert!(!listed(&["Ghostty"], None));
+        // Librelog's own windows never send, even when every app does or it is listed.
+        let librelog = TargetApp {
+            name: "Librelog".into(),
+            id: Some("librelog.exe".into()),
+        };
+        assert!(!listed(&[], Some(&librelog)));
+        assert!(!listed(&["Librelog"], Some(&librelog)));
     }
 
     #[tokio::test]

@@ -7,11 +7,13 @@ use futures_util::{Stream, StreamExt};
 mod error;
 mod pcm;
 mod playback;
+mod quiet;
 mod vorbis;
 
 pub use error::*;
 pub use pcm::*;
 pub use playback::open_default_playback_sink;
+pub use quiet::{quiet_cut, quiet_ranges, quiet_search_samples, quietest_point};
 pub use vorbis::*;
 
 pub use rodio::Source;

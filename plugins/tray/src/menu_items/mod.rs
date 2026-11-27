@@ -4,6 +4,7 @@ mod help_report_bug;
 mod help_suggest_feature;
 mod tray_capture;
 mod tray_check_update;
+pub(crate) mod tray_dictation_presets;
 mod tray_hide;
 mod tray_open;
 mod tray_paste_last;
@@ -19,6 +20,9 @@ pub use help_report_bug::HelpReportBug;
 pub use help_suggest_feature::HelpSuggestFeature;
 pub use tray_capture::{TrayCaptureArea, TrayRecordScreen};
 pub use tray_check_update::{TrayCheckUpdate, UpdateMenuState};
+pub use tray_dictation_presets::{
+    TrayDictationPresets, handle_menu_event as handle_dictation_preset_menu_event,
+};
 pub use tray_hide::TrayHide;
 pub use tray_open::TrayOpen;
 pub use tray_paste_last::TrayPasteLast;

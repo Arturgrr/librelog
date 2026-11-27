@@ -310,10 +310,10 @@ fn merges_segment_transcripts_onto_a_single_timeline() {
         },
     };
 
-    let merged = merge_segment_responses(
-        vec![segment("first", 1.0), segment("second", 2.0)],
-        Duration::from_secs(600),
-    );
+    let merged = merge_segment_responses(vec![
+        (segment("first", 1.0), Duration::ZERO),
+        (segment("second", 2.0), Duration::from_secs(600)),
+    ]);
 
     let alternative = &merged.results.channels[0].alternatives[0];
     assert_eq!(alternative.transcript, "first second");
@@ -353,10 +353,10 @@ fn keeps_diarized_segment_speakers_distinct() {
         },
     };
 
-    let merged = merge_segment_responses(
-        vec![segment("speaker_a", 0, 1.0), segment("speaker_b", 0, 2.0)],
-        Duration::from_secs(600),
-    );
+    let merged = merge_segment_responses(vec![
+        (segment("speaker_a", 0, 1.0), Duration::ZERO),
+        (segment("speaker_b", 0, 2.0), Duration::from_secs(600)),
+    ]);
 
     let alternative = &merged.results.channels[0].alternatives[0];
     assert_eq!(alternative.words[0].speaker, Some(0));
@@ -373,7 +373,9 @@ fn keeps_diarized_segment_speakers_distinct() {
 async fn oversized_audio_is_uploaded_one_segment_at_a_time() {
     SEGMENT_UPLOADS.lock().unwrap().clear();
     let source = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
-    write_test_wav_samples(source.path(), TARGET_SAMPLE_RATE as usize * 3);
+    // Silence is cut 50 ms before each one-second limit, the latest of its
+    // equally quiet moments: at 0.95 s, at 1.9 s, then the last 0.9 s.
+    write_test_wav_samples(source.path(), TARGET_SAMPLE_RATE as usize * 14 / 5);
     let size = std::fs::metadata(source.path()).unwrap().len();
 
     let params = BatchParams {
@@ -405,7 +407,7 @@ async fn oversized_audio_is_uploaded_one_segment_at_a_time() {
     .unwrap();
 
     let uploads = SEGMENT_UPLOADS.lock().unwrap().clone();
-    assert_eq!(uploads.len(), 3, "3s of audio in 1s segments");
+    assert_eq!(uploads.len(), 3, "2.8s of audio in segments of at most 1s");
     for upload in &uploads {
         assert!(upload.ends_with(".mp3"), "segment was not re-encoded");
         assert!(!std::path::Path::new(upload).exists(), "segment leaked");
@@ -413,8 +415,11 @@ async fn oversized_audio_is_uploaded_one_segment_at_a_time() {
 
     let alternative = &output.response.results.channels[0].alternatives[0];
     assert_eq!(alternative.transcript, "segment 0 segment 1 segment 2");
-    assert_eq!(alternative.words[0].start, 0.25);
-    assert_eq!(alternative.words[2].start, 2.25);
+    // Each segment's words move by where that segment starts.
+    let starts: Vec<f64> = alternative.words.iter().map(|word| word.start).collect();
+    for (start, expected) in starts.iter().zip([0.25, 1.2, 2.15]) {
+        assert!((start - expected).abs() < 1e-6, "{starts:?}");
+    }
     assert!(source.path().exists());
 }
 
@@ -597,25 +602,45 @@ fn rate_limit_retry_delay_backs_off_and_honors_server_hint() {
     );
 }
 
+/// A long dictation used to be cut every 29.5 s exactly, often mid-word;
+/// each chunk now ends at the quiet moment near its limit.
 #[test]
-fn parakeet_batch_reads_bounded_contiguous_chunks_from_disk() {
+fn parakeet_batch_reads_bounded_contiguous_chunks_cut_at_a_quiet_moment() {
     let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
-    let total_samples = SONIQO_PARAKEET_MAX_CHUNK_SAMPLES * 2 + TARGET_SAMPLE_RATE as usize;
-    write_test_wav_samples(file.path(), total_samples);
+    let second = TARGET_SAMPLE_RATE as usize;
+    let total_samples = SONIQO_PARAKEET_MAX_CHUNK_SAMPLES * 2 + second;
+    let quiet = 27 * second..27 * second + second / 10;
+    let mut writer = hound::WavWriter::create(
+        file.path(),
+        hound::WavSpec {
+            channels: 1,
+            sample_rate: TARGET_SAMPLE_RATE,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    for index in 0..total_samples {
+        let sample = if quiet.contains(&index) { 0.0 } else { 0.5 };
+        writer.write_sample(sample).unwrap();
+    }
+    writer.finalize().unwrap();
     let chunks =
         FixedSoniqoFileChunkIterator::new(file, SONIQO_PARAKEET_MAX_CHUNK_SAMPLES).unwrap();
+    let mut ends = Vec::new();
     let mut previous_end = 0usize;
-    let mut chunk_count = 0usize;
 
     for chunk in chunks {
         let chunk = chunk.unwrap();
         assert_eq!(chunk.sample_start, previous_end);
+        assert_eq!(chunk.samples.len(), chunk.sample_end - chunk.sample_start);
         assert!(chunk.samples.len() <= SONIQO_PARAKEET_MAX_CHUNK_SAMPLES);
         previous_end = chunk.sample_end;
-        chunk_count += 1;
+        ends.push(chunk.sample_end);
     }
 
-    assert_eq!(chunk_count, 3);
+    assert_eq!(ends.first(), Some(&(quiet.start + second / 20)));
+    assert_eq!(ends.len(), 3);
     assert_eq!(previous_end, total_samples);
 }
 

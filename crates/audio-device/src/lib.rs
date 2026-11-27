@@ -79,10 +79,26 @@ fn resolve_headphone_only_output(
 /// rather than built-in, so PCI ranks with built-in. Line-in jacks and output loopbacks are
 /// capture endpoints too but never microphones, so they are skipped.
 pub fn wired_input_replacing_bluetooth_default() -> Option<AudioDevice> {
+    bluetooth_default_stand_in().map(|stand_in| stand_in.wired)
+}
+
+/// A Bluetooth default input and the wired microphone that records in its place.
+pub struct BluetoothStandIn {
+    pub bluetooth: AudioDevice,
+    pub wired: AudioDevice,
+}
+
+/// The Bluetooth default input with its wired replacement, as
+/// [`wired_input_replacing_bluetooth_default`] picks it, for a note naming both.
+pub fn bluetooth_default_stand_in() -> Option<BluetoothStandIn> {
     let backend = backend();
     let default = backend.get_default_input_device().ok().flatten()?;
     let inputs = backend.list_input_devices().unwrap_or_default();
-    resolve_wired_input_replacement(&default, inputs)
+    let wired = resolve_wired_input_replacement(&default, inputs)?;
+    Some(BluetoothStandIn {
+        bluetooth: default,
+        wired,
+    })
 }
 
 fn resolve_wired_input_replacement(

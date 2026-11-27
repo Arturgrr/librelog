@@ -84,6 +84,26 @@ export const commands = {
     }
   },
   /**
+   * Shows the dictation presets in a submenu of the tray menu, the one in use
+   * checked, so one can be picked there; `null` or fewer than two hides it.
+   */
+  async setTrayDictationPresets(
+    presets: TrayDictationPresets | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE(
+          "plugin:anlg-tray|set_tray_dictation_presets",
+          { presets },
+        ),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
    * Claims a "Start a new meeting" click from the menu bar icon. Returns true
    * once per click, so it starts one recording however many times it is asked.
    */
@@ -121,6 +141,18 @@ export const commands = {
 
 /** user-defined types **/
 
+/**
+ * The dictation presets the tray menu offers, with labels in the app
+ * language. Hidden while there are fewer than two.
+ */
+export type TrayDictationPresets = {
+  title: string;
+  items: string[];
+  /**
+   * The preset dictation uses now, if any.
+   */
+  active: number | null;
+};
 export type TrayLabels = {
   /**
    * Contains `{app}`, like the other `*_app` and `quit_completely_*` labels.

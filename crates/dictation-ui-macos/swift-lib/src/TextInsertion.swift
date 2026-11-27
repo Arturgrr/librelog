@@ -17,6 +17,7 @@ private enum Message {
   static let clipboard =
     "Could not preserve the clipboard. Copy your last dictation from Settings > Dictation."
   static let prepare = "Could not prepare dictation for insertion."
+  static let focusChanged = "The focused field changed after the dictation was inserted."
 }
 
 final class DictationPasteProvider: NSObject, NSPasteboardItemDataProvider {
@@ -178,6 +179,8 @@ private final class DictationTarget {
   var clipboardProvider: DictationPasteProvider?
   /// The paste the last insertion made, until something waits for it to be read.
   var pendingPaste: DictationPasteProvider?
+  /// Where the last insertion went whole, until Return is pressed there.
+  var lastInsertion: (pid: pid_t, element: AXUIElement?)?
 
   /// Text goes wherever focus is when the transcript is ready, so starting only checks what can
   /// already rule dictation out.
@@ -196,6 +199,7 @@ private final class DictationTarget {
 
   func insert(token: String, text: String) -> String {
     pendingPaste = nil
+    lastInsertion = nil
     guard !token.isEmpty, token == self.token else { return Message.failed }
     self.token = ""
     // Posting keystrokes to other apps needs Accessibility too.
@@ -203,15 +207,36 @@ private final class DictationTarget {
     guard let focus = Focus.current() else { return Message.failed }
     if focus.isSecure { return Message.secureAtInsert }
 
+    let result: String
     switch focus.resolvedRoute() {
     case .accessibility:
-      if let element = focus.element, insertWithAccessibility(element, text: text) { return "" }
-      return paste(text)
+      if let element = focus.element, insertWithAccessibility(element, text: text) {
+        result = ""
+      } else {
+        result = paste(text)
+      }
     case .paste:
-      return paste(text)
+      result = paste(text)
     case .type:
-      return KeyboardInput.type(text) ? "" : Message.failed
+      result = KeyboardInput.type(text) ? "" : Message.failed
     }
+    if result.isEmpty { lastInsertion = (pid: focus.pid, element: focus.element) }
+    return result
+  }
+
+  /// Presses Return where the last insertion went, only while the same app, and the same field
+  /// where Accessibility tells fields apart, still has focus outside secure input.
+  func pressReturn() -> String {
+    defer { lastInsertion = nil }
+    guard let last = lastInsertion, AXIsProcessTrusted(), let focus = Focus.current(),
+      focus.pid == last.pid, !focus.isSecure
+    else { return Message.focusChanged }
+    if let element = last.element {
+      guard let now = focus.element, CFEqual(element, now) else { return Message.focusChanged }
+    }
+    guard let keystroke = KeyboardInput.returnKeystroke() else { return Message.failed }
+    KeyboardInput.post(keystroke)
+    return ""
   }
 
   /// Sets the selected text, then checks the field changed: some apps report success and ignore it.
@@ -450,6 +475,13 @@ public func insertDictationText(target: SRString, text: SRString) -> SRString {
   // Rust calls this off the main thread, so waiting here doesn't stall the indicator.
   guard KeyboardInput.waitForModifierRelease() else { return SRString(Message.shortcutHeld) }
   return SRString(onMain { DictationTarget.shared.insert(token: token, text: text) })
+}
+
+@_cdecl("_press_dictation_return")
+public func pressDictationReturn() -> SRString {
+  // A held Shift would make it a new line, Command or Option another shortcut.
+  guard KeyboardInput.waitForModifierRelease() else { return SRString(Message.shortcutHeld) }
+  return SRString(onMain { DictationTarget.shared.pressReturn() })
 }
 
 @_cdecl("_dictation_field_facts")

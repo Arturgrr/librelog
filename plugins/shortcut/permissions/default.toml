@@ -11,6 +11,8 @@ permissions = [
   "allow-set-annotate-recording",
   "allow-configure-capture",
   "allow-validate-capture",
+  "allow-configure-dictation-preset",
+  "allow-validate-dictation-preset",
   "allow-desktop-shortcuts",
   "allow-ask-desktop-again",
   "allow-register-hotkey",

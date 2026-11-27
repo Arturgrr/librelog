@@ -32,6 +32,7 @@ const DIALOG_FOCUS_SETTLE: Duration = Duration::from_millis(250);
 const XK_CONTROL_L: i32 = 0xffe3;
 const XK_SHIFT_L: i32 = 0xffe1;
 const XK_V: i32 = 0x76;
+const XK_RETURN: i32 = 0xff0d;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static STATE: std::sync::Mutex<State> = std::sync::Mutex::new(State {
@@ -327,7 +328,20 @@ async fn start() -> Result<(Open, bool), Failure> {
     ))
 }
 
+/// Whether keys can go through the portal without its approval dialog: a session is open, or a
+/// saved grant restores one.
+pub fn approved() -> bool {
+    let state = state();
+    state.open.is_some() || (state.refused.is_none() && load_token().is_some())
+}
+
 fn chord_keys(chord: Chord) -> Vec<(i32, KeyState)> {
+    if chord == Chord::Return {
+        return vec![
+            (XK_RETURN, KeyState::Pressed),
+            (XK_RETURN, KeyState::Released),
+        ];
+    }
     let shift = chord == Chord::TerminalPaste;
     let mut keys = vec![(XK_CONTROL_L, KeyState::Pressed)];
     if shift {

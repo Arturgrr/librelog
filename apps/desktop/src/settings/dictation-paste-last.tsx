@@ -19,6 +19,7 @@ import {
 import { useAnnotateShortcuts } from "~/annotate/system";
 import { useCaptureShortcuts } from "~/capture/system";
 import { usePasteLastStatus } from "~/dictation/paste-last";
+import { useDictationPresetShortcut } from "~/dictation/presets";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { setSettingValue, useSetSettingValue } from "~/settings/queries";
 import { SettingRow, SettingSwitchRow } from "~/settings/setting-row";
@@ -35,6 +36,7 @@ export function DictationPasteLastSettings() {
   const dictationShortcuts = useConfigValue("dictation_shortcuts");
   const annotateShortcuts = useAnnotateShortcuts();
   const captureShortcuts = useCaptureShortcuts();
+  const presetShortcut = useDictationPresetShortcut();
   const keep = useConfigValue("dictation_keep_on_clipboard");
   const setKeep = useSetSettingValue("dictation_keep_on_clipboard");
   const registrationError = usePasteLastStatus((state) => state.error);
@@ -45,6 +47,7 @@ export function DictationPasteLastSettings() {
         dictationShortcuts,
         annotateShortcuts,
         captureShortcuts,
+        presetShortcut,
       );
       return result.status === "error"
         ? localizeExternalMessage(result.error)

@@ -14,9 +14,14 @@ async hud(event: HudEvent) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async startRecording(microphoneDevice: string | null, owner: string) : Promise<Result<null, string>> {
+/**
+ * Records for in-app dictation, from the same microphone as system-wide
+ * dictation: without a chosen one, a Bluetooth default gives way to a wired
+ * one unless `avoid_bluetooth_microphone` is false.
+ */
+async startRecording(microphoneDevice: string | null, owner: string, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner, avoidBluetoothMicrophone }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -25,11 +30,16 @@ async startRecording(microphoneDevice: string | null, owner: string) : Promise<R
 /**
  * Records for system-wide dictation: the HUD follows the microphone, the
  * live preview's words arrive over `updates`, and `environment` quiets other
- * audio and keeps the computer awake until the recording ends.
+ * audio and keeps the computer awake until the recording ends. `pressed_at_ms`
+ * is when the shortcut went down, in milliseconds since the Unix epoch, and
+ * `start_cue` when the start cue played, which the open microphone silences
+ * unless someone talks over it.
+ * Without a chosen microphone, a Bluetooth default gives way to a wired one
+ * unless `avoid_bluetooth_microphone` is false.
  */
-async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null) : Promise<Result<null, string>> {
+async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null, avoidBluetoothMicrophone: boolean | null, startCue: CueSpan | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs, avoidBluetoothMicrophone, startCue }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -60,6 +70,50 @@ async discardRecording(filePath: string) : Promise<Result<null, string>> {
 }
 },
 /**
+ * Keeps the dictation microphone open between dictations, so each one
+ * includes a moment from before its shortcut, or closes it. A change waits
+ * for a dictation reading the open microphone to end. Without a chosen
+ * microphone it follows the system default, and a Bluetooth default gives
+ * way to a wired one unless `avoid_bluetooth_microphone` is false.
+ */
+async setWarmMicrophone(enabled: boolean, microphoneDevice: string | null, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|set_warm_microphone", { enabled, microphoneDevice, avoidBluetoothMicrophone }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Which microphone dictation records from with these settings, for the
+ * note in Settings.
+ */
+async dictationMicrophone(microphoneDevice: string | null, avoidBluetoothMicrophone: boolean) : Promise<Result<MicrophoneChoice, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|dictation_microphone", { microphoneDevice, avoidBluetoothMicrophone }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Sends the level of the microphone dictation would record from over
+ * `levels` until `stop_input_level`, a minute, or a dictation that needs the
+ * microphone; never records. Callers check microphone access first, so this
+ * never prompts for it.
+ */
+async startInputLevel(microphoneDevice: string | null, avoidBluetoothMicrophone: boolean, levels: TAURI_CHANNEL<LevelUpdate>) : Promise<Result<LevelSource, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_input_level", { microphoneDevice, avoidBluetoothMicrophone, levels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async stopInputLevel() : Promise<void> {
+    await TAURI_INVOKE("plugin:dictation|stop_input_level");
+},
+/**
  * Fails fast when text could not be inserted where the focus is now. Skipped
  * while an insertion is in flight, which it must not disturb.
  */
@@ -86,11 +140,12 @@ async insertText(text: string) : Promise<Result<null, string>> {
 /**
  * Inserts a dictation where the focus is when its turn comes, fitted to the text before the
  * caret or over the selection a voice edit read; returns what was typed. `exclusions` keeps
- * the field of an excluded app unread.
+ * the field of an excluded app unread. `send` presses Return once the whole dictation is in,
+ * while the field it went into still has focus.
  */
-async insertDictation(text: string, mode: InsertMode, exclusions: ContextExclusions | null) : Promise<Result<string, string>> {
+async insertDictation(text: string, mode: InsertMode, exclusions: ContextExclusions | null, send: SendAfterInsert | null) : Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|insert_dictation", { text, mode, exclusions }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|insert_dictation", { text, mode, exclusions, send }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -324,6 +379,11 @@ screen: string | null;
  * Distinctive terms from the app, the field and the window, most relevant first.
  */
 terms: string[] }
+/**
+ * When the start cue began and stopped playing, in milliseconds since the
+ * Unix epoch.
+ */
+export type CueSpan = { startMs: number; endMs: number }
 export type DenyReason = 
 /**
  * Context is off for this dictation.
@@ -446,6 +506,32 @@ export type InsertMode =
  * did then.
  */
 { type: "replaceSelection"; fingerprint: string }
+/**
+ * Where the meter reads its level from.
+ */
+export type LevelSource = 
+/**
+ * A stream opened for the meter.
+ */
+"microphone" | 
+/**
+ * The microphone kept open for dictation.
+ */
+"openMicrophone" | 
+/**
+ * A dictation is recording, so no meter opened.
+ */
+"inUse"
+export type LevelUpdate = 
+/**
+ * The last window's RMS and peak, 0 to 1.
+ */
+{ type: "level"; rms: number; peak: number } | 
+/**
+ * The meter let go of the microphone: stopped, timed out, a dictation
+ * took the microphone, or the microphone stopped.
+ */
+{ type: "ended" }
 export type ListenParams = { model?: string | null; channels?: number; sample_rate?: number; languages?: string[]; keywords?: string[]; num_speakers?: number | null; min_speakers?: number | null; max_speakers?: number | null; mic_num_speakers?: number | null; custom_query?: Partial<{ [key in string]: string }> | null }
 /**
  * Whether macOS lets this app pause and resume a media player, under
@@ -460,6 +546,15 @@ export type MediaControl = "allowed" | "denied" |
  * macOS asks only while the player runs.
  */
 "notRunning"
+/**
+ * The microphone a dictation records from, and the Bluetooth default it
+ * passed over to do so.
+ */
+export type MicrophoneChoice = { 
+/**
+ * `None` records from the system default.
+ */
+device: string | null; passedOver: string | null }
 /**
  * The one model call to make, and the deadline after which it no longer counts.
  */
@@ -588,11 +683,46 @@ before: string | null;
 /**
  * What the native side read for this operation, after its privacy decision.
  */
-context: ContextSnapshot | null }
+context: ContextSnapshot | null; 
+/**
+ * Spoken commands to apply to a dictation that edits nothing, before the replacements and
+ * any cleanup, so they hold even with cleanup off.
+ */
+spoken: SpokenRules | null }
 /**
  * A phrase said in dictation, and what is typed in its place.
  */
 export type Replacement = { from: string; to: string }
+/**
+ * Pressing Return once a dictation is in, so a chat or a coding agent sends it.
+ */
+export type SendAfterInsert = { 
+/**
+ * App names or bundle ids (executables on Windows and Linux) where it sends, matched
+ * case-insensitively; empty sends in every app.
+ */
+apps: string[] }
+/**
+ * Which spoken commands apply to a dictation, and the languages it is dictated in.
+ */
+export type SpokenRules = { 
+/**
+ * The dictation's languages as BCP 47 tags ("pt-BR", "en"); languages other than English
+ * and Portuguese bring no words.
+ */
+languages: string[]; 
+/**
+ * Drop hesitations such as "um" or "éé".
+ */
+fillers: boolean; 
+/**
+ * "new line", "abre aspas" and the like become line breaks, quotes and parentheses.
+ */
+formatting: boolean; 
+/**
+ * "at sign", "arroba", "underscore" and the like become symbols joined to their words.
+ */
+symbols: boolean }
 export type SuggestRequest = { 
 /**
  * What the dictation typed.

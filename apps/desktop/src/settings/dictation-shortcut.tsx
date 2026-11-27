@@ -15,6 +15,8 @@ import { waitForCaptureCleanup } from "~/capture/registration";
 import { useCaptureShortcuts } from "~/capture/system";
 import { waitForDictationCleanup } from "~/dictation/lifecycle";
 import { waitForPasteLastCleanup } from "~/dictation/paste-last";
+import { waitForDictationPresetCleanup } from "~/dictation/preset-switch";
+import { useDictationPresetShortcut } from "~/dictation/presets";
 import { useDictationStatus } from "~/dictation/state";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { setSettingValues } from "~/settings/queries";
@@ -230,6 +232,7 @@ export function DictationShortcuts({ shortcuts }: { shortcuts: string[] }) {
   const pasteLast = useConfigValue("dictation_paste_last_shortcut");
   const annotateShortcuts = useAnnotateShortcuts();
   const captureShortcuts = useCaptureShortcuts();
+  const presetShortcut = useDictationPresetShortcut();
   const recorder = useShortcutRecorder<number>({
     validate: async (value, index) => {
       const identity = shortcutIdentity(value);
@@ -245,6 +248,7 @@ export function DictationShortcuts({ shortcuts }: { shortcuts: string[] }) {
         pasteLastEnabled ? pasteLast : null,
         annotateShortcuts,
         captureShortcuts,
+        presetShortcut,
       );
       return result.status === "error"
         ? localizeExternalMessage(result.error)
@@ -414,6 +418,7 @@ export function ShortcutCapture({
       Promise.all([
         waitForDictationCleanup(),
         waitForPasteLastCleanup(),
+        waitForDictationPresetCleanup(),
         waitForAnnotateCleanup(),
         waitForCaptureCleanup(),
       ]),

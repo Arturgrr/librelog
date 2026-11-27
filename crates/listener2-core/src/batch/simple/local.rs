@@ -554,6 +554,8 @@ pub(super) struct FixedSoniqoFileChunkIterator {
     _file: tempfile::NamedTempFile,
     max_samples: usize,
     next_start: usize,
+    /// What followed the last cut, read already: the start of the next chunk.
+    carry: Vec<f32>,
     finished: bool,
 }
 
@@ -568,6 +570,7 @@ impl FixedSoniqoFileChunkIterator {
             _file: file,
             max_samples,
             next_start: 0,
+            carry: Vec::new(),
             finished: false,
         })
     }
@@ -581,21 +584,26 @@ impl Iterator for FixedSoniqoFileChunkIterator {
             return None;
         }
 
-        let samples = match self
-            .reader
-            .samples::<f32>()
-            .take(self.max_samples)
-            .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(samples) => samples,
-            Err(error) => {
-                self.finished = true;
-                return Some(Err(error.to_string()));
+        let mut samples = std::mem::take(&mut self.carry);
+        let wanted = self.max_samples.saturating_sub(samples.len());
+        for sample in self.reader.samples::<f32>().take(wanted) {
+            match sample {
+                Ok(sample) => samples.push(sample),
+                Err(error) => {
+                    self.finished = true;
+                    return Some(Err(error.to_string()));
+                }
             }
-        };
+        }
         if samples.is_empty() {
             self.finished = true;
             return None;
+        }
+        // A full window may have more after it: it ends at a quiet moment
+        // near its limit rather than mid-word, and the rest starts the next.
+        if samples.len() >= self.max_samples {
+            let cut = anlg_audio_utils::quiet_cut(&samples, self.max_samples, TARGET_SAMPLE_RATE);
+            self.carry = samples.split_off(cut);
         }
         let sample_start = self.next_start;
         let sample_end = sample_start + samples.len();

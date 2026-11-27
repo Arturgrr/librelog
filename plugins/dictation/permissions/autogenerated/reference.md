@@ -10,6 +10,10 @@ Default permissions for the plugin
 - `allow-stop-recording`
 - `allow-cancel-recording`
 - `allow-discard-recording`
+- `allow-set-warm-microphone`
+- `allow-dictation-microphone`
+- `allow-start-input-level`
+- `allow-stop-input-level`
 - `allow-check-insertion`
 - `allow-insert-text`
 - `allow-insert-dictation`
@@ -168,6 +172,32 @@ Enables the delete_history_audio command without any pre-configured scope.
 <td>
 
 Denies the delete_history_audio command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-dictation-microphone`
+
+</td>
+<td>
+
+Enables the dictation_microphone command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-dictation-microphone`
+
+</td>
+<td>
+
+Denies the dictation_microphone command without any pre-configured scope.
 
 </td>
 </tr>
@@ -669,6 +699,58 @@ Denies the resolve_dictation_refinement command without any pre-configured scope
 <tr>
 <td>
 
+`dictation:allow-set-warm-microphone`
+
+</td>
+<td>
+
+Enables the set_warm_microphone command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-set-warm-microphone`
+
+</td>
+<td>
+
+Denies the set_warm_microphone command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-start-input-level`
+
+</td>
+<td>
+
+Enables the start_input_level command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-start-input-level`
+
+</td>
+<td>
+
+Denies the start_input_level command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `dictation:allow-start-recording`
 
 </td>
@@ -714,6 +796,32 @@ Enables the start_system_recording command without any pre-configured scope.
 <td>
 
 Denies the start_system_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:allow-stop-input-level`
+
+</td>
+<td>
+
+Enables the stop_input_level command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`dictation:deny-stop-input-level`
+
+</td>
+<td>
+
+Denies the stop_input_level command without any pre-configured scope.
 
 </td>
 </tr>

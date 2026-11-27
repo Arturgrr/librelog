@@ -47,7 +47,7 @@ pub trait Keyboard {
 
 pub fn copied(chord: Chord) -> String {
     match chord {
-        Chord::Paste => COPIED.into(),
+        Chord::Paste | Chord::Return => COPIED.into(),
         Chord::TerminalPaste => COPIED_TERMINAL.into(),
     }
 }

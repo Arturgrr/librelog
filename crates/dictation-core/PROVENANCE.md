@@ -27,4 +27,6 @@ This crate came to Librelog from Anarlog (`fastrepl/anarlog`, MIT) at `b82e3c9cf
 | `src/lib.rs` (`join_transcript`)                 | `char/chat-context-react/src/composer/use-dictation.ts` (`joinTranscript`)                      | Translated; adds no space between Chinese/Japanese phrases and full-width closing punctuation                                                                                                                                                                                          |
 | `apps/desktop/src/ai/dictation-refine.ts`        | `char/chat-context-react/src/composer/use-dictation.ts` (`cleanUp`)                             | Reference only. Anarlog adapter over its selected model connection                                                                                                                                                                                                                   |
 
+`src/spoken/` is not from Char: it is ported from Hex (MIT); see `THIRD_PARTY_NOTICES.md`.
+
 Not ported: Awareness history, the passive typing sampler, People and recent-activity term sources, destination style samples, and Char's server polish route.

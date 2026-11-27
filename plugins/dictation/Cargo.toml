@@ -19,6 +19,7 @@ tokio-tungstenite = { workspace = true }
 
 [dependencies]
 anlg-audio = { workspace = true }
+anlg-audio-device = { workspace = true }
 anlg-dictation-core = { workspace = true }
 anlg-recording-environment = { workspace = true }
 owhisper-client = { workspace = true }
@@ -38,6 +39,9 @@ tracing = { workspace = true }
 
 tauri = { workspace = true, features = ["test"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+anlg-device-monitor = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 anlg-dictation-ui-macos = { workspace = true }

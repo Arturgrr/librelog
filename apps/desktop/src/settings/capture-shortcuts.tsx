@@ -26,6 +26,7 @@ import {
   useCaptureShortcutMap,
 } from "~/capture/system";
 import { useSystemShortcuts } from "~/capture/system-shortcuts";
+import { useDictationPresetShortcut } from "~/dictation/presets";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { setSettingValue } from "~/settings/queries";
 import { SettingRow } from "~/settings/setting-row";
@@ -112,6 +113,7 @@ export function CaptureShortcutRows({
   const pasteLastEnabled = useConfigValue("dictation_paste_last_enabled");
   const pasteLast = useConfigValue("dictation_paste_last_shortcut");
   const annotate = useAnnotateShortcuts();
+  const presetShortcut = useDictationPresetShortcut();
   const recorder = useShortcutRecorder<CaptureAction>({
     validate: async (value, action) => {
       const siblings = Object.entries(current)
@@ -122,6 +124,7 @@ export function CaptureShortcutRows({
         ...(pasteLastEnabled ? [pasteLast] : []),
         ...annotate,
         ...siblings,
+        ...(presetShortcut ? [presetShortcut] : []),
       ];
       const result = await shortcutCommands.validateCapture(value, taken);
       return result.status === "error"

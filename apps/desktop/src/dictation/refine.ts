@@ -1,12 +1,35 @@
 import { t } from "@lingui/core/macro";
 import type { LanguageModel } from "ai";
 
-import type { DictationField, Replacement } from "@anlg/plugin-dictation";
+import type {
+  DictationField,
+  Replacement,
+  SpokenRules,
+} from "@anlg/plugin-dictation";
 
 import { refineDictation } from "~/ai/dictation-refine";
+import { useConfigValue } from "~/shared/config";
 
 /** The selected text could not be edited by voice; nothing was typed. */
 export class VoiceEditFailed extends Error {}
+
+/**
+ * The spoken commands the person turned on, with the languages they dictate
+ * in, which choose the words: only English and Portuguese have them. A
+ * dictation preset's language replaces them, as it does for transcription.
+ */
+export function useSpokenRules(presetLanguage?: string): SpokenRules {
+  const main = useConfigValue("ai_language");
+  const spoken = useConfigValue("spoken_languages");
+  return {
+    languages: presetLanguage
+      ? [presetLanguage]
+      : [main, ...(spoken || [])].filter(Boolean),
+    fillers: useConfigValue("dictation_remove_fillers"),
+    formatting: useConfigValue("dictation_spoken_formatting"),
+    symbols: useConfigValue("dictation_spoken_symbols"),
+  };
+}
 
 /** The person's dictation choices, read when a dictation starts. */
 export type RefineOptions = {
@@ -14,12 +37,14 @@ export type RefineOptions = {
   voiceEdit: boolean;
   context: boolean;
   replacements: Replacement[];
+  spoken: SpokenRules;
 };
 
 /**
- * What to type for a transcript: the words with the person's replacements,
- * cleaned up by their selected model when they asked for it, or a voice edit
- * of the selected text. Throws when nothing should be typed.
+ * What to type for a transcript: the words with the spoken commands the person
+ * turned on and their replacements, cleaned up by their selected model when
+ * they asked for it, or a voice edit of the selected text. Throws when nothing
+ * should be typed.
  */
 export async function refineTranscript({
   operationId,
@@ -59,6 +84,7 @@ export async function refineTranscript({
       instructions: null,
       before: null,
       context: options.context ? (field?.context ?? null) : null,
+      spoken: options.spoken,
     },
   });
   switch (outcome.type) {

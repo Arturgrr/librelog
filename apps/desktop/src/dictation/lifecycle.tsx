@@ -16,7 +16,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { keepOnClipboard } from "./clipboard";
-import { DictationController, MAX_CAPTURE_MS } from "./controller";
+import { DictationController } from "./controller";
 import {
   dictationAudioBehaviors,
   recordingEnvironmentConfig,
@@ -29,11 +29,14 @@ import {
   recordUsedTerms,
   watchCorrection,
 } from "./learning";
+import { useActiveDictationPreset } from "./presets";
 import {
   refineTranscript,
+  useSpokenRules,
   VoiceEditFailed,
   type RefineOptions,
 } from "./refine";
+import { sendAfterInsert } from "./send";
 import { useDictationStatus } from "./state";
 
 import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
@@ -42,17 +45,17 @@ import { useSettingsReady } from "~/settings/queries";
 import { isAppStoreBuild } from "~/shared/app-store";
 import { useConfigValue } from "~/shared/config";
 import { useListener } from "~/stt/contexts";
-import { holdLocalModel } from "~/stt/local-model-hold";
+import { holdLocalModelUntilReleased } from "~/stt/local-model-hold";
 import { useRunBatch } from "~/stt/useRunBatch";
 import { useSTTConnection } from "~/stt/useSTTConnection";
 export { useDictationStatus } from "./state";
 
 let lifecycle: Promise<void> = Promise.resolve();
 
-// How long the start cue sounds once asked for, opening its output included.
-// Muting or lowering other audio waits for it, so the cue is heard, unless
-// the last dictation left other audio quiet: it then stays quiet throughout.
-const START_CUE_MS = 400;
+// How long the start cue sounds once it plays. Muting or lowering other audio
+// waits for it, so the cue is heard, unless the last dictation left other
+// audio quiet: it then stays quiet throughout.
+const START_CUE_MS = 350;
 
 export function waitForDictationCleanup() {
   return lifecycle;
@@ -65,9 +68,84 @@ export function DictationLifecycle() {
   if (!settingsReady || !enabled) return null;
   return (
     <TranscriptRetention>
+      <WarmMicrophone />
       <ActiveDictation />
     </TranscriptRetention>
   );
+}
+
+// Opens and closes the open microphone one change at a time, in order.
+let warmMicrophone: Promise<unknown> = Promise.resolve();
+
+// How often the open microphone checks again for microphone access.
+const ACCESS_RETRY_MS = 3_000;
+
+/** Resolves false while macOS has not allowed microphone access. */
+function setWarmMicrophone(
+  enabled: boolean,
+  device: string | null,
+  avoidBluetooth: boolean,
+) {
+  const change = warmMicrophone.then(async () => {
+    // Without microphone access, opening it would prompt out of the blue.
+    if (
+      enabled &&
+      platform() === "macos" &&
+      unwrap(await permissions.checkPermission("microphone")) !== "authorized"
+    )
+      return false;
+    unwrap(await dictation.setWarmMicrophone(enabled, device, avoidBluetooth));
+    return true;
+  });
+  const settled = change.catch((error: unknown) => {
+    console.warn("[dictation] the microphone could not stay open", error);
+    return true;
+  });
+  warmMicrophone = settled;
+  return settled;
+}
+
+/**
+ * Keeps the microphone open while dictation is on and "Keep microphone
+ * ready" is, so each dictation starts a moment before its shortcut.
+ */
+function WarmMicrophone() {
+  const enabled = useConfigValue("dictation_warm_microphone");
+  const microphone = useConfigValue("microphone_device");
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
+  if (!enabled) return null;
+  return (
+    <OpenMicrophone
+      key={`${microphone}:${avoidBluetooth}`}
+      device={microphone || null}
+      avoidBluetooth={avoidBluetooth}
+    />
+  );
+}
+
+function OpenMicrophone({
+  device,
+  avoidBluetooth,
+}: {
+  device: string | null;
+  avoidBluetooth: boolean;
+}) {
+  useMountEffect(() => {
+    let mounted = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // Opens once microphone access is allowed, without asking for it.
+    const open = () =>
+      void setWarmMicrophone(true, device, avoidBluetooth).then((opened) => {
+        if (!opened && mounted) retry = setTimeout(open, ACCESS_RETRY_MS);
+      });
+    open();
+    return () => {
+      mounted = false;
+      clearTimeout(retry);
+      void setWarmMicrophone(false, null, avoidBluetooth);
+    };
+  });
+  return null;
 }
 
 /** What the registered shortcuts drive; it outlives their registration. */
@@ -131,6 +209,7 @@ function ActiveDictation() {
   const runBatch = useRunBatch(id);
   const stopTranscription = useListener((state) => state.stopTranscription);
   const microphone = useConfigValue("microphone_device");
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   const livePreview = useConfigValue("dictation_live_preview");
   const dictionary = useConfigValue("personalization_dictionary_terms");
   const replacements = useConfigValue(
@@ -143,7 +222,11 @@ function ActiveDictation() {
   const exclusions = useConfigValue("dictation_context_exclusions");
   const model = useLanguageModel();
   const weights = useConfigValue("dictation_term_weights");
-  const languages = useConfigValue("spoken_languages");
+  const spokenLanguages = useConfigValue("spoken_languages");
+  // A preset's language replaces the spoken languages for dictation only.
+  const preset = useActiveDictationPreset();
+  const languages = preset ? [preset.language] : spokenLanguages;
+  const spoken = useSpokenRules(preset?.language);
   const sounds = useConfigValue("dictation_sounds");
   const hudPosition = useConfigValue("dictation_hud_position");
   const audio = {
@@ -158,13 +241,16 @@ function ActiveDictation() {
   const current = useRef({
     runBatch,
     microphone,
+    avoidBluetooth,
     livePreview,
     languages,
+    preset,
     dictionary,
     replacements,
     learning,
     cleanup,
     voiceEdit,
+    spoken,
     context,
     exclusions,
     model,
@@ -179,13 +265,16 @@ function ActiveDictation() {
   current.current = {
     runBatch,
     microphone,
+    avoidBluetooth,
     livePreview,
     languages,
+    preset,
     dictionary,
     replacements,
     learning,
     cleanup,
     voiceEdit,
+    spoken,
     context,
     exclusions,
     model,
@@ -248,18 +337,18 @@ function ActiveDictation() {
     };
     // Through the speakers a cue would reach the microphone, so it never plays
     // while a meeting records: it would leak into the call and its recording.
-    // Resolves whether it played.
+    // Resolves when it started playing, or null when it did not play.
     const cue = async (sound: AppSounds) => {
       const { sounds, meetingActive } = current.current;
-      if (disposed || !sounds || meetingActive) return false;
+      if (disposed || !sounds || meetingActive) return null;
       try {
         const capture = unwrap(await transcription.getCaptureState());
-        if (capture !== "inactive") return false;
+        if (capture !== "inactive") return null;
         await sfx.play(sound);
-        return true;
+        return Date.now();
       } catch (error) {
         console.error(error);
-        return false;
+        return null;
       }
     };
     const frontmostApp = async () => {
@@ -277,15 +366,18 @@ function ActiveDictation() {
         return current.current.handsFree;
       },
       start: async (signal) => {
+        // The press, which the open microphone's pre-roll counts back from.
+        const pressedAtMs = Date.now();
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
-        const { learning, cleanup, voiceEdit, context, exclusions } =
+        const { learning, cleanup, voiceEdit, spoken, context, exclusions } =
           current.current;
         const options: RefineOptions = {
           cleanup,
           voiceEdit,
           context,
           replacements: current.current.replacements || [],
+          spoken,
         };
         const operationId = crypto.randomUUID();
         // What the field held before dictating, read natively only for the
@@ -304,8 +396,15 @@ function ActiveDictation() {
         const field = learning
           ? read.then((read) => read?.text ?? null)
           : Promise.resolve(null);
-        const { microphone, livePreview, conn, languages, audio, hudPosition } =
-          current.current;
+        const {
+          microphone,
+          avoidBluetooth,
+          livePreview,
+          conn,
+          languages,
+          audio,
+          hudPosition,
+        } = current.current;
         useDictationStatus.setState({ error: null });
         const meeting = meetingRecording().catch(() => true);
         if (platform() === "macos") {
@@ -318,9 +417,7 @@ function ActiveDictation() {
             );
         }
         signal.throwIfAborted();
-        // Ahead of the microphone, so the cue answers the press and stays
-        // mostly out of the recording.
-        const cueEnds = Date.now() + START_CUE_MS;
+        // Ahead of the microphone, so the cue answers the press.
         const started = cue("StartRecording");
         unwrap(await dictation.checkInsertion());
         // A self-hosted server may take one live connection at a time: a
@@ -361,7 +458,11 @@ function ActiveDictation() {
                   appStore: isAppStoreBuild(),
                 }),
               }),
-              delayMs: (await started) ? Math.max(0, cueEnds - Date.now()) : 0,
+              delayMs: await started.then((cueStarts) =>
+                cueStarts === null
+                  ? 0
+                  : Math.max(0, cueStarts + START_CUE_MS - Date.now()),
+              ),
             };
         signal.throwIfAborted();
         // The HUD is on screen before the microphone opens. It is only a cue:
@@ -376,7 +477,7 @@ function ActiveDictation() {
         // Loads while it records, so the stop transcribes at once. Taken once
         // nothing but the microphone can still fail the start.
         releaseModel();
-        releaseModel = holdLocalModel(conn, MAX_CAPTURE_MS + 60_000);
+        releaseModel = holdLocalModelUntilReleased(conn);
         const capture = {
           stopped: false,
           preview: conn &&
@@ -416,6 +517,15 @@ function ActiveDictation() {
                 });
               }),
               environment,
+              pressedAtMs,
+              avoidBluetooth,
+              // The open microphone may hear it, and silences it unless
+              // someone talks over it.
+              await started.then((cueStarts) =>
+                cueStarts === null
+                  ? null
+                  : { startMs: cueStarts, endMs: cueStarts + START_CUE_MS },
+              ),
             ),
           );
         } catch (error) {
@@ -455,6 +565,9 @@ function ActiveDictation() {
           notifyOnCompletion: false,
           numSpeakers: 1,
           keywords: await keywords(),
+          languages: current.current.preset
+            ? [current.current.preset.language]
+            : undefined,
           handlePersist: (words) => {
             text = words
               .slice()
@@ -490,6 +603,8 @@ function ActiveDictation() {
       },
       insert: async (text, { context, edit }) => {
         const fingerprint = edit ? (await context.read)?.fingerprint : null;
+        // A rewritten selection is read before anything is sent.
+        const send = edit ? null : await sendAfterInsert().catch(() => null);
         try {
           return unwrap(
             await dictation.insertDictation(
@@ -498,6 +613,7 @@ function ActiveDictation() {
                 ? { type: "replaceSelection", fingerprint }
                 : { type: "fit" },
               context.exclusions,
+              send,
             ),
           );
         } finally {

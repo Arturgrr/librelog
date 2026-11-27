@@ -355,6 +355,18 @@
           "markdownDescription": "Denies the delete_history_audio command without any pre-configured scope."
         },
         {
+          "description": "Enables the dictation_microphone command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-dictation-microphone",
+          "markdownDescription": "Enables the dictation_microphone command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the dictation_microphone command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-dictation-microphone",
+          "markdownDescription": "Denies the dictation_microphone command without any pre-configured scope."
+        },
+        {
           "description": "Enables the discard_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-discard-recording",
@@ -583,6 +595,30 @@
           "markdownDescription": "Denies the resolve_dictation_refinement command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_warm_microphone command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-warm-microphone",
+          "markdownDescription": "Enables the set_warm_microphone command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_warm_microphone command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-warm-microphone",
+          "markdownDescription": "Denies the set_warm_microphone command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_input_level command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-input-level",
+          "markdownDescription": "Enables the start_input_level command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_input_level command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-input-level",
+          "markdownDescription": "Denies the start_input_level command without any pre-configured scope."
+        },
+        {
           "description": "Enables the start_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-start-recording",
@@ -605,6 +641,18 @@
           "type": "string",
           "const": "deny-start-system-recording",
           "markdownDescription": "Denies the start_system_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_input_level command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-input-level",
+          "markdownDescription": "Enables the stop_input_level command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_input_level command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-input-level",
+          "markdownDescription": "Denies the stop_input_level command without any pre-configured scope."
         },
         {
           "description": "Enables the stop_recording command without any pre-configured scope.",
@@ -631,10 +679,10 @@
           "markdownDescription": "Denies the suggest_dictation_terms command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-hud`\n- `allow-start-recording`\n- `allow-start-system-recording`\n- `allow-stop-recording`\n- `allow-cancel-recording`\n- `allow-discard-recording`\n- `allow-check-insertion`\n- `allow-insert-text`\n- `allow-insert-dictation`\n- `allow-read-dictation-field`\n- `allow-frontmost-app`\n- `allow-keep-history-audio`\n- `allow-history-audio-path`\n- `allow-delete-history-audio`\n- `allow-prune-history-audio`\n- `allow-request-media-control`\n- `allow-apply-dictation-replacements`\n- `allow-fit-dictation-text`\n- `allow-join-dictation-transcript`\n- `allow-prepare-dictation-refinement`\n- `allow-resolve-dictation-refinement`\n- `allow-decide-dictation-context`\n- `allow-may-read-dictation-for-fitting`\n- `allow-extract-dictation-terms`\n- `allow-rank-dictation-terms`\n- `allow-record-dictation-terms`\n- `allow-suggest-dictation-terms`\n- `allow-kept-dictation-text`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-hud`\n- `allow-start-recording`\n- `allow-start-system-recording`\n- `allow-stop-recording`\n- `allow-cancel-recording`\n- `allow-discard-recording`\n- `allow-set-warm-microphone`\n- `allow-dictation-microphone`\n- `allow-start-input-level`\n- `allow-stop-input-level`\n- `allow-check-insertion`\n- `allow-insert-text`\n- `allow-insert-dictation`\n- `allow-read-dictation-field`\n- `allow-frontmost-app`\n- `allow-keep-history-audio`\n- `allow-history-audio-path`\n- `allow-delete-history-audio`\n- `allow-prune-history-audio`\n- `allow-request-media-control`\n- `allow-apply-dictation-replacements`\n- `allow-fit-dictation-text`\n- `allow-join-dictation-transcript`\n- `allow-prepare-dictation-refinement`\n- `allow-resolve-dictation-refinement`\n- `allow-decide-dictation-context`\n- `allow-may-read-dictation-for-fitting`\n- `allow-extract-dictation-terms`\n- `allow-rank-dictation-terms`\n- `allow-record-dictation-terms`\n- `allow-suggest-dictation-terms`\n- `allow-kept-dictation-text`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-hud`\n- `allow-start-recording`\n- `allow-start-system-recording`\n- `allow-stop-recording`\n- `allow-cancel-recording`\n- `allow-discard-recording`\n- `allow-check-insertion`\n- `allow-insert-text`\n- `allow-insert-dictation`\n- `allow-read-dictation-field`\n- `allow-frontmost-app`\n- `allow-keep-history-audio`\n- `allow-history-audio-path`\n- `allow-delete-history-audio`\n- `allow-prune-history-audio`\n- `allow-request-media-control`\n- `allow-apply-dictation-replacements`\n- `allow-fit-dictation-text`\n- `allow-join-dictation-transcript`\n- `allow-prepare-dictation-refinement`\n- `allow-resolve-dictation-refinement`\n- `allow-decide-dictation-context`\n- `allow-may-read-dictation-for-fitting`\n- `allow-extract-dictation-terms`\n- `allow-rank-dictation-terms`\n- `allow-record-dictation-terms`\n- `allow-suggest-dictation-terms`\n- `allow-kept-dictation-text`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-hud`\n- `allow-start-recording`\n- `allow-start-system-recording`\n- `allow-stop-recording`\n- `allow-cancel-recording`\n- `allow-discard-recording`\n- `allow-set-warm-microphone`\n- `allow-dictation-microphone`\n- `allow-start-input-level`\n- `allow-stop-input-level`\n- `allow-check-insertion`\n- `allow-insert-text`\n- `allow-insert-dictation`\n- `allow-read-dictation-field`\n- `allow-frontmost-app`\n- `allow-keep-history-audio`\n- `allow-history-audio-path`\n- `allow-delete-history-audio`\n- `allow-prune-history-audio`\n- `allow-request-media-control`\n- `allow-apply-dictation-replacements`\n- `allow-fit-dictation-text`\n- `allow-join-dictation-transcript`\n- `allow-prepare-dictation-refinement`\n- `allow-resolve-dictation-refinement`\n- `allow-decide-dictation-context`\n- `allow-may-read-dictation-for-fitting`\n- `allow-extract-dictation-terms`\n- `allow-rank-dictation-terms`\n- `allow-record-dictation-terms`\n- `allow-suggest-dictation-terms`\n- `allow-kept-dictation-text`"
         }
       ]
     }

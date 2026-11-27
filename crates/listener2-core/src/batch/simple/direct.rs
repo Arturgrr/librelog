@@ -117,10 +117,10 @@ async fn run_segmented_batch<A: BatchSttAdapter>(
     let segments = split_batch_upload(&params.file_path, segment_duration, provider).await?;
     listen_params.channels = 1;
 
-    let mut responses = Vec::with_capacity(segments.paths().len());
-    for path in segments.paths() {
+    let mut responses = Vec::with_capacity(segments.segments().len());
+    for segment in segments.segments() {
         let mut segment_params = params.clone();
-        segment_params.file_path = path.to_string_lossy().into_owned();
+        segment_params.file_path = segment.path.to_string_lossy().into_owned();
 
         let output = run_direct_batch_with_timeout::<A>(
             provider,
@@ -129,21 +129,19 @@ async fn run_segmented_batch<A: BatchSttAdapter>(
             timeout,
         )
         .await?;
-        responses.push(output.response);
+        responses.push((output.response, segment.start));
     }
 
     Ok(BatchRunOutput {
         session_id: params.session_id,
         mode: BatchRunMode::Direct,
-        response: merge_segment_responses(responses, segment_duration),
+        response: merge_segment_responses(responses),
     })
 }
 
-/// Segments are transcribed independently, so their timestamps restart at zero.
-pub(super) fn merge_segment_responses(
-    responses: Vec<Response>,
-    segment_duration: Duration,
-) -> Response {
+/// Segments are transcribed independently, so their timestamps restart at
+/// zero; each response comes with where its segment starts.
+pub(super) fn merge_segment_responses(responses: Vec<(Response, Duration)>) -> Response {
     let mut metadata = serde_json::Value::Null;
     let mut speaker_labels = Vec::new();
     let mut speaker_segments = Vec::new();
@@ -151,8 +149,8 @@ pub(super) fn merge_segment_responses(
     let mut transcripts: Vec<String> = Vec::new();
     let mut words = Vec::new();
 
-    for (index, response) in responses.into_iter().enumerate() {
-        let offset = segment_duration.as_secs_f64() * index as f64;
+    for (response, start) in responses {
+        let offset = start.as_secs_f64();
         let segment_speaker_labels = response
             .metadata
             .get("speaker_labels")

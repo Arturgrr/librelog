@@ -11,6 +11,8 @@ const COMMANDS: &[&str] = &[
     "set_annotate_recording",
     "configure_capture",
     "validate_capture",
+    "configure_dictation_preset",
+    "validate_dictation_preset",
     "desktop_shortcuts",
     "ask_desktop_again",
 ];

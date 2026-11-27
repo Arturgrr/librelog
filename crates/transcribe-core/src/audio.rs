@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anlg_audio_chunking::{AudioChunk, Chunker, SpeechChunker, SpeechChunkingConfig};
+use anlg_audio_utils::quiet_ranges;
 
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 
@@ -32,13 +33,13 @@ where
             continue;
         }
 
-        for (index, window) in chunk.samples.chunks(MAX_CHUNK_SAMPLES).enumerate() {
-            let sample_start = chunk.sample_start + index * MAX_CHUNK_SAMPLES;
-            let sample_end = sample_start + window.len();
+        // An exact sample count cuts mid-word; each window ends at a quiet
+        // moment near its limit instead.
+        for range in quiet_ranges(&chunk.samples, MAX_CHUNK_SAMPLES, TARGET_SAMPLE_RATE) {
             normalized.push(AudioChunk {
-                samples: window.to_vec(),
-                sample_start,
-                sample_end,
+                samples: chunk.samples[range.clone()].to_vec(),
+                sample_start: chunk.sample_start + range.start,
+                sample_end: chunk.sample_start + range.end,
             });
         }
     }
@@ -99,26 +100,30 @@ mod tests {
     }
 
     #[test]
-    fn oversized_chunks_are_split_at_generic_limit() {
-        let oversized = MAX_CHUNK_SAMPLES + TARGET_SAMPLE_RATE as usize;
+    fn oversized_chunks_are_split_at_a_quiet_moment_before_the_limit() {
+        let second = TARGET_SAMPLE_RATE as usize;
+        let oversized = MAX_CHUNK_SAMPLES + second;
+        let mut samples = vec![1.0; oversized];
+        samples[23 * second..23 * second + second / 10].fill(0.0);
         let mut chunker = FakeChunker {
             chunks: vec![AudioChunk {
-                samples: vec![1.0; oversized],
-                sample_start: TARGET_SAMPLE_RATE as usize * 2,
-                sample_end: TARGET_SAMPLE_RATE as usize * 2 + oversized,
+                samples,
+                sample_start: second * 2,
+                sample_end: second * 2 + oversized,
             }],
         };
 
         let chunks = chunk_channel_audio_with(&vec![0.0; oversized], &mut chunker).unwrap();
 
         assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0].sample_start, TARGET_SAMPLE_RATE as usize * 2);
-        assert_eq!(
-            chunks[0].sample_end,
-            TARGET_SAMPLE_RATE as usize * 2 + MAX_CHUNK_SAMPLES
-        );
+        assert_eq!(chunks[0].sample_start, second * 2);
+        assert_eq!(chunks[0].sample_end, second * 2 + 23 * second + second / 20);
         assert_eq!(chunks[1].sample_start, chunks[0].sample_end);
-        assert_eq!(chunks[1].samples.len(), TARGET_SAMPLE_RATE as usize);
+        assert_eq!(chunks[1].sample_end, second * 2 + oversized);
+        assert_eq!(
+            chunks[1].samples.len(),
+            chunks[1].sample_end - chunks[1].sample_start
+        );
     }
 
     #[test]

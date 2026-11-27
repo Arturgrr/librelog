@@ -400,6 +400,8 @@ pub fn main() {
                 app_handle.on_menu_event(|app, event| {
                     if let Ok(item) = AnlgMenuItem::try_from(event.id().clone()) {
                         item.handle(app);
+                    } else {
+                        tauri_plugin_tray::handle_dictation_preset_menu_event(app, event.id());
                     }
                 });
             }

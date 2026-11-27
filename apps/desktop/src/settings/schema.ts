@@ -43,6 +43,20 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "shortcuts"],
     default: JSON.stringify([DEFAULT_DICTATION_SHORTCUT]) as string,
   },
+  // Keeps the microphone open between dictations for a pre-roll; off by
+  // default, since the system's microphone indicator then stays on.
+  dictation_warm_microphone: {
+    type: "boolean",
+    path: ["dictation", "warm_microphone"],
+    default: false as boolean,
+  },
+  // On by default, as meetings always do: a Bluetooth headset's microphone
+  // drops what it plays to call quality.
+  dictation_avoid_bluetooth_microphone: {
+    type: "boolean",
+    path: ["dictation", "avoid_bluetooth_microphone"],
+    default: true as boolean,
+  },
   dictation_hands_free: {
     type: "boolean",
     path: ["dictation", "hands_free"],
@@ -62,6 +76,26 @@ export const SETTING_DEFINITIONS = {
     type: "string",
     path: ["dictation", "paste_last_shortcut"],
     default: DEFAULT_PASTE_LAST_SHORTCUT as string,
+  },
+  // JSON `[{ id, language, provider, model }]`: what the preset shortcut and
+  // the tray menu switch dictation between.
+  dictation_presets: {
+    type: "string",
+    path: ["dictation", "presets"],
+    default: "[]" as string,
+  },
+  // No default: no key combination is free in every app and layout.
+  dictation_preset_shortcut: {
+    type: "string",
+    path: ["dictation", "preset_shortcut"],
+    default: "" as string,
+  },
+  // The id of the preset last switched to; it counts while its model is the
+  // current one.
+  dictation_preset_active: {
+    type: "string",
+    path: ["dictation", "preset_active"],
+    default: "" as string,
   },
   dictation_keep_on_clipboard: {
     type: "boolean",
@@ -113,6 +147,24 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "voice_edit"],
     default: false as boolean,
   },
+  // Spoken commands applied without a model, in English and Portuguese:
+  // hesitations dropped, spoken line breaks, quotes and parentheses, and spoken
+  // symbols such as "at sign" or "arroba".
+  dictation_remove_fillers: {
+    type: "boolean",
+    path: ["dictation", "remove_fillers"],
+    default: false as boolean,
+  },
+  dictation_spoken_formatting: {
+    type: "boolean",
+    path: ["dictation", "spoken_formatting"],
+    default: false as boolean,
+  },
+  dictation_spoken_symbols: {
+    type: "boolean",
+    path: ["dictation", "spoken_symbols"],
+    default: false as boolean,
+  },
   // Reads the window being dictated into, to spell its names and terms.
   dictation_context: {
     type: "boolean",
@@ -125,6 +177,19 @@ export const SETTING_DEFINITIONS = {
     type: "string",
     path: ["dictation", "context_exclusions"],
     default: "" as string,
+  },
+  // "off" | "all" | "apps": presses Return after a dictation is inserted, in
+  // every app or only in `dictation_send_after_paste_apps`.
+  dictation_send_after_paste: {
+    type: "string",
+    path: ["dictation", "send_after_paste"],
+    default: "off" as string,
+  },
+  // JSON string[] of app names or bundle ids.
+  dictation_send_after_paste_apps: {
+    type: "string",
+    path: ["dictation", "send_after_paste_apps"],
+    default: "[]" as string,
   },
   // Learns which Dictionary terms are used and suggests new ones from
   // corrections.

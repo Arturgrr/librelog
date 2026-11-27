@@ -104,6 +104,10 @@ impl Held {
                     "Paste the last Librelog annotation".into(),
                 ),
                 Action::Capture(capture) => capture_binding(*capture),
+                Action::SwitchPreset => (
+                    "switch-dictation-preset".into(),
+                    "Switch the Librelog dictation preset".into(),
+                ),
                 Action::Cancel | Action::AnnotatePen => continue,
             };
             let trigger = portal_trigger(*key)?;
@@ -146,7 +150,8 @@ fn order(action: Action) -> (u8, usize) {
         Action::Annotate => (3, 0),
         Action::PasteLastAnnotation => (4, 0),
         Action::Capture(capture) => (5, capture as usize),
-        Action::AnnotatePen => (6, 0),
+        Action::SwitchPreset => (6, 0),
+        Action::AnnotatePen => (7, 0),
     }
 }
 
@@ -266,6 +271,7 @@ mod tests {
             Some(key("Alt+Shift+KeyP")),
         )
         .unwrap();
+        keys.set_preset(&held, Some(key("Alt+Shift+KeyL"))).unwrap();
 
         // Capture's GIF gave way to the second dictation shortcut.
         assert_eq!(
@@ -278,6 +284,7 @@ mod tests {
                 ("annotate-ALT-SHIFT-a", "ALT+SHIFT+a"),
                 ("paste-last-annotation-ALT-SHIFT-p", "ALT+SHIFT+p"),
                 ("capture-area-ALT-SHIFT-4", "ALT+SHIFT+4"),
+                ("switch-dictation-preset-ALT-SHIFT-l", "ALT+SHIFT+l"),
             ]
             .map(|(id, trigger)| (id.to_string(), trigger.to_string()))
         );
@@ -286,6 +293,7 @@ mod tests {
         keys.remove_dictation(&held).unwrap();
         keys.set_paste_last(&held, None).unwrap();
         keys.set_capture(&held, vec![]).unwrap();
+        keys.set_preset(&held, None).unwrap();
         assert_eq!(
             ids(&held).into_iter().map(|(id, _)| id).collect::<Vec<_>>(),
             [

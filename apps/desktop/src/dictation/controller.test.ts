@@ -214,12 +214,15 @@ describe("system dictation", () => {
     expect(state.onError).toHaveBeenCalledOnce();
   });
 
-  it("caps hands-free recording at five minutes", async () => {
+  it("keeps a hands-free dictation recording past the old five-minute cap", async () => {
     vi.useFakeTimers();
     const state = setup(true);
     state.controller.press();
     await settle(state, "recording");
-    await vi.advanceTimersByTimeAsync(300_000);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(state.stop).not.toHaveBeenCalled();
+    state.controller.press();
+    await settle(state);
     expect(state.stop).toHaveBeenCalledOnce();
     expect(state.insert).toHaveBeenCalledOnce();
   });
