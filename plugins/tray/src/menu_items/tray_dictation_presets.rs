@@ -58,10 +58,22 @@ fn preset_index(id: &MenuId) -> Option<u32> {
 pub fn handle_menu_event(app: &AppHandle<tauri::Wry>, id: &MenuId) {
     use tauri_specta::Event;
 
+    use crate::TrayPluginExt;
+
     if let Some(preset) = preset_index(id) {
         let _ = tauri_plugin_shortcut::DictationPresetEvent {
             preset: Some(preset),
         }
         .emit(app);
+        // The click toggled the item's own check: clicking the preset in use unchecked it, and
+        // a switch that waits for a dictation left two checked. The rebuilt menu shows the
+        // preset in use until the switch lands and replaces it. Off this thread, which may be
+        // the main thread the rebuild waits for.
+        let app = app.clone();
+        std::thread::spawn(move || {
+            if let Err(error) = app.tray().refresh_menu() {
+                tracing::warn!(%error, "the tray menu could not be rebuilt");
+            }
+        });
     }
 }
