@@ -75,29 +75,34 @@ export function DictationLifecycle() {
 }
 
 // Opens and closes the open microphone one change at a time, in order.
-let warmMicrophone: Promise<void> = Promise.resolve();
+let warmMicrophone: Promise<unknown> = Promise.resolve();
 
+// How often the open microphone checks again for microphone access.
+const ACCESS_RETRY_MS = 3_000;
+
+/** Resolves false while macOS has not allowed microphone access. */
 function setWarmMicrophone(
   enabled: boolean,
   device: string | null,
   avoidBluetooth: boolean,
 ) {
-  warmMicrophone = warmMicrophone
-    .then(async () => {
-      // Without microphone access, opening it would prompt out of the blue.
-      if (
-        enabled &&
-        platform() === "macos" &&
-        unwrap(await permissions.checkPermission("microphone")) !== "authorized"
-      )
-        return;
-      unwrap(
-        await dictation.setWarmMicrophone(enabled, device, avoidBluetooth),
-      );
-    })
-    .catch((error: unknown) =>
-      console.warn("[dictation] the microphone could not stay open", error),
-    );
+  const change = warmMicrophone.then(async () => {
+    // Without microphone access, opening it would prompt out of the blue.
+    if (
+      enabled &&
+      platform() === "macos" &&
+      unwrap(await permissions.checkPermission("microphone")) !== "authorized"
+    )
+      return false;
+    unwrap(await dictation.setWarmMicrophone(enabled, device, avoidBluetooth));
+    return true;
+  });
+  const settled = change.catch((error: unknown) => {
+    console.warn("[dictation] the microphone could not stay open", error);
+    return true;
+  });
+  warmMicrophone = settled;
+  return settled;
 }
 
 /**
@@ -126,8 +131,19 @@ function OpenMicrophone({
   avoidBluetooth: boolean;
 }) {
   useMountEffect(() => {
-    setWarmMicrophone(true, device, avoidBluetooth);
-    return () => setWarmMicrophone(false, null, avoidBluetooth);
+    let mounted = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // Opens once microphone access is allowed, without asking for it.
+    const open = () =>
+      void setWarmMicrophone(true, device, avoidBluetooth).then((opened) => {
+        if (!opened && mounted) retry = setTimeout(open, ACCESS_RETRY_MS);
+      });
+    open();
+    return () => {
+      mounted = false;
+      clearTimeout(retry);
+      void setWarmMicrophone(false, null, avoidBluetooth);
+    };
   });
   return null;
 }
@@ -403,7 +419,8 @@ function ActiveDictation() {
         signal.throwIfAborted();
         // Ahead of the microphone, so the cue answers the press and stays
         // mostly out of the recording.
-        const cueEnds = Date.now() + START_CUE_MS;
+        const cueStarts = Date.now();
+        const cueEnds = cueStarts + START_CUE_MS;
         const started = cue("StartRecording");
         unwrap(await dictation.checkInsertion());
         // A self-hosted server may take one live connection at a time: a
@@ -501,6 +518,8 @@ function ActiveDictation() {
               environment,
               pressedAtMs,
               avoidBluetooth,
+              // The open microphone heard it; its pre-roll leaves it out.
+              (await started) ? { startMs: cueStarts, endMs: cueEnds } : null,
             ),
           );
         } catch (error) {

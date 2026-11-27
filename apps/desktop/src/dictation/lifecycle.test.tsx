@@ -364,7 +364,14 @@ describe("dictation access and lifecycle", () => {
       expect.anything(),
       expect.any(Number),
       true,
+      expect.anything(),
     );
+    // The open microphone leaves the start cue, which follows the press,
+    // out of the pre-roll.
+    const [, , , , , pressedAtMs, , cue] =
+      mocks.startSystemRecording.mock.lastCall!;
+    expect(cue.startMs).toBeGreaterThanOrEqual(pressedAtMs);
+    expect(cue.endMs).toBeGreaterThan(cue.startMs);
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/dictation.wav");
   });
 
@@ -391,6 +398,30 @@ describe("dictation access and lifecycle", () => {
         true,
       ),
     );
+  });
+
+  it("opens the microphone kept ready once macOS allows access, without asking for it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.settings.dictation_warm_microphone = true;
+      mocks.checkPermission.mockResolvedValue({
+        status: "ok",
+        data: "notDetermined",
+      });
+      render(<DictationLifecycle />);
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      expect(mocks.setWarmMicrophone).not.toHaveBeenCalled();
+      mocks.checkPermission.mockResolvedValue({
+        status: "ok",
+        data: "authorized",
+      });
+      await act(() => vi.advanceTimersByTimeAsync(3_000));
+      await waitFor(() =>
+        expect(mocks.setWarmMicrophone).toHaveBeenCalledWith(true, null, true),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the HUD before the microphone opens and tells it how the dictation ends", async () => {
@@ -652,6 +683,7 @@ describe("dictation access and lifecycle", () => {
         expect.anything(),
         expect.any(Number),
         true,
+        expect.anything(),
       );
     },
   );

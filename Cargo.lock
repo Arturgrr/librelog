@@ -12907,6 +12907,7 @@ dependencies = [
  "audio",
  "audio-device",
  "desktop-portal",
+ "device-monitor",
  "dictation-core",
  "dictation-ui-macos",
  "futures-util",

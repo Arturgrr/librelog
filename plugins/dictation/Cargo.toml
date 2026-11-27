@@ -40,6 +40,9 @@ tracing = { workspace = true }
 tauri = { workspace = true, features = ["test"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+anlg-device-monitor = { workspace = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 anlg-dictation-ui-macos = { workspace = true }
 objc2 = { workspace = true }

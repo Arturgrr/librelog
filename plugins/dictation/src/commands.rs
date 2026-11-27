@@ -135,7 +135,10 @@ pub(crate) async fn discard_recording<R: tauri::Runtime>(
 }
 
 /// Keeps the dictation microphone open between dictations, so each one
-/// includes a moment from before its shortcut, or closes it.
+/// includes a moment from before its shortcut, or closes it. A change waits
+/// for a dictation reading the open microphone to end. Without a chosen
+/// microphone it follows the system default, and a Bluetooth default gives
+/// way to a wired one unless `avoid_bluetooth_microphone` is false.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
@@ -148,22 +151,37 @@ pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
         .inner()
         .clone();
-    let microphone_device = if enabled {
-        choose_microphone(&audio, microphone_device, avoid_bluetooth_microphone)
-            .await?
-            .device
-    } else {
-        microphone_device
-    };
-    app.state::<Recorder>()
-        .set_warm_microphone(audio, microphone_device, enabled)
-        .map_err(|error| error.to_string())
+    let avoid = avoid_bluetooth_microphone.unwrap_or(true);
+    let recorder = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        recorder
+            .state::<Recorder>()
+            .set_warm_microphone(audio, microphone_device, avoid, enabled)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+/// When the start cue began and stopped sounding, in milliseconds since the
+/// Unix epoch.
+#[derive(Debug, Clone, Copy, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CueSpan {
+    pub start_ms: f64,
+    pub end_ms: f64,
+}
+
+fn epoch_ms(ms: f64) -> Option<std::time::SystemTime> {
+    (ms.is_finite() && ms >= 0.0)
+        .then(|| std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(ms / 1_000.0))
 }
 
 /// Records for system-wide dictation: the HUD follows the microphone, the
 /// live preview's words arrive over `updates`, and `environment` quiets other
 /// audio and keeps the computer awake until the recording ends. `pressed_at_ms`
-/// is when the shortcut went down, in milliseconds since the Unix epoch.
+/// is when the shortcut went down, in milliseconds since the Unix epoch, and
+/// `start_cue` when the start cue sounded, which the open microphone leaves out.
 /// Without a chosen microphone, a Bluetooth default gives way to a wired one
 /// unless `avoid_bluetooth_microphone` is false.
 // The webview passes each argument by name.
@@ -179,6 +197,7 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
     environment: Option<crate::environment::RecordingEnvironment>,
     pressed_at_ms: Option<f64>,
     avoid_bluetooth_microphone: Option<bool>,
+    start_cue: Option<CueSpan>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
@@ -200,11 +219,9 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
                 updates: Some(updates),
                 meter: Some(meter),
                 environment,
-                pressed_at: pressed_at_ms
-                    .filter(|ms| ms.is_finite() && *ms >= 0.0)
-                    .map(|ms| {
-                        std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(ms / 1_000.0)
-                    }),
+                pressed_at: pressed_at_ms.and_then(epoch_ms),
+                start_cue: start_cue
+                    .and_then(|cue| epoch_ms(cue.start_ms).zip(epoch_ms(cue.end_ms))),
             },
         )
         .map_err(|error| error.to_string())

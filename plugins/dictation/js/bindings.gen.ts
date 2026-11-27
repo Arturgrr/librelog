@@ -26,13 +26,14 @@ async startRecording(microphoneDevice: string | null, owner: string) : Promise<R
  * Records for system-wide dictation: the HUD follows the microphone, the
  * live preview's words arrive over `updates`, and `environment` quiets other
  * audio and keeps the computer awake until the recording ends. `pressed_at_ms`
- * is when the shortcut went down, in milliseconds since the Unix epoch.
+ * is when the shortcut went down, in milliseconds since the Unix epoch, and
+ * `start_cue` when the start cue sounded, which the open microphone leaves out.
  * Without a chosen microphone, a Bluetooth default gives way to a wired one
  * unless `avoid_bluetooth_microphone` is false.
  */
-async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
+async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null, avoidBluetoothMicrophone: boolean | null, startCue: CueSpan | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs, avoidBluetoothMicrophone }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs, avoidBluetoothMicrophone, startCue }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -64,7 +65,10 @@ async discardRecording(filePath: string) : Promise<Result<null, string>> {
 },
 /**
  * Keeps the dictation microphone open between dictations, so each one
- * includes a moment from before its shortcut, or closes it.
+ * includes a moment from before its shortcut, or closes it. A change waits
+ * for a dictation reading the open microphone to end. Without a chosen
+ * microphone it follows the system default, and a Bluetooth default gives
+ * way to a wired one unless `avoid_bluetooth_microphone` is false.
  */
 async setWarmMicrophone(enabled: boolean, microphoneDevice: string | null, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
     try {
@@ -369,6 +373,11 @@ screen: string | null;
  * Distinctive terms from the app, the field and the window, most relevant first.
  */
 terms: string[] }
+/**
+ * When the start cue began and stopped sounding, in milliseconds since the
+ * Unix epoch.
+ */
+export type CueSpan = { startMs: number; endMs: number }
 export type DenyReason = 
 /**
  * Context is off for this dictation.
