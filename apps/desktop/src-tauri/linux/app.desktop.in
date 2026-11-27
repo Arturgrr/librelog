@@ -11,6 +11,6 @@ Terminal=false
 Categories=Office;
 Keywords=notes;meeting;transcription;recording;dictation;
 StartupNotify=true
-StartupWMClass=@EXEC@
+StartupWMClass=@IDENTIFIER@
 MimeType=@MIME_TYPE@
 X-GNOME-UsesNotifications=true

@@ -46,11 +46,6 @@ pub fn prepare_app_id(identifier: &str, name: &str) -> Option<String> {
             Some(appimage) => appimage.clone(),
             None => std::env::current_exe().ok()?,
         };
-        let window_class = std::env::current_exe()
-            .ok()?
-            .file_name()?
-            .to_string_lossy()
-            .into_owned();
         let icon = appimage
             .as_ref()
             .and_then(|_| copy_appimage_icon(identifier, &data_home));
@@ -60,7 +55,6 @@ pub fn prepare_app_id(identifier: &str, name: &str) -> Option<String> {
             executable: &executable,
             visible: appimage.is_some(),
             icon: icon.as_deref(),
-            window_class: &window_class,
         };
         Some(match crate::entry::ensure(&launcher, &data_home, &dirs) {
             Ok(crate::entry::Entry::Written(path)) => {
@@ -92,11 +86,16 @@ fn copy_appimage_icon(identifier: &str, data_home: &std::path::Path) -> Option<s
 pub async fn connection() -> zbus::Result<zbus::Connection> {
     CONNECTION
         .get_or_try_init(|| async {
-            let connection = tokio::time::timeout(CALL_TIMEOUT, zbus::Connection::session())
-                .await
-                .map_err(|_| zbus::Error::Failure("the session bus did not answer".into()))??;
-            if let Some(app_id) = APP_ID.get().cloned().flatten() {
-                register(&connection, &app_id).await;
+            let connection = session().await?;
+            let Some(app_id) = APP_ID.get().cloned().flatten() else {
+                return Ok(connection);
+            };
+            if register(&connection, &app_id).await == Registered::NoRegistry
+                && own_scope(&connection, &app_id).await
+            {
+                // The portal reads a connection's app id once, when it first
+                // hears from it: a new connection sees the new unit.
+                return session().await;
             }
             Ok(connection)
         })
@@ -104,10 +103,23 @@ pub async fn connection() -> zbus::Result<zbus::Connection> {
         .cloned()
 }
 
-async fn register(connection: &zbus::Connection, app_id: &str) {
+async fn session() -> zbus::Result<zbus::Connection> {
+    tokio::time::timeout(CALL_TIMEOUT, zbus::Connection::session())
+        .await
+        .map_err(|_| zbus::Error::Failure("the session bus did not answer".into()))?
+}
+
+#[derive(PartialEq, Eq)]
+enum Registered {
+    Yes,
+    NoRegistry,
+    No,
+}
+
+async fn register(connection: &zbus::Connection, app_id: &str) -> Registered {
     // A sandbox gives the app its id; the registry refuses sandboxed callers.
-    if std::path::Path::new("/.flatpak-info").exists() {
-        return;
+    if sandboxed() {
+        return Registered::No;
     }
     let body = (app_id, HashMap::<&str, zvariant::Value<'_>>::new());
     let call = connection.call_method(
@@ -118,17 +130,86 @@ async fn register(connection: &zbus::Connection, app_id: &str) {
         &body,
     );
     match tokio::time::timeout(CALL_TIMEOUT, call).await {
-        Ok(Ok(_)) => tracing::info!(app_id, "registered with the desktop portal"),
+        Ok(Ok(_)) => {
+            tracing::info!(app_id, "registered with the desktop portal");
+            Registered::Yes
+        }
         Ok(Err(error)) if missing(&error) => {
             tracing::debug!(%error, "the desktop portal has no host app registry");
+            Registered::NoRegistry
         }
-        Ok(Err(error)) => tracing::warn!(
-            %error,
-            app_id,
-            "the desktop portal refused Librelog's app id; its requests go unregistered"
-        ),
-        Err(_) => tracing::warn!("registering with the desktop portal timed out"),
+        Ok(Err(error)) => {
+            tracing::warn!(
+                %error,
+                app_id,
+                "the desktop portal refused Librelog's app id; its requests go unregistered"
+            );
+            Registered::No
+        }
+        Err(_) => {
+            tracing::warn!("registering with the desktop portal timed out");
+            Registered::No
+        }
     }
+}
+
+fn sandboxed() -> bool {
+    std::path::Path::new("/.flatpak-info").exists()
+}
+
+/// Moves Librelog into a systemd scope named after `app_id` unless its unit
+/// already names it (see [`crate::scope`]); returns whether it moved.
+async fn own_scope(connection: &zbus::Connection, app_id: &str) -> bool {
+    let unit_app_id =
+        || crate::scope::app_id(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
+    let current = unit_app_id();
+    if sandboxed() || current.as_deref() == Some(app_id) {
+        return false;
+    }
+    let pid = std::process::id();
+    let unit = crate::scope::unit_name(app_id, pid);
+    let properties: Vec<(&str, zvariant::Value<'_>)> = vec![
+        ("PIDs", vec![pid].into()),
+        ("Description", "Librelog".into()),
+        ("CollectMode", "inactive-or-failed".into()),
+    ];
+    let aux: Vec<(&str, Vec<(&str, zvariant::Value<'_>)>)> = Vec::new();
+    let body = (unit.as_str(), "fail", properties, aux);
+    let call = connection.call_method(
+        Some("org.freedesktop.systemd1"),
+        "/org/freedesktop/systemd1",
+        Some("org.freedesktop.systemd1.Manager"),
+        "StartTransientUnit",
+        &body,
+    );
+    match tokio::time::timeout(CALL_TIMEOUT, call).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => {
+            tracing::warn!(%error, unit, "could not give Librelog a systemd scope of its own");
+            return false;
+        }
+        Err(_) => {
+            tracing::warn!(unit, "systemd did not answer for Librelog's scope");
+            return false;
+        }
+    }
+    // The job moves the process; wait until it has.
+    for _ in 0..20 {
+        if unit_app_id().as_deref() == Some(app_id) {
+            tracing::info!(
+                unit,
+                from = current.as_deref().unwrap_or(""),
+                "moved Librelog into its own scope for the desktop portal's app id"
+            );
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tracing::warn!(
+        unit,
+        "Librelog's scope started but the process did not move"
+    );
+    false
 }
 
 /// Portals before the registry (1.19) answer that the method or interface
@@ -228,5 +309,79 @@ pub async fn watch_status_notifier_host(changed: impl Fn(Option<bool>) + Send + 
         // The new watcher registers its host a moment after taking the name.
         tokio::time::sleep(Duration::from_millis(500)).await;
         changed(status_notifier_host().await);
+    }
+}
+
+/// The app id Librelog registers with, if any.
+pub fn app_id() -> Option<String> {
+    APP_ID.get().cloned().flatten()
+}
+
+const KGLOBALACCEL: &str = "org.kde.kglobalaccel";
+
+/// Calls kglobalaccel, KDE's global shortcut daemon, only when it runs, so it
+/// is never started outside KDE.
+async fn kglobalaccel<B>(
+    path: &str,
+    interface: &str,
+    method: &str,
+    body: &B,
+) -> zbus::Result<zbus::Message>
+where
+    B: zbus::export::serde::Serialize + zvariant::DynamicType,
+{
+    let unanswered = || zbus::Error::Failure("the session bus did not answer".into());
+    let connection = plain_connection().await.ok_or_else(unanswered)?;
+    let bus = zbus::fdo::DBusProxy::new(&connection).await?;
+    let name = zbus::names::BusName::try_from(KGLOBALACCEL)?;
+    let running = tokio::time::timeout(CALL_TIMEOUT, bus.name_has_owner(name))
+        .await
+        .map_err(|_| unanswered())??;
+    if !running {
+        return Err(zbus::Error::Failure("kglobalaccel is not running".into()));
+    }
+    let call = connection.call_method(Some(KGLOBALACCEL), path, Some(interface), method, body);
+    tokio::time::timeout(CALL_TIMEOUT, call)
+        .await
+        .map_err(|_| zbus::Error::Failure("kglobalaccel did not answer".into()))?
+}
+
+/// The shortcut ids kglobalaccel keeps for `component`, active or not. KDE's
+/// portal names an app's component after its app id.
+pub async fn kde_shortcut_ids(component: &str) -> zbus::Result<Vec<String>> {
+    let reply = kglobalaccel(
+        "/kglobalaccel",
+        "org.kde.KGlobalAccel",
+        "getComponent",
+        &(component,),
+    )
+    .await?;
+    let path: zvariant::OwnedObjectPath = reply.body().deserialize()?;
+    let reply = kglobalaccel(
+        path.as_str(),
+        "org.kde.kglobalaccel.Component",
+        "shortcutNames",
+        &("default",),
+    )
+    .await?;
+    reply.body().deserialize()
+}
+
+/// Removes shortcut `id` from kglobalaccel's `component`, which takes it out
+/// of System Settings → Shortcuts.
+pub async fn forget_kde_shortcut(component: &str, id: &str) -> zbus::Result<()> {
+    let reply = kglobalaccel(
+        "/kglobalaccel",
+        "org.kde.KGlobalAccel",
+        "unregister",
+        &(component, id),
+    )
+    .await?;
+    if reply.body().deserialize::<bool>()? {
+        Ok(())
+    } else {
+        Err(zbus::Error::Failure(
+            "kglobalaccel kept the shortcut".into(),
+        ))
     }
 }

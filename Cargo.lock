@@ -3018,6 +3018,7 @@ version = "0.1.0"
 dependencies = [
  "ashpd",
  "futures-util",
+ "raw-window-handle",
  "tempfile",
  "tokio",
  "tracing",
@@ -12664,6 +12665,7 @@ dependencies = [
  "annotate-core",
  "annotate-macos",
  "audio",
+ "desktop-portal",
  "futures-util",
  "gtk",
  "hound",
@@ -12730,6 +12732,7 @@ dependencies = [
  "desktop-portal",
  "futures-util",
  "gif 0.14.2",
+ "gtk",
  "image",
  "libc",
  "objc2-foundation",

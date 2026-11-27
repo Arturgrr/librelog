@@ -1,6 +1,8 @@
 mod agent_skills;
 mod agents;
 mod appearance;
+#[cfg(target_os = "linux")]
+mod autostart;
 mod commands;
 mod db;
 mod embedded_cli;
@@ -95,6 +97,13 @@ pub fn main() {
     #[cfg(target_os = "linux")]
     {
         let product_name = context.config().product_name.clone().unwrap_or_default();
+        // GTK names every window after the program: the Wayland app id, and
+        // X11's WM_CLASS. Named after the identifier, they match the desktop
+        // entry the desktop knows Librelog by (`<identifier>.desktop`, whose
+        // StartupWMClass is the identifier too), so KDE's task manager and
+        // window rules never pick the hidden product-named entry instead.
+        gdk::glib::set_prgname(Some(identifier.as_str()));
+        gdk::glib::set_application_name(&product_name);
         if let Some(message) = anlg_desktop_portal::prepare_app_id(&identifier, &product_name) {
             eprintln!("{message}");
         }
@@ -302,7 +311,15 @@ pub fn main() {
         ));
     }
 
-    #[cfg(not(feature = "app-store"))]
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.plugin(autostart::init(
+            identifier.clone(),
+            context.config().product_name.clone().unwrap_or_default(),
+        ));
+    }
+
+    #[cfg(all(not(feature = "app-store"), not(target_os = "linux")))]
     {
         builder = builder.plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

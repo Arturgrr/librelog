@@ -41,7 +41,7 @@ IDENTIFIER="$(jq -r .identifier "$STABLE_CONFIG")"
 # entry, named after the product, stays hidden.
 DESKTOP_FILE="/usr/share/applications/$IDENTIFIER.desktop"
 HIDDEN_DESKTOP_FILE="/usr/share/applications/$(jq -r .productName "$STABLE_CONFIG").desktop"
-export DESKTOP_FILE HIDDEN_DESKTOP_FILE
+export DESKTOP_FILE HIDDEN_DESKTOP_FILE IDENTIFIER
 ICON=/usr/share/icons/hicolor/512x512/apps/librelog.png
 
 single() {
@@ -87,8 +87,9 @@ build() {
   local config="$STABLE_CONFIG"
   local updater_artifacts=true
   [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] || updater_artifacts=false
-  local entry
+  local entry appimage_template
   entry="$(launcher_entry)"
+  appimage_template="$(appimage_entry)"
   # Tauri merges this over tauri.conf.json object by object, so the packages
   # keep their settings there and gain the launcher. The bundler writes the
   # RPM uncompressed: its own compression takes most of an hour on this app,
@@ -113,7 +114,7 @@ build() {
     # other entry inside it, and appimagetool refuses one without Categories.
     pnpm tauri bundle --ci --target "$TARGET" --bundles appimage \
       --config src-tauri/tauri.conf.stable.json \
-      --config '{"bundle":{"linux":{"deb":{"desktopTemplate":"linux/appimage.desktop"}}}}'
+      --config "$(jq -cn --arg template "$appimage_template" '{bundle: {linux: {deb: {desktopTemplate: $template}}}}')"
   )
 
   ARCH=x86_64 node "$ROOT/scripts/repack-linux-appimage.mjs" "$BUNDLE_DIR/appimage"
@@ -136,10 +137,20 @@ launcher_entry() {
     -e "s|@EXEC@|$exec|g" \
     -e "s|@ICON@|$exec|" \
     -e "s|@MIME_TYPE@|$mime|" \
+    -e "s|@IDENTIFIER@|$IDENTIFIER|" \
     "$SRC_TAURI/linux/app.desktop.in" >"$out"
   if [[ -z "$mime" ]]; then
     sed -i '/^MimeType=$/d' "$out"
   fi
+  echo "$out"
+}
+
+# The AppImage's entry, linux/appimage.desktop with the app id filled in
+# (the bundler's template knows no identifier); prints the file's path.
+appimage_entry() {
+  local out="${CARGO_TARGET_DIR:-$SRC_TAURI/target}/linux-entry/appimage.desktop"
+  mkdir -p "$(dirname "$out")"
+  sed -e "s|@IDENTIFIER@|$IDENTIFIER|" "$SRC_TAURI/linux/appimage.desktop" >"$out"
   echo "$out"
 }
 
@@ -216,6 +227,13 @@ verify() {
   expect_lines "$deb" "$files" "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON"
   local entries
   entries="$(mktemp -d)"
+  (cd "$entries" && "$appimage" --appimage-extract '*.desktop' >/dev/null)
+  local appimage_entries=("$entries"/squashfs-root/*.desktop)
+  [[ ${#appimage_entries[@]} -eq 1 && -f "${appimage_entries[0]}" ]] ||
+    fail "$appimage does not carry one desktop entry"
+  grep -Fxq "StartupWMClass=$IDENTIFIER" "${appimage_entries[0]}" ||
+    fail "$appimage's desktop entry does not claim the window class $IDENTIFIER"
+  rm -rf "$entries/squashfs-root"
   mkdir -p "$entries/deb"
   dpkg-deb --fsys-tarfile "$deb" | tar -x -C "$entries/deb" ".$DESKTOP_FILE" ".$HIDDEN_DESKTOP_FILE"
 
@@ -225,7 +243,7 @@ verify() {
     --volume "$entries:/entries:ro" \
     --env RPM_NAME="$(basename "$rpm")" \
     --env PACKAGE_VERSION \
-    --env DESKTOP_FILE --env HIDDEN_DESKTOP_FILE \
+    --env DESKTOP_FILE --env HIDDEN_DESKTOP_FILE --env IDENTIFIER \
     --env EXPECTED_REQUIRES="$(printf '%s\n' "${expected[@]}")" \
     --env EXPECTED_FILES="$(printf '%s\n' "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON")" \
     "$FEDORA_IMAGE" bash -euo pipefail -s <<'EOF'
@@ -260,7 +278,8 @@ for package in deb rpm; do
   if grep -q '^NoDisplay=true' "$launcher"; then echo "::error::$package: $DESKTOP_FILE is hidden"; status=1; fi
   grep -q '^NoDisplay=true' "$hidden" || { echo "::error::$package: $HIDDEN_DESKTOP_FILE is shown"; status=1; }
   if grep -q '^StartupWMClass=' "$hidden"; then echo "::error::$package: $HIDDEN_DESKTOP_FILE claims the window"; status=1; fi
-  grep -q '^StartupWMClass=' "$launcher" || { echo "::error::$package: $DESKTOP_FILE names no window class"; status=1; }
+  # GTK names the windows after the app id (set_prgname in the app's lib.rs).
+  grep -Fxq "StartupWMClass=$IDENTIFIER" "$launcher" || { echo "::error::$package: $DESKTOP_FILE does not claim the window class $IDENTIFIER"; status=1; }
 done
 exit "$status"
 EOF
