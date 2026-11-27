@@ -57,8 +57,8 @@ export function DictationSpokenSettings() {
         title={<Trans>Spoken symbols</Trans>}
         description={
           <Trans>
-            Say "at sign" or "arroba" for @, "hashtag" for #, "underscore" or
-            "underline" for _, and "dot com" or "ponto com" for .com, joined to
+            Say "at sign" or "arroba" for @, "hashtag" for #, "underline" in
+            Portuguese for _, and "dot com" or "ponto com" for .com, joined to
             the words next to them.
           </Trans>
         }

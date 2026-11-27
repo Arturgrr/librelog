@@ -1,8 +1,9 @@
 //! Spoken symbols become the characters, joined to their neighbours as written text joins
-//! them: "hashtag release" is "#release", "minha underline variável" is "minha_variável", and
-//! "acme ponto com" is "acme.com". Matching ignores case and accents and needs word
-//! boundaries, so "hashtags" or "arrobas" stay as they are. The commas, periods and spaces a
-//! model puts around a spoken symbol go with it.
+//! them: "hashtag release" is "#release", "minha underline variável" is "minha_variável",
+//! "acme ponto com" is "acme.com" and "joao arroba acme ponto com" is "joao@acme.com".
+//! Matching ignores case and accents and needs word boundaries, so "hashtags" or "arrobas"
+//! stay as they are. The commas, periods and spaces a model puts around a spoken symbol go
+//! with it. English has no "underscore": "underscore the point" is an ordinary verb.
 //!
 //! The tables keep to symbols whose words are rarely said for anything else. Punctuation said
 //! out loud ("comma", "vírgula", "dois pontos", "ponto final") is left to the speech model and
@@ -20,6 +21,9 @@ enum Join {
     Both,
     /// The previous word, leaving what follows as it was: "acme.com".
     Previous,
+    /// The next word, and the previous one too when a domain follows: "@joao" but
+    /// "joao@acme.com".
+    Address,
 }
 
 type Symbol = (&'static [&'static str], &'static str, Join);
@@ -27,13 +31,12 @@ type Symbol = (&'static [&'static str], &'static str, Join);
 const ENGLISH: &[Symbol] = &[
     (&["hashtag"], "#", Join::Next),
     (&["hash", "sign"], "#", Join::Next),
-    (&["at", "sign"], "@", Join::Next),
-    (&["underscore"], "_", Join::Both),
+    (&["at", "sign"], "@", Join::Address),
     (&["dot", "com"], ".com", Join::Previous),
 ];
 
 const PORTUGUESE: &[Symbol] = &[
-    (&["arroba"], "@", Join::Next),
+    (&["arroba"], "@", Join::Address),
     (&["hashtag"], "#", Join::Next),
     (&["cerquilha"], "#", Join::Next),
     (&["underline"], "_", Join::Both),
@@ -67,21 +70,50 @@ pub(super) fn apply(transcript: &str, languages: &[Language]) -> String {
                 phrase_at(&chars, index, words).map(|end| (*symbol, *join, end))
             })
         {
-            if join != Join::Next {
+            let next = match join {
+                Join::Previous => end,
+                Join::Next | Join::Both | Join::Address => skip(&chars, end, &[',', '.']),
+            };
+            let joins_previous = match join {
+                Join::Next => false,
+                Join::Both | Join::Previous => true,
+                Join::Address => domain_at(&chars, next, &symbols),
+            };
+            if joins_previous {
                 trim_end(&mut out, &[','], floor);
             }
             out.push_str(symbol);
             floor = out.len();
-            index = match join {
-                Join::Previous => end,
-                Join::Next | Join::Both => skip(&chars, end, &[',', '.']),
-            };
+            index = next;
             continue;
         }
         out.push(chars[index]);
         index += 1;
     }
     out
+}
+
+/// Whether the word at `start` is a domain, written ("acme.com") or followed by a spoken one
+/// ("acme ponto com").
+fn domain_at(chars: &[char], start: usize, symbols: &[&Symbol]) -> bool {
+    let word_end = start
+        + chars[start..]
+            .iter()
+            .take_while(|c| !c.is_whitespace() && **c != ',')
+            .count();
+    let word = &chars[start..word_end];
+    if word
+        .windows(3)
+        .any(|w| w[0].is_alphanumeric() && w[1] == '.' && w[2].is_alphanumeric())
+    {
+        return true;
+    }
+    let after = skip(chars, word_end, &[]);
+    word_end > start
+        && after > word_end
+        && symbols.iter().any(|(words, _, join)| {
+            *join == Join::Previous && phrase_at(chars, after, words).is_some()
+        })
 }
 
 #[cfg(test)]
@@ -100,7 +132,6 @@ mod tests {
     fn english_symbols_join_their_neighbours() {
         assert_eq!(english("hashtag release"), "#release");
         assert_eq!(english("Hashtag, release"), "#release");
-        assert_eq!(english("my underscore variable"), "my_variable");
         assert_eq!(english("tag it hash sign release"), "tag it #release");
         assert_eq!(english("mail me at sign home"), "mail me @home");
         assert_eq!(english("go to example dot com."), "go to example.com.");
@@ -108,7 +139,14 @@ mod tests {
             english("go to example, dot com, now"),
             "go to example.com, now"
         );
-        assert_eq!(english("a underscore underscore b"), "a__b");
+        assert_eq!(
+            english("mail joao at sign acme dot com"),
+            "mail joao@acme.com"
+        );
+        assert_eq!(
+            english("mail joao at sign acme.com."),
+            "mail joao@acme.com."
+        );
     }
 
     #[test]
@@ -126,8 +164,10 @@ mod tests {
         );
         assert_eq!(
             portuguese("joao arroba acme ponto com ponto br"),
-            "joao @acme.com.br"
+            "joao@acme.com.br"
         );
+        assert_eq!(portuguese("joao arroba acme ponto com"), "joao@acme.com");
+        assert_eq!(portuguese("a underscore underscore b"), "a__b");
     }
 
     #[test]
@@ -149,5 +189,9 @@ mod tests {
             assert_eq!(portuguese(text), text);
         }
         assert_eq!(english("underline this"), "underline this");
+        assert_eq!(
+            english("Let me underscore the point"),
+            "Let me underscore the point"
+        );
     }
 }

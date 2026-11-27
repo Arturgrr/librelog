@@ -78,7 +78,9 @@ pub(super) fn apply(transcript: &str, languages: &[Language]) -> String {
             let found = commands.iter().find_map(|(words, command)| {
                 phrase_at(&chars, index, words).map(|end| (*command, end))
             });
-            if let Some((command, end)) = found {
+            if let Some((command, end)) = found
+                && !(matches!(command, Command::Break(_)) && names_something(&chars, end))
+            {
                 index = emit(&mut out, command, &chars, end);
                 continue;
             }
@@ -96,6 +98,16 @@ pub(super) fn apply(transcript: &str, languages: &[Language]) -> String {
         index += 1;
     }
     out
+}
+
+/// Whether a break phrase ending at `end` goes on to say what it is a line or paragraph of: "a
+/// new line of products", "uma nova linha de produtos".
+fn names_something(chars: &[char], end: usize) -> bool {
+    let next = skip(chars, end, &[]);
+    next > end
+        && ["of", "de", "do", "da", "dos", "das"]
+            .iter()
+            .any(|word| phrase_at(chars, next, &[word]).is_some())
 }
 
 /// Where the first whole-word "unquote" after `from` starts, when some words come between:
@@ -234,6 +246,15 @@ mod tests {
             assert_eq!(english(text), text);
             assert_eq!(portuguese(text), text);
         }
+        assert_eq!(
+            english("We launched a new line of products"),
+            "We launched a new line of products"
+        );
+        assert_eq!(
+            portuguese("Lançamos uma nova linha de produtos e um novo parágrafo da lei"),
+            "Lançamos uma nova linha de produtos e um novo parágrafo da lei"
+        );
+        assert_eq!(portuguese("um. Nova linha. De novo"), "um.\nDe novo");
         // "quote" … "unquote" is English only.
         assert_eq!(portuguese("quote oi unquote"), "quote oi unquote");
     }

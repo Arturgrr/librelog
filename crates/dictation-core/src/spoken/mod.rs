@@ -42,10 +42,10 @@ impl Language {
     }
 
     /// Ordinary words of this language that sound like another language's command: "um" is
-    /// Portuguese for "a", "hum" and "underline" are English words.
+    /// Portuguese for "a", "hum", "underline" and "underscore" are English words.
     fn ordinary(self) -> &'static [&'static str] {
         match self {
-            Self::English => &["hum", "underline"],
+            Self::English => &["hum", "underline", "underscore"],
             Self::Portuguese => &["um", "ah"],
         }
     }
@@ -232,7 +232,7 @@ mod tests {
                 "É... eu acho que o e-mail é joao arroba acme ponto com. Nova linha. Abraço",
                 &rules(&["pt-BR"])
             ),
-            "Eu acho que o e-mail é joao @acme.com.\nAbraço"
+            "Eu acho que o e-mail é joao@acme.com.\nAbraço"
         );
     }
 
