@@ -28,6 +28,7 @@ export function useDictation({
   ).current;
   const runBatch = useRunBatch(transcriptionSessionId);
   const microphoneDevice = useConfigValue("microphone_device");
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   const cleanup = useConfigValue("dictation_cleanup");
   const spoken = useSpokenRules();
   const replacements = useConfigValue(
@@ -92,6 +93,7 @@ export function useDictation({
       const result = await dictationCommands.startRecording(
         microphoneDevice || null,
         transcriptionSessionId,
+        avoidBluetooth ?? null,
       );
       if (result.status === "error") {
         throw new Error(result.error);
@@ -128,6 +130,7 @@ export function useDictation({
       startInFlightRef.current = false;
     }
   }, [
+    avoidBluetooth,
     cancelRecording,
     disabled,
     microphoneDevice,

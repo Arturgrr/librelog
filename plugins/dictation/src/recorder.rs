@@ -5,7 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use tauri::async_runtime::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -14,7 +14,7 @@ use crate::environment::{Quiet, RecordingEnvironment};
 use crate::level::{LevelMonitor, LevelSource, LevelUpdate};
 use crate::preview::{Preview, PreviewConfig, RecordingUpdate};
 use crate::tail::{MAX_RELEASE_TAIL, RELEASE_TAIL, ReleaseTail, TAIL_DELIVERY_GRACE, Voice};
-use crate::warm::{Samples, Warm, WarmRequest, Window};
+use crate::warm::{Reading, Samples, Warm, WarmRequest, Window};
 use tauri::ipc::Channel;
 
 pub(crate) const SAMPLE_RATE: u32 = 16_000;
@@ -47,10 +47,11 @@ pub struct Feedback {
     pub meter: Option<Meter>,
     pub environment: Option<RecordingEnvironment>,
     /// When the shortcut that started this capture went down. From the open
-    /// microphone, the recording then starts a pre-roll before it.
+    /// microphone, the recording then starts a pre-roll before it; without
+    /// one it starts now.
     pub pressed_at: Option<std::time::SystemTime>,
-    /// When the start cue began and stopped sounding; the open microphone
-    /// leaves it out.
+    /// When the start cue began and stopped playing; the open microphone
+    /// silences it unless someone talks over it.
     pub start_cue: Option<(std::time::SystemTime, std::time::SystemTime)>,
 }
 
@@ -61,6 +62,8 @@ struct ActiveRecording {
     release: CancellationToken,
     task: JoinHandle<Result<RecordedAudio, Error>>,
     finalize: Arc<AtomicBool>,
+    /// Its hold on the open microphone, when it reads it.
+    reading: Option<Reading>,
 }
 
 pub struct Recorder {
@@ -104,17 +107,18 @@ impl Recorder {
         audio: &dyn anlg_audio::AudioProvider,
         microphone_device: Option<String>,
         window: &Window,
-    ) -> Result<Samples, Error> {
-        if let Some(warm) = self.warm.listen(&microphone_device, window) {
-            return Ok(warm);
+    ) -> Result<(Samples, Option<Reading>), Error> {
+        if let Some((samples, reading)) = self.warm.listen(audio, &microphone_device, window) {
+            return Ok((samples, Some(reading)));
         }
-        open_cold(audio, microphone_device)
+        Ok((open_cold(audio, microphone_device)?, None))
     }
 
     /// Measures `microphone_device` for the Settings level meter until
     /// [`Self::stop_level`], `max`, or a dictation that needs its stream.
     /// Reads the open microphone when it is open on that device, and opens
-    /// nothing while a dictation records.
+    /// nothing while a dictation records. Opening a microphone blocks, so
+    /// call it off the async runtime.
     pub fn monitor_level(
         &self,
         audio: &dyn anlg_audio::AudioProvider,
@@ -123,26 +127,40 @@ impl Recorder {
         max: std::time::Duration,
     ) -> Result<LevelSource, Error> {
         self.stop_level();
-        // Held until the meter is in place, so a dictation starting meanwhile
-        // still finds and closes it.
+        {
+            // Held until the meter is in place, so a dictation starting
+            // meanwhile still finds and closes it.
+            let active = self
+                .active
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if active.is_some() {
+                emit(LevelUpdate::Ended);
+                return Ok(LevelSource::InUse);
+            }
+            if let Some(stream) = self.warm.meter(&microphone_device) {
+                self.set_level(LevelMonitor::start(stream, false, emit, max));
+                return Ok(LevelSource::OpenMicrophone);
+            }
+        }
+        // Opened without the lock, so a dictation never waits for it; one
+        // that started meanwhile keeps the microphone.
+        let stream = open_cold(audio, microphone_device)?;
         let active = self
             .active
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         if active.is_some() {
+            drop(stream);
             emit(LevelUpdate::Ended);
             return Ok(LevelSource::InUse);
         }
-        let (stream, source) = match self.warm.meter(&microphone_device) {
-            Some(stream) => (stream, LevelSource::OpenMicrophone),
-            None => (
-                open_cold(audio, microphone_device)?,
-                LevelSource::Microphone,
-            ),
-        };
-        let monitor = LevelMonitor::start(stream, source == LevelSource::Microphone, emit, max);
+        self.set_level(LevelMonitor::start(stream, true, emit, max));
+        Ok(LevelSource::Microphone)
+    }
+
+    fn set_level(&self, monitor: LevelMonitor) {
         *self.level.lock().unwrap_or_else(|error| error.into_inner()) = Some(monitor);
-        Ok(source)
     }
 
     pub fn stop_level(&self) {
@@ -190,20 +208,20 @@ impl Recorder {
             }
         }
 
-        let since_press = pressed_at
-            .and_then(|pressed_at| pressed_at.elapsed().ok())
-            .unwrap_or_default();
-        let window = Window {
-            lookback: crate::warm::lookback(
-                since_press,
+        let lookback = pressed_at.map_or(std::time::Duration::ZERO, |pressed_at| {
+            crate::warm::lookback(
+                pressed_at.elapsed().unwrap_or_default(),
                 environment
                     .as_ref()
                     .map(|environment| &environment.config.behavior),
-            ),
+            )
+        });
+        let window = Window {
+            lookback,
             cue: start_cue.map(|(start, end)| Window::cue_between(start, end)),
         };
         let quiet = Quiet::new(environment, updates.clone());
-        let stream = self.open_source(audio.as_ref(), microphone_device, &window)?;
+        let (stream, reading) = self.open_source(audio.as_ref(), microphone_device, &window)?;
         let temporary_file = tempfile::Builder::new()
             .prefix("librelog-dictation-")
             .suffix(".wav")
@@ -220,6 +238,7 @@ impl Recorder {
         let task_path = path.clone();
         let finalize = Arc::new(AtomicBool::new(false));
         let task_finalize = finalize.clone();
+        let task_reading = reading.clone();
         let task = tauri::async_runtime::spawn(async move {
             let preview = preview
                 .zip(updates)
@@ -229,6 +248,7 @@ impl Recorder {
                 Stop {
                     cancel: task_cancellation,
                     release: task_release,
+                    reading: task_reading,
                 },
                 &task_path,
                 preview,
@@ -249,12 +269,13 @@ impl Recorder {
             release,
             task,
             finalize,
+            reading,
         });
         Ok(())
     }
 
     pub async fn stop(&self, owner: &str) -> Result<RecordedAudio, Error> {
-        let active = self.take_active(owner)?.ok_or(Error::NotRecording)?;
+        let active = self.take_active(owner, false)?.ok_or(Error::NotRecording)?;
         active.finalize.store(true, Ordering::SeqCst);
         active.release.cancel();
         let recorded = active
@@ -269,7 +290,7 @@ impl Recorder {
     }
 
     pub async fn cancel(&self, owner: &str) -> Result<(), Error> {
-        let Some(active) = self.take_active(owner)? else {
+        let Some(active) = self.take_active(owner, true)? else {
             return Ok(());
         };
 
@@ -302,7 +323,9 @@ impl Recorder {
         }
     }
 
-    fn take_active(&self, owner: &str) -> Result<Option<ActiveRecording>, Error> {
+    /// The recording `owner` runs; a `discard`ed one is thrown away before
+    /// another can start, so that one may reuse its audio.
+    fn take_active(&self, owner: &str, discard: bool) -> Result<Option<ActiveRecording>, Error> {
         let mut active = self
             .active
             .lock()
@@ -312,6 +335,10 @@ impl Recorder {
             .is_some_and(|recording| recording.owner != owner)
         {
             return Err(Error::AlreadyRecording);
+        }
+        if discard && let Some(reading) = active.as_ref().and_then(|active| active.reading.as_ref())
+        {
+            reading.discard();
         }
         Ok(active.take())
     }
@@ -337,13 +364,52 @@ fn open_cold(
 struct Stop {
     cancel: CancellationToken,
     release: CancellationToken,
+    reading: Option<Reading>,
+}
+
+/// Where a recording's audio goes: the WAV, the HUD meter and the live
+/// preview.
+struct Output {
+    writer: hound::WavWriter<std::io::BufWriter<std::fs::File>>,
+    sample_count: u64,
+    meter: Option<Meter>,
+    preview: Option<Preview>,
+    pending: Vec<f32>,
+}
+
+impl Output {
+    fn write(&mut self, samples: &[f32]) -> Result<(), Error> {
+        for sample in samples {
+            self.writer
+                .write_sample(*sample)
+                .map_err(|error| Error::Recording(error.to_string()))?;
+        }
+        self.sample_count += samples.len() as u64;
+        if let Some(meter) = &self.meter {
+            meter(crate::events::rms(samples));
+        }
+        if self.preview.is_some() {
+            self.pending.extend_from_slice(samples);
+            if self.pending.len() >= PREVIEW_CHUNK_SIZE {
+                if self
+                    .preview
+                    .as_ref()
+                    .is_some_and(|preview| !preview.send(&self.pending))
+                {
+                    self.preview = None;
+                }
+                self.pending.clear();
+            }
+        }
+        Ok(())
+    }
 }
 
 async fn record_to_file(
     mut stream: Samples,
     stop: Stop,
     path: &Path,
-    mut preview: Option<Preview>,
+    preview: Option<Preview>,
     meter: Option<Meter>,
     finalize: Arc<AtomicBool>,
     quiet: Quiet,
@@ -354,8 +420,15 @@ async fn record_to_file(
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     };
-    let mut writer = hound::WavWriter::create(path, specification)
+    let writer = hound::WavWriter::create(path, specification)
         .map_err(|error| Error::Recording(error.to_string()))?;
+    let mut output = Output {
+        writer,
+        sample_count: 0,
+        meter,
+        preview,
+        pending: Vec::with_capacity(PREVIEW_CHUNK_SIZE),
+    };
     let deadline = tokio::time::sleep(MAX_RECORDING);
     tokio::pin!(deadline);
     // A microphone that stalls during the tail still ends the recording.
@@ -363,13 +436,29 @@ async fn record_to_file(
     tokio::pin!(tail_deadline);
     let mut released: Option<(tokio::time::Instant, ReleaseTail)> = None;
     let mut voice = Voice::default();
-    let mut sample_count = 0_u64;
-    let mut pending = Vec::with_capacity(PREVIEW_CHUNK_SIZE);
 
     loop {
         tokio::select! {
             _ = stop.cancel.cancelled() => break,
             _ = stop.release.cancelled(), if released.is_none() => {
+                if let Some(reading) = &stop.reading {
+                    reading.released();
+                }
+                // What was heard before the release and is still on its way
+                // belongs to the recording, not to its tail.
+                let mut ended = false;
+                while let Some(next) = stream.next().now_or_never() {
+                    let Some(samples) = next else {
+                        ended = true;
+                        break;
+                    };
+                    let samples = samples?;
+                    voice.extend(&samples);
+                    output.write(&samples)?;
+                }
+                if ended {
+                    break;
+                }
                 let now = tokio::time::Instant::now();
                 tail_deadline.as_mut().reset(now + RELEASE_TAIL + TAIL_DELIVERY_GRACE);
                 released = Some((now, ReleaseTail::default()));
@@ -400,24 +489,7 @@ async fn record_to_file(
                         done = fed.done;
                     }
                 }
-                for sample in samples.iter() {
-                    writer
-                        .write_sample(*sample)
-                        .map_err(|error| Error::Recording(error.to_string()))?;
-                }
-                sample_count += samples.len() as u64;
-                if let Some(meter) = &meter {
-                    meter(crate::events::rms(&samples));
-                }
-                if preview.is_some() {
-                    pending.extend_from_slice(&samples);
-                    if pending.len() >= PREVIEW_CHUNK_SIZE {
-                        if preview.as_ref().is_some_and(|preview| !preview.send(&pending)) {
-                            preview = None;
-                        }
-                        pending.clear();
-                    }
-                }
+                output.write(&samples)?;
                 if done {
                     break;
                 }
@@ -428,6 +500,13 @@ async fn record_to_file(
     // open the microphone meanwhile, and other audio comes back now.
     drop(stream);
     drop(quiet);
+    let Output {
+        writer,
+        sample_count,
+        mut preview,
+        pending,
+        ..
+    } = output;
     if !pending.is_empty()
         && preview
             .as_ref()
@@ -476,6 +555,10 @@ mod tests {
         opened: AtomicUsize,
         /// The first stream fails after its first frame.
         fail_first: AtomicBool,
+        /// Every stream fails after its first frame.
+        fail_every: AtomicBool,
+        /// The system default input, `test-mic` unless set.
+        default: Mutex<Option<String>>,
     }
 
     struct OpenStream(Arc<AtomicUsize>);
@@ -508,7 +591,9 @@ mod tests {
             self.open.fetch_add(1, Ordering::SeqCst);
             self.opened.fetch_add(1, Ordering::SeqCst);
             let open = OpenStream(self.open.clone());
-            if self.fail_first.swap(false, Ordering::SeqCst) {
+            if self.fail_first.swap(false, Ordering::SeqCst)
+                || self.fail_every.load(Ordering::SeqCst)
+            {
                 let frame = CaptureFrame {
                     raw_mic: Arc::from([0.25_f32; CHUNK_SIZE]),
                     raw_speaker: Arc::from([]),
@@ -538,7 +623,11 @@ mod tests {
         }
 
         fn default_device_name(&self) -> String {
-            "test-mic".to_string()
+            self.default
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| "test-mic".to_string())
         }
 
         fn list_mic_devices(&self) -> Vec<String> {
@@ -912,6 +1001,55 @@ mod tests {
             .set_warm_microphone(audio.clone(), None, true, false)
             .unwrap();
         until(|| audio.open.load(Ordering::SeqCst) == 0).await;
+    }
+
+    /// A microphone that keeps failing but works again in between keeps
+    /// opening again: only failures in a row give up.
+    #[tokio::test]
+    async fn the_open_microphone_keeps_recovering_from_stream_errors() {
+        let audio = Arc::new(TestAudio::default());
+        audio.fail_every.store(true, Ordering::SeqCst);
+        let recorder = Recorder::new();
+        recorder
+            .set_warm_microphone(audio.clone(), None, true, true)
+            .unwrap();
+        let attempts = crate::warm::MAX_REOPENS as usize + 3;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while audio.opened.load(Ordering::SeqCst) < attempts {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        recorder
+            .set_warm_microphone(audio.clone(), None, true, false)
+            .unwrap();
+        until(|| audio.open.load(Ordering::SeqCst) == 0).await;
+    }
+
+    /// Windows reports no change of default input, so a dictation finds it
+    /// itself: it records from the new default and the open microphone
+    /// moves there for the next one.
+    #[tokio::test]
+    async fn the_open_microphone_follows_a_new_default_input() {
+        let audio = Arc::new(TestAudio::default());
+        let recorder = Recorder::new();
+        recorder
+            .set_warm_microphone(audio.clone(), None, true, true)
+            .unwrap();
+        *audio.default.lock().unwrap() = Some("headset".into());
+        recorder
+            .start(audio.clone(), None, "system".into())
+            .unwrap();
+        until(|| audio.opened.load(Ordering::SeqCst) == 3).await;
+        recorder.cancel("system").await.unwrap();
+        until(|| audio.open.load(Ordering::SeqCst) == 1).await;
+
+        recorder
+            .start(audio.clone(), None, "system".into())
+            .unwrap();
+        assert_eq!(audio.opened.load(Ordering::SeqCst), 3);
+        recorder.cancel("system").await.unwrap();
     }
 
     #[tokio::test]

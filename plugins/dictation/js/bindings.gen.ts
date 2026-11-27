@@ -14,9 +14,14 @@ async hud(event: HudEvent) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async startRecording(microphoneDevice: string | null, owner: string) : Promise<Result<null, string>> {
+/**
+ * Records for in-app dictation, from the same microphone as system-wide
+ * dictation: without a chosen one, a Bluetooth default gives way to a wired
+ * one unless `avoid_bluetooth_microphone` is false.
+ */
+async startRecording(microphoneDevice: string | null, owner: string, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner, avoidBluetoothMicrophone }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -27,7 +32,8 @@ async startRecording(microphoneDevice: string | null, owner: string) : Promise<R
  * live preview's words arrive over `updates`, and `environment` quiets other
  * audio and keeps the computer awake until the recording ends. `pressed_at_ms`
  * is when the shortcut went down, in milliseconds since the Unix epoch, and
- * `start_cue` when the start cue sounded, which the open microphone leaves out.
+ * `start_cue` when the start cue played, which the open microphone silences
+ * unless someone talks over it.
  * Without a chosen microphone, a Bluetooth default gives way to a wired one
  * unless `avoid_bluetooth_microphone` is false.
  */
@@ -374,7 +380,7 @@ screen: string | null;
  */
 terms: string[] }
 /**
- * When the start cue began and stopped sounding, in milliseconds since the
+ * When the start cue began and stopped playing, in milliseconds since the
  * Unix epoch.
  */
 export type CueSpan = { startMs: number; endMs: number }

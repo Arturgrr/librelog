@@ -83,17 +83,25 @@ pub(crate) async fn hud<R: tauri::Runtime>(
     app.dictation().hud(event).await.map_err(|e| e.to_string())
 }
 
+/// Records for in-app dictation, from the same microphone as system-wide
+/// dictation: without a chosen one, a Bluetooth default gives way to a wired
+/// one unless `avoid_bluetooth_microphone` is false.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn start_recording<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     microphone_device: Option<String>,
     owner: String,
+    avoid_bluetooth_microphone: Option<bool>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
         .inner()
         .clone();
+    let microphone_device =
+        choose_microphone(&audio, microphone_device, avoid_bluetooth_microphone)
+            .await?
+            .device;
     app.state::<Recorder>()
         .start(audio, microphone_device, owner)
         .map_err(|error| error.to_string())
@@ -163,7 +171,7 @@ pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
     .map_err(|error| error.to_string())
 }
 
-/// When the start cue began and stopped sounding, in milliseconds since the
+/// When the start cue began and stopped playing, in milliseconds since the
 /// Unix epoch.
 #[derive(Debug, Clone, Copy, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -181,7 +189,8 @@ fn epoch_ms(ms: f64) -> Option<std::time::SystemTime> {
 /// live preview's words arrive over `updates`, and `environment` quiets other
 /// audio and keeps the computer awake until the recording ends. `pressed_at_ms`
 /// is when the shortcut went down, in milliseconds since the Unix epoch, and
-/// `start_cue` when the start cue sounded, which the open microphone leaves out.
+/// `start_cue` when the start cue played, which the open microphone silences
+/// unless someone talks over it.
 /// Without a chosen microphone, a Bluetooth default gives way to a wired one
 /// unless `avoid_bluetooth_microphone` is false.
 // The webview passes each argument by name.
@@ -280,14 +289,18 @@ pub(crate) async fn start_input_level<R: tauri::Runtime>(
         choose_microphone(&audio, microphone_device, Some(avoid_bluetooth_microphone))
             .await?
             .device;
-    app.state::<Recorder>()
-        .monitor_level(
+    // Opening a microphone blocks.
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<Recorder>().monitor_level(
             audio.as_ref(),
             microphone_device,
             move |update| levels.send(update).is_ok(),
             crate::level::MAX_LEVEL_MONITOR,
         )
-        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

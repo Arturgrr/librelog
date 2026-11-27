@@ -114,6 +114,7 @@ describe("useDictation", () => {
     expect(mocks.startRecording).toHaveBeenCalledWith(
       "Built-in Microphone",
       mocks.useRunBatch.mock.calls[0][0],
+      null,
     );
 
     await act(async () => {

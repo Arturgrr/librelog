@@ -38,16 +38,22 @@ fn lead_in(sound: &AppSounds) -> std::time::Duration {
     }
 }
 
+/// Plays `bytes` on the default output. The second channel hears once the
+/// sound is playing, and closes if it never will.
 pub(crate) fn to_speaker(
     bytes: &'static [u8],
     looping: bool,
     volume: f32,
     lead_in: std::time::Duration,
-) -> std::sync::mpsc::Sender<SoundControl> {
+) -> (
+    std::sync::mpsc::Sender<SoundControl>,
+    std::sync::mpsc::Receiver<()>,
+) {
     use anlg_audio_utils::open_default_playback_sink;
     use rodio::source::Source;
     use rodio::{Decoder, Player};
     let (tx, rx) = std::sync::mpsc::channel();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
 
     std::thread::spawn(move || {
         let Ok(stream) = open_default_playback_sink() else {
@@ -68,6 +74,7 @@ pub(crate) fn to_speaker(
         } else {
             player.append(source);
         }
+        let _ = started_tx.send(());
 
         loop {
             match rx.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -91,21 +98,24 @@ pub(crate) fn to_speaker(
         drop(stream);
     });
 
-    tx
+    (tx, started_rx)
 }
 
 impl AppSounds {
-    pub fn play(&self) {
+    /// Starts the sound; the receiver hears once it is playing, which opening
+    /// the output delays, and closes if it never will.
+    pub fn play(&self) -> std::sync::mpsc::Receiver<()> {
         self.stop();
 
         let bytes = self.get_sound_bytes();
         let looping = matches!(self, AppSounds::BGM);
-        let control_tx = to_speaker(bytes, looping, initial_volume(self), lead_in(self));
+        let (control_tx, started) = to_speaker(bytes, looping, initial_volume(self), lead_in(self));
 
         {
             let mut sounds = PLAYING_SOUNDS.lock().unwrap();
             sounds.insert(self.clone(), SoundHandle { control_tx });
         }
+        started
     }
 
     pub fn stop(&self) {
@@ -137,9 +147,9 @@ pub struct Sfx<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
 }
 
 impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Sfx<'a, R, M> {
-    pub fn play(&self, sfx: AppSounds) {
+    pub fn play(&self, sfx: AppSounds) -> std::sync::mpsc::Receiver<()> {
         let _ = self.manager;
-        sfx.play();
+        sfx.play()
     }
 
     pub fn stop(&self, sfx: AppSounds) {

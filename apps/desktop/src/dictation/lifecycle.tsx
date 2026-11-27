@@ -52,10 +52,10 @@ export { useDictationStatus } from "./state";
 
 let lifecycle: Promise<void> = Promise.resolve();
 
-// How long the start cue sounds once asked for, opening its output included.
-// Muting or lowering other audio waits for it, so the cue is heard, unless
-// the last dictation left other audio quiet: it then stays quiet throughout.
-const START_CUE_MS = 400;
+// How long the start cue sounds once it plays. Muting or lowering other audio
+// waits for it, so the cue is heard, unless the last dictation left other
+// audio quiet: it then stays quiet throughout.
+const START_CUE_MS = 350;
 
 export function waitForDictationCleanup() {
   return lifecycle;
@@ -337,18 +337,18 @@ function ActiveDictation() {
     };
     // Through the speakers a cue would reach the microphone, so it never plays
     // while a meeting records: it would leak into the call and its recording.
-    // Resolves whether it played.
+    // Resolves when it started playing, or null when it did not play.
     const cue = async (sound: AppSounds) => {
       const { sounds, meetingActive } = current.current;
-      if (disposed || !sounds || meetingActive) return false;
+      if (disposed || !sounds || meetingActive) return null;
       try {
         const capture = unwrap(await transcription.getCaptureState());
-        if (capture !== "inactive") return false;
+        if (capture !== "inactive") return null;
         await sfx.play(sound);
-        return true;
+        return Date.now();
       } catch (error) {
         console.error(error);
-        return false;
+        return null;
       }
     };
     const frontmostApp = async () => {
@@ -417,10 +417,7 @@ function ActiveDictation() {
             );
         }
         signal.throwIfAborted();
-        // Ahead of the microphone, so the cue answers the press and stays
-        // mostly out of the recording.
-        const cueStarts = Date.now();
-        const cueEnds = cueStarts + START_CUE_MS;
+        // Ahead of the microphone, so the cue answers the press.
         const started = cue("StartRecording");
         unwrap(await dictation.checkInsertion());
         // A self-hosted server may take one live connection at a time: a
@@ -461,7 +458,11 @@ function ActiveDictation() {
                   appStore: isAppStoreBuild(),
                 }),
               }),
-              delayMs: (await started) ? Math.max(0, cueEnds - Date.now()) : 0,
+              delayMs: await started.then((cueStarts) =>
+                cueStarts === null
+                  ? 0
+                  : Math.max(0, cueStarts + START_CUE_MS - Date.now()),
+              ),
             };
         signal.throwIfAborted();
         // The HUD is on screen before the microphone opens. It is only a cue:
@@ -518,8 +519,13 @@ function ActiveDictation() {
               environment,
               pressedAtMs,
               avoidBluetooth,
-              // The open microphone heard it; its pre-roll leaves it out.
-              (await started) ? { startMs: cueStarts, endMs: cueEnds } : null,
+              // The open microphone may hear it, and silences it unless
+              // someone talks over it.
+              await started.then((cueStarts) =>
+                cueStarts === null
+                  ? null
+                  : { startMs: cueStarts, endMs: cueStarts + START_CUE_MS },
+              ),
             ),
           );
         } catch (error) {

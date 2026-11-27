@@ -85,7 +85,7 @@ impl Voice {
     /// Whether speech runs up to the newest frame: its last speech frame is
     /// within a syllable gap of it, and [`SPEECH_FRAMES`] speech frames lead
     /// up to it with no longer gap.
-    fn talking(&self) -> bool {
+    pub(crate) fn talking(&self) -> bool {
         let mut speech = 0;
         let mut gap = 0;
         for &flag in self.flags.iter().rev() {

@@ -5,6 +5,7 @@
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -16,6 +17,7 @@ use tokio::sync::mpsc;
 
 use crate::Error;
 use crate::recorder::SAMPLE_RATE;
+use crate::tail::Voice;
 
 /// Audio a dictation keeps from before its shortcut was pressed.
 pub(crate) const PRE_ROLL: Duration = Duration::from_millis(450);
@@ -25,9 +27,14 @@ const START_DELAY: Duration = Duration::from_millis(1_500);
 /// What the open microphone remembers: the longest lookback.
 const RING: Duration = START_DELAY.saturating_add(PRE_ROLL);
 /// How long a microphone that stopped waits before it opens again, and how
-/// many times it tries until the settings or the default input change.
-const REOPEN_DELAY: Duration = Duration::from_millis(500);
-const MAX_REOPENS: u32 = 5;
+/// many times in a row it tries without hearing a frame.
+const REOPEN_DELAY: Duration = Duration::from_millis(if cfg!(test) { 10 } else { 500 });
+pub(crate) const MAX_REOPENS: u32 = 5;
+/// How much later than it was played the start cue may still reach the
+/// recording: the output's and the input's buffers, and the room's echo.
+const CUE_LATENCY: Duration = Duration::from_millis(150);
+/// The audio after the start cue that tells whether someone talks over it.
+const CUE_LOOKAHEAD: Duration = Duration::from_millis(120);
 
 pub(crate) type Samples = BoxStream<'static, Result<Arc<[f32]>, Error>>;
 type Sender = mpsc::UnboundedSender<Result<Arc<[f32]>, Error>>;
@@ -53,8 +60,8 @@ pub(crate) fn lookback(
     }
 }
 
-/// Where a recording starts in the open microphone's audio, and the start
-/// cue it leaves out, both as offsets in samples from now (negative is
+/// Where a recording starts in the open microphone's audio, and where the
+/// start cue may sound in it, as offsets in samples from now (negative is
 /// earlier).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Window {
@@ -63,7 +70,8 @@ pub(crate) struct Window {
 }
 
 impl Window {
-    /// Sample offsets from now for the span between `start` and `end`.
+    /// Sample offsets from now for the cue that started playing at `start`
+    /// and stopped at `end`, widened by [`CUE_LATENCY`].
     pub(crate) fn cue_between(
         start: std::time::SystemTime,
         end: std::time::SystemTime,
@@ -73,7 +81,75 @@ impl Window {
             Ok(ahead) => samples_in(ahead) as i64,
             Err(behind) => -(samples_in(behind.duration()) as i64),
         };
-        offset(start)..offset(end)
+        offset(start)..offset(end + CUE_LATENCY)
+    }
+}
+
+/// What a recording tells the open microphone, and how far it has read.
+#[derive(Default)]
+struct Control {
+    /// Thrown away (cancelled): the next recording may hear what it heard.
+    discarded: AtomicBool,
+    /// Samples the recording has taken from its stream.
+    read: AtomicU64,
+}
+
+/// The start cue in one recording. Through speakers it reaches the
+/// microphone, so the audio from where it may sound to [`CUE_LOOKAHEAD`]
+/// after it is held back: when nobody talks into the cue or just after it,
+/// the cue's span is silenced; otherwise it is kept as heard, so words said
+/// over the cue are never lost. Either way the timeline stays whole.
+struct Cue {
+    span: Range<u64>,
+    held: Vec<f32>,
+    /// Where `held` starts.
+    held_from: u64,
+    /// Judged on the audio around the cue, never on the cue itself.
+    voice: Voice,
+    talking_before: bool,
+}
+
+impl Cue {
+    fn hold_end(&self) -> u64 {
+        self.span.end + samples_in(CUE_LOOKAHEAD)
+    }
+
+    /// Takes the start of `samples`, which begin at `position`, into `out`
+    /// or the hold; returns how many it took and whether the cue is done.
+    fn take(&mut self, position: u64, samples: &[f32], out: &mut Vec<f32>) -> (usize, bool) {
+        let hold_end = self.hold_end();
+        if position >= hold_end {
+            self.release(out);
+            return (0, true);
+        }
+        if position < self.span.start {
+            let count = samples.len().min((self.span.start - position) as usize);
+            self.voice.extend(&samples[..count]);
+            out.extend_from_slice(&samples[..count]);
+            return (count, false);
+        }
+        if self.held.is_empty() {
+            self.held_from = position;
+            self.talking_before = self.voice.talking();
+        }
+        let count = samples.len().min((hold_end - position) as usize);
+        self.held.extend_from_slice(&samples[..count]);
+        if position + count as u64 == hold_end {
+            self.release(out);
+            return (count, true);
+        }
+        (count, false)
+    }
+
+    /// Hands over what is held, deciding on what was heard after the cue so
+    /// far.
+    fn release(&mut self, out: &mut Vec<f32>) {
+        let span_end = (self.span.end.saturating_sub(self.held_from) as usize).min(self.held.len());
+        self.voice.extend(&self.held[span_end..]);
+        if !self.talking_before && !self.voice.talking() {
+            self.held[..span_end].fill(0.0);
+        }
+        out.append(&mut self.held);
     }
 }
 
@@ -81,12 +157,10 @@ struct Listener {
     sender: Sender,
     /// Where its audio starts, counted in samples since the microphone opened.
     from: u64,
-    skip: Range<u64>,
-    /// Waiting for an earlier recording still reading, so the two never
-    /// share audio.
-    waiting: bool,
-    /// How far it has been sent.
+    /// How far it has been given audio, held cue included.
     sent: u64,
+    cue: Option<Cue>,
+    control: Arc<Control>,
 }
 
 impl Listener {
@@ -94,12 +168,41 @@ impl Listener {
     /// false once nobody reads it.
     fn send(&mut self, at: u64, samples: &[f32]) -> bool {
         let end = at + samples.len() as u64;
-        let kept: Vec<f32> = (at.max(self.from)..end)
-            .filter(|position| !self.skip.contains(position))
-            .map(|position| samples[(position - at) as usize])
-            .collect();
-        self.sent = self.sent.max(end);
-        kept.is_empty() || self.sender.send(Ok(kept.into())).is_ok()
+        let mut position = at.max(self.from);
+        if position >= end {
+            return true;
+        }
+        let mut out = Vec::with_capacity((end - position) as usize);
+        while position < end {
+            let rest = &samples[(position - at) as usize..];
+            let Some(cue) = &mut self.cue else {
+                out.extend_from_slice(rest);
+                break;
+            };
+            let (taken, done) = cue.take(position, rest, &mut out);
+            position += taken as u64;
+            if done {
+                self.cue = None;
+            }
+        }
+        self.sent = end;
+        out.is_empty() || self.sender.send(Ok(out.into())).is_ok()
+    }
+
+    /// Sends the cue it holds without waiting for the audio after it.
+    fn flush(&mut self) {
+        if let Some(mut cue) = self.cue.take() {
+            let mut out = Vec::new();
+            cue.release(&mut out);
+            if !out.is_empty() {
+                let _ = self.sender.send(Ok(out.into()));
+            }
+        }
+    }
+
+    /// Where the audio its recording took ends.
+    fn read_until(&self) -> u64 {
+        self.from + self.control.read.load(Ordering::SeqCst)
     }
 }
 
@@ -108,9 +211,11 @@ struct Ring {
     samples: VecDeque<f32>,
     /// Samples heard since the microphone opened.
     total: u64,
-    listeners: Vec<Listener>,
-    /// Where the last recording to stop reading stopped; no later one starts
-    /// before it, so a quick re-press never repeats its last words.
+    /// The recording reading it; a newer one takes over, so no two ever
+    /// share a sample.
+    listener: Option<Listener>,
+    /// Where the last kept recording stopped; no later one starts before it,
+    /// so a quick re-press never repeats its last words.
     recorded_until: u64,
     /// The Settings level meter, which reads beside a recording.
     meter: Option<Sender>,
@@ -122,36 +227,25 @@ impl Ring {
         self.total - self.samples.len() as u64
     }
 
+    /// Lets go of a listener whose recording stopped reading.
+    fn forget(&mut self, listener: &Listener) {
+        if !listener.control.discarded.load(Ordering::SeqCst) {
+            self.recorded_until = self.recorded_until.max(listener.read_until());
+        }
+    }
+
     fn forget_closed(&mut self) {
-        let recorded_until = &mut self.recorded_until;
-        self.listeners.retain(|listener| {
-            let closed = listener.sender.is_closed();
-            if closed && !listener.waiting {
-                *recorded_until = (*recorded_until).max(listener.sent);
-            }
-            !closed
-        });
+        if let Some(listener) = self
+            .listener
+            .take_if(|listener| listener.sender.is_closed())
+        {
+            self.forget(&listener);
+        }
     }
 
     fn in_use(&mut self) -> bool {
         self.forget_closed();
-        !self.listeners.is_empty()
-    }
-
-    /// Hands the waiting listeners the audio from where the last recording
-    /// stopped, once no recording reads.
-    fn wake_waiting(&mut self) {
-        if self.listeners.iter().any(|listener| !listener.waiting) {
-            return;
-        }
-        let start = self.start();
-        let backlog: Vec<f32> = self.samples.iter().copied().collect();
-        let recorded_until = self.recorded_until;
-        self.listeners.retain_mut(|listener| {
-            listener.waiting = false;
-            listener.from = listener.from.max(recorded_until);
-            listener.send(start, &backlog)
-        });
+        self.listener.is_some()
     }
 
     fn push(&mut self, samples: Arc<[f32]>) {
@@ -166,15 +260,12 @@ impl Ring {
         {
             self.meter = None;
         }
-        let recorded_until = &mut self.recorded_until;
-        self.listeners.retain_mut(|listener| {
-            if listener.waiting || listener.send(at, &samples) {
-                return true;
-            }
-            *recorded_until = (*recorded_until).max(at);
-            false
-        });
-        self.wake_waiting();
+        if let Some(listener) = self
+            .listener
+            .take_if(|listener| !listener.send(at, &samples))
+        {
+            self.forget(&listener);
+        }
     }
 
     /// The live audio for the level meter, without taking it from a
@@ -185,66 +276,123 @@ impl Ring {
         }
         let (sender, receiver) = mpsc::unbounded_channel();
         self.meter = Some(sender);
-        Some(receive(receiver))
+        Some(receive(receiver, None))
     }
 
     /// The live audio for one recording, from `window.lookback` before now
-    /// but never before the last recording stopped, without the start cue.
-    /// While an earlier recording still reads (its release tail), this one
-    /// starts where that one stops.
-    fn listen(&mut self, window: &Window) -> Option<Samples> {
+    /// but never before the last kept recording stopped. A recording still
+    /// reading (its release tail) ends here with what it was given, and
+    /// this one starts right after it.
+    fn listen(&mut self, window: &Window) -> Option<(Samples, Arc<Control>)> {
         if !self.open {
             return None;
         }
         self.forget_closed();
+        if let Some(mut previous) = self.listener.take() {
+            previous.flush();
+            if !previous.control.discarded.load(Ordering::SeqCst) {
+                self.recorded_until = self.recorded_until.max(previous.sent);
+            }
+        }
         let now = self.total as i64;
-        let skip = window
+        let cue = window
             .cue
             .as_ref()
             .map(|cue| (now + cue.start).max(0) as u64..(now + cue.end).max(0) as u64)
-            .unwrap_or(0..0);
+            .filter(|span| !span.is_empty())
+            .map(|span| Cue {
+                span,
+                held: Vec::new(),
+                held_from: 0,
+                voice: Voice::default(),
+                talking_before: false,
+            });
         let (sender, receiver) = mpsc::unbounded_channel();
         let from = self
             .total
             .saturating_sub(samples_in(window.lookback))
             .max(self.start())
             .max(self.recorded_until);
+        let control = Arc::new(Control::default());
         let mut listener = Listener {
             sender,
             from,
-            skip,
-            waiting: true,
             sent: from,
+            cue,
+            control: control.clone(),
         };
-        if !self.listeners.iter().any(|listener| !listener.waiting) {
-            listener.waiting = false;
-            let backlog: Vec<f32> = self.samples.iter().copied().collect();
-            listener.send(self.start(), &backlog);
+        let backlog: Vec<f32> = self.samples.iter().copied().collect();
+        listener.send(self.start(), &backlog);
+        self.listener = Some(listener);
+        Some((receive(receiver, Some(control.clone())), control))
+    }
+
+    /// The recording `control` belongs to was released: a cue it holds goes
+    /// out now, ahead of its release tail.
+    fn release(&mut self, control: &Arc<Control>) {
+        if let Some(listener) = &mut self.listener
+            && Arc::ptr_eq(&listener.control, control)
+        {
+            listener.flush();
         }
-        self.listeners.push(listener);
-        Some(receive(receiver))
     }
 
     fn end(&mut self, error: Option<Error>) {
         self.open = false;
         self.meter = None;
-        let listeners = std::mem::take(&mut self.listeners);
-        if let Some(error) = error {
-            let message = error.to_string();
-            for listener in listeners {
-                let _ = listener.sender.send(Err(Error::Capture(message.clone())));
-            }
+        let listener = self.listener.take();
+        if let (Some(listener), Some(error)) = (listener, error) {
+            let _ = listener.sender.send(Err(Error::Capture(error.to_string())));
         }
     }
 }
 
-fn receive(mut receiver: mpsc::UnboundedReceiver<Result<Arc<[f32]>, Error>>) -> Samples {
-    futures_util::stream::poll_fn(move |context| receiver.poll_recv(context)).boxed()
+fn receive(
+    mut receiver: mpsc::UnboundedReceiver<Result<Arc<[f32]>, Error>>,
+    control: Option<Arc<Control>>,
+) -> Samples {
+    futures_util::stream::poll_fn(move |context| {
+        let next = receiver.poll_recv(context);
+        if let (Poll::Ready(Some(Ok(samples))), Some(control)) = (&next, &control) {
+            control
+                .read
+                .fetch_add(samples.len() as u64, Ordering::SeqCst);
+        }
+        next
+    })
+    .boxed()
 }
 
-/// The open microphone; dropping it closes the microphone.
+/// One recording's hold on the open microphone.
+#[derive(Clone)]
+pub(crate) struct Reading {
+    ring: Weak<Mutex<Ring>>,
+    control: Arc<Control>,
+}
+
+impl Reading {
+    /// The recording was released: audio held back around the start cue is
+    /// sent now, so it counts as said before the release, not as its tail.
+    pub(crate) fn released(&self) {
+        if let Some(ring) = self.ring.upgrade() {
+            lock(&ring).release(&self.control);
+        }
+    }
+
+    /// The recording is thrown away, so the next one may start before
+    /// where it stopped.
+    pub(crate) fn discard(&self) {
+        self.control.discarded.store(true, Ordering::SeqCst);
+    }
+}
+
+/// The open microphone; dropping it closes the microphone once its task
+/// stops, shortly after. Nothing needs the old stream gone before a new one
+/// opens: inputs are opened shared, so the two may overlap for a moment.
 struct WarmMicrophone {
     device: Option<String>,
+    /// The system default input it opened on, for a stream on the default.
+    default: Option<String>,
     ring: Arc<Mutex<Ring>>,
     task: JoinHandle<()>,
 }
@@ -253,7 +401,9 @@ impl WarmMicrophone {
     fn open(
         audio: &dyn anlg_audio::AudioProvider,
         device: Option<String>,
+        default: Option<String>,
         chunk_size: usize,
+        reopens: Arc<AtomicU32>,
         ended: impl FnOnce() + Send + 'static,
     ) -> Result<Self, Error> {
         let mut stream = audio
@@ -265,9 +415,18 @@ impl WarmMicrophone {
         }));
         let task_ring = ring.clone();
         let task = tauri::async_runtime::spawn(async move {
+            let mut heard = false;
             let error = loop {
                 match stream.next().await {
-                    Some(Ok(frame)) => lock(&task_ring).push(frame.preferred_mic()),
+                    Some(Ok(frame)) => {
+                        if !heard {
+                            // It works again, so a later failure starts a
+                            // fresh round of attempts.
+                            heard = true;
+                            reopens.store(0, Ordering::SeqCst);
+                        }
+                        lock(&task_ring).push(frame.preferred_mic());
+                    }
                     Some(Err(error)) => break Some(Error::Capture(error.to_string())),
                     None => break None,
                 }
@@ -277,7 +436,12 @@ impl WarmMicrophone {
             drop(stream);
             ended();
         });
-        Ok(Self { device, ring, task })
+        Ok(Self {
+            device,
+            default,
+            ring,
+            task,
+        })
     }
 
     fn is_open(&self) -> bool {
@@ -307,9 +471,21 @@ struct State {
     wanted: Option<WarmRequest>,
     /// The default input changed, so a microphone on it opens again.
     default_changed: bool,
-    reopens: u32,
+    /// Counts the settles begun, so one that took long to open a microphone
+    /// gives way to a later one.
+    generation: u64,
+    /// Attempts to open again since the microphone last heard a frame.
+    reopens: Arc<AtomicU32>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     watch: Option<anlg_device_monitor::DeviceMonitorHandle>,
+}
+
+impl State {
+    fn in_use(&self) -> bool {
+        self.microphone
+            .as_ref()
+            .is_some_and(|microphone| lock(&microphone.ring).in_use())
+    }
 }
 
 /// The open microphone and what it should be. A change while a recording
@@ -321,28 +497,51 @@ pub(crate) struct Warm(Arc<Mutex<State>>);
 impl Warm {
     /// Opens the microphone as `wanted` says, or closes it for `None`.
     pub(crate) fn set(&self, wanted: Option<WarmRequest>) -> Result<(), Error> {
-        let mut state = lock(&self.0);
-        state.wanted = wanted;
-        state.reopens = 0;
-        settle(&self.0, &mut state)
+        {
+            let mut state = lock(&self.0);
+            state.wanted = wanted;
+            state.generation += 1;
+            state.reopens.store(0, Ordering::SeqCst);
+        }
+        settle(&self.0)
     }
 
     /// The open microphone's audio for one recording on `device`, or `None`
-    /// when it is not open on it. Once the recording lets go of it, a change
-    /// that waited for it applies.
-    pub(crate) fn listen(&self, device: &Option<String>, window: &Window) -> Option<Samples> {
-        let samples = {
+    /// when it is not open on it. A stream on the default input is only used
+    /// while that is still the default, since Windows reports no change of
+    /// default; otherwise it opens again on the new one for later dictations.
+    /// Once the recording lets go of it, a change that waited for it applies.
+    pub(crate) fn listen(
+        &self,
+        audio: &dyn anlg_audio::AudioProvider,
+        device: &Option<String>,
+        window: &Window,
+    ) -> Option<(Samples, Reading)> {
+        let default = device.is_none().then(|| audio.default_device_name());
+        let (samples, reading) = {
             let state = lock(&self.0);
             let microphone = state.microphone.as_ref().filter(|m| &m.device == device)?;
-            lock(&microphone.ring).listen(window)?
-        };
-        Some(
-            Settling {
-                samples: Some(samples),
-                warm: Arc::downgrade(&self.0),
+            if device.is_none() && microphone.default != default {
+                drop(state);
+                settle_soon(Arc::downgrade(&self.0), |state| {
+                    state.default_changed = true;
+                    true
+                });
+                return None;
             }
-            .boxed(),
-        )
+            let (samples, control) = lock(&microphone.ring).listen(window)?;
+            let reading = Reading {
+                ring: Arc::downgrade(&microphone.ring),
+                control,
+            };
+            (samples, reading)
+        };
+        let samples = Settling {
+            samples: Some(samples),
+            warm: Arc::downgrade(&self.0),
+        }
+        .boxed();
+        Some((samples, reading))
     }
 
     /// The open microphone's audio for the level meter, when it is open on
@@ -355,20 +554,45 @@ impl Warm {
 }
 
 /// Brings the open microphone in line with what is wanted, unless a
-/// recording reads it.
-fn settle(slot: &Arc<Mutex<State>>, state: &mut State) -> Result<(), Error> {
-    if let Some(microphone) = &state.microphone
-        && lock(&microphone.ring).in_use()
-    {
-        return Ok(());
-    }
-    let Some(wanted) = state.wanted.clone() else {
-        state.microphone = None;
+/// recording reads it. Choosing and opening a microphone block, so they run
+/// without the lock; a microphone opened meanwhile made obsolete by a later
+/// change, or by a recording that started on the old one, is closed again.
+fn settle(slot: &Arc<Mutex<State>>) -> Result<(), Error> {
+    let (wanted, generation, current, default_changed, reopens) = {
+        let mut state = lock(slot);
+        if state.in_use() {
+            return Ok(());
+        }
+        let Some(wanted) = state.wanted.clone() else {
+            state.microphone = None;
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            {
+                state.watch = None;
+            }
+            return Ok(());
+        };
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            state.watch = None;
+            if wanted.device.is_none() {
+                if state.watch.is_none() {
+                    state.watch = Some(follow_default_input(Arc::downgrade(slot)));
+                }
+            } else {
+                state.watch = None;
+            }
         }
-        return Ok(());
+        state.generation += 1;
+        let current = state
+            .microphone
+            .as_ref()
+            .map(|m| (m.device.clone(), m.default.clone(), m.is_open()));
+        (
+            wanted,
+            state.generation,
+            current,
+            std::mem::take(&mut state.default_changed),
+            state.reopens.clone(),
+        )
     };
     let device = crate::microphone::choose(
         wanted.audio.as_ref(),
@@ -376,51 +600,51 @@ fn settle(slot: &Arc<Mutex<State>>, state: &mut State) -> Result<(), Error> {
         wanted.avoid_bluetooth,
     )
     .device;
-    let default_changed = std::mem::take(&mut state.default_changed);
+    let default = device.is_none().then(|| wanted.audio.default_device_name());
     // A stream on the default input may stay on the input it opened with.
-    let keep = state.microphone.as_ref().is_some_and(|microphone| {
-        microphone.device == device
-            && microphone.is_open()
-            && !(default_changed && device.is_none())
+    let keep = current.is_some_and(|(current, opened_on, open)| {
+        current == device
+            && open
+            && !(device.is_none() && (default_changed || opened_on != default))
     });
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        if wanted.device.is_none() {
-            if state.watch.is_none() {
-                state.watch = Some(follow_default_input(Arc::downgrade(slot)));
-            }
-        } else {
-            state.watch = None;
-        }
-    }
     if keep {
         return Ok(());
     }
-    // The old stream closes before another one opens.
-    state.microphone = None;
     let weak = Arc::downgrade(slot);
-    state.microphone = Some(WarmMicrophone::open(
+    let microphone = WarmMicrophone::open(
         wanted.audio.as_ref(),
         device,
+        default,
         wanted.chunk_size,
+        reopens,
         move || reopen_later(weak),
-    )?);
+    )?;
+    let mut state = lock(slot);
+    if state.generation != generation || state.in_use() {
+        state.default_changed |= default_changed;
+        drop(state);
+        drop(microphone);
+        return Ok(());
+    }
+    let previous = state.microphone.replace(microphone);
+    drop(state);
+    drop(previous);
     Ok(())
 }
 
-/// Settles off the async runtime: choosing and opening a microphone blocks.
+/// Settles off the async runtime: choosing and opening a microphone block.
 fn settle_soon(slot: Weak<Mutex<State>>, change: impl FnOnce(&mut State) -> bool + Send + 'static) {
     tauri::async_runtime::spawn_blocking(move || {
         let Some(slot) = slot.upgrade() else {
             return;
         };
-        let mut state = lock(&slot);
-        if !change(&mut state) {
+        if !change(&mut lock(&slot)) {
             return;
         }
-        if let Err(error) = settle(&slot, &mut state) {
+        if let Err(error) = settle(&slot) {
             tracing::warn!(%error, "the dictation microphone could not open again");
-            if state.wanted.is_some() && state.reopens < MAX_REOPENS {
+            let state = lock(&slot);
+            if state.wanted.is_some() && state.reopens.load(Ordering::SeqCst) < MAX_REOPENS {
                 drop(state);
                 reopen_later(Arc::downgrade(&slot));
             }
@@ -437,18 +661,19 @@ fn reopen_later(slot: Weak<Mutex<State>>) {
                 .microphone
                 .as_ref()
                 .is_some_and(WarmMicrophone::is_open)
-                || state.reopens >= MAX_REOPENS
+                || state.reopens.load(Ordering::SeqCst) >= MAX_REOPENS
             {
                 return false;
             }
-            state.reopens += 1;
+            state.reopens.fetch_add(1, Ordering::SeqCst);
             true
         });
     });
 }
 
-/// Opens the microphone again on the new default input, or on the wired
-/// one a newly connected headset gives way to.
+/// Opens the microphone again on the new default input. A change in the
+/// devices only matters while a Bluetooth default gives way to a wired
+/// input, which may change with it, or while the microphone is closed.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn follow_default_input(slot: Weak<Mutex<State>>) -> anlg_device_monitor::DeviceMonitorHandle {
     use anlg_device_monitor::{DeviceSwitch, DeviceSwitchMonitor};
@@ -456,17 +681,31 @@ fn follow_default_input(slot: Weak<Mutex<State>>) -> anlg_device_monitor::Device
     let handle = DeviceSwitchMonitor::spawn_debounced(sender);
     std::thread::spawn(move || {
         for event in receiver {
-            if matches!(event, DeviceSwitch::DefaultOutputChanged { .. }) {
-                continue;
-            }
             if slot.strong_count() == 0 {
                 break;
             }
-            settle_soon(slot.clone(), |state| {
-                state.default_changed = true;
-                state.reopens = 0;
-                true
-            });
+            match event {
+                DeviceSwitch::DefaultOutputChanged { .. } => {}
+                DeviceSwitch::DefaultInputChanged => settle_soon(slot.clone(), |state| {
+                    state.default_changed = true;
+                    state.reopens.store(0, Ordering::SeqCst);
+                    true
+                }),
+                DeviceSwitch::DeviceListChanged => settle_soon(slot.clone(), |state| {
+                    let closed = !state
+                        .microphone
+                        .as_ref()
+                        .is_some_and(WarmMicrophone::is_open);
+                    let swaps = state
+                        .wanted
+                        .as_ref()
+                        .is_some_and(|wanted| wanted.avoid_bluetooth);
+                    if closed {
+                        state.reopens.store(0, Ordering::SeqCst);
+                    }
+                    closed || swaps
+                }),
+            }
         }
     });
     handle
@@ -520,14 +759,24 @@ mod tests {
         ring.push((at..at + count).map(|position| position as f32).collect());
     }
 
-    async fn heard(samples: &mut Samples) -> Vec<f32> {
+    fn push_level(ring: &mut Ring, count: usize, level: f32) {
+        ring.push(vec![level; count].into());
+    }
+
+    fn listen(ring: &mut Ring, window: Window) -> (Samples, Arc<Control>) {
+        ring.listen(&window).unwrap()
+    }
+
+    /// What has arrived so far, and whether the stream ended.
+    async fn heard(samples: &mut Samples) -> (Vec<f32>, bool) {
         let mut heard = Vec::new();
-        while let Ok(Some(next)) =
-            tokio::time::timeout(Duration::from_millis(5), samples.next()).await
-        {
-            heard.extend_from_slice(&next.unwrap());
+        loop {
+            match tokio::time::timeout(Duration::from_millis(5), samples.next()).await {
+                Ok(Some(next)) => heard.extend_from_slice(&next.unwrap()),
+                Ok(None) => return (heard, true),
+                Err(_) => return (heard, false),
+            }
         }
-        heard
     }
 
     fn positions(range: Range<u64>) -> Vec<f32> {
@@ -549,12 +798,12 @@ mod tests {
         let mut ring = ring();
         let second = u64::from(SAMPLE_RATE);
         push(&mut ring, 4 * second);
-        let mut samples = ring.listen(&back(PRE_ROLL)).unwrap();
+        let (mut samples, _) = listen(&mut ring, back(PRE_ROLL));
         push(&mut ring, 320);
 
         let total = 4 * second + 320;
         assert_eq!(
-            heard(&mut samples).await,
+            heard(&mut samples).await.0,
             positions(4 * second - samples_in(PRE_ROLL)..total)
         );
         assert_eq!(ring.samples.len() as u64, samples_in(RING));
@@ -564,41 +813,145 @@ mod tests {
         );
     }
 
-    /// A quick re-press: the last dictation keeps its release tail, and the
-    /// next one starts where it stopped instead of repeating its last words.
+    /// A quick re-press while the last dictation still takes its release
+    /// tail: the last one ends where the next one starts, with everything it
+    /// was given, and the next one gets everything after that at once,
+    /// without waiting for the tail.
     #[tokio::test]
     async fn a_quick_re_press_neither_cuts_the_last_dictation_nor_repeats_it() {
         let mut ring = ring();
         push(&mut ring, 16_000);
-        let mut first = ring.listen(&back(Duration::ZERO)).unwrap();
+        let (mut first, _) = listen(&mut ring, back(Duration::ZERO));
         push(&mut ring, 3_200);
-        let mut second = ring.listen(&back(Duration::from_secs(1))).unwrap();
+        let (mut second, _) = listen(&mut ring, back(Duration::from_secs(1)));
         push(&mut ring, 1_600);
 
-        assert_eq!(heard(&mut first).await, positions(16_000..20_800));
-        assert!(heard(&mut second).await.is_empty());
-        drop(first);
-        push(&mut ring, 320);
-        assert_eq!(heard(&mut second).await, positions(20_800..21_120));
+        assert_eq!(heard(&mut first).await, (positions(16_000..19_200), true));
+        assert_eq!(heard(&mut second).await, (positions(19_200..20_800), false));
     }
 
-    /// The start cue sounds just after the press, so it is left out of the
-    /// pre-roll and of the live audio it reaches.
+    /// However recordings overlap, stop and start again, no two kept ones
+    /// ever hear the same sample.
     #[tokio::test]
-    async fn the_start_cue_is_left_out_of_the_recording() {
+    async fn no_two_recordings_hear_the_same_sample() {
         let mut ring = ring();
         push(&mut ring, 16_000);
-        let mut samples = ring
-            .listen(&Window {
-                lookback: Duration::from_millis(500),
-                cue: Some(-3_200..1_600),
-            })
-            .unwrap();
-        push(&mut ring, 3_200);
+        let mut all = Vec::new();
+        let mut current = listen(&mut ring, back(PRE_ROLL)).0;
+        for round in 0..6_u64 {
+            push(&mut ring, 1_000 + round * 300);
+            if round % 2 == 0 {
+                // Stopped on its own before the next press.
+                all.extend(heard(&mut current).await.0);
+                drop(current);
+                push(&mut ring, 500);
+                current = listen(&mut ring, back(Duration::from_secs(1))).0;
+            } else {
+                let next = listen(&mut ring, back(Duration::from_secs(1))).0;
+                all.extend(heard(&mut current).await.0);
+                current = next;
+            }
+        }
+        all.extend(heard(&mut current).await.0);
+        let mut unique = all.clone();
+        unique.sort_by(f32::total_cmp);
+        unique.dedup();
+        assert_eq!(unique.len(), all.len());
+    }
 
-        let mut expected = positions(8_000..12_800);
-        expected.extend(positions(17_600..19_200));
-        assert_eq!(heard(&mut samples).await, expected);
+    /// Escape throws a dictation away, so pressing again at once still gets
+    /// the pre-roll it would have had.
+    #[tokio::test]
+    async fn a_cancelled_dictation_leaves_the_next_one_its_pre_roll() {
+        let mut ring = ring();
+        push(&mut ring, 16_000);
+        let (mut first, control) = listen(&mut ring, back(Duration::ZERO));
+        push(&mut ring, 1_600);
+        heard(&mut first).await;
+        control.discarded.store(true, Ordering::SeqCst);
+        drop(first);
+        push(&mut ring, 320);
+        let (mut second, _) = listen(&mut ring, back(PRE_ROLL));
+
+        let total = 16_000 + 1_600 + 320;
+        assert_eq!(
+            heard(&mut second).await.0,
+            positions(total - samples_in(PRE_ROLL)..total)
+        );
+    }
+
+    const ROOM: f32 = 0.0005;
+    const CUE: f32 = 0.3;
+    const SPEECH: f32 = 0.1;
+    /// The pre-roll before the cue, 300 ms, in the 500 ms a recording keeps.
+    const AHEAD: usize = 4_800;
+
+    /// A start cue that played for 200 ms until now, widened by the
+    /// latency, in a recording that starts 500 ms back.
+    fn cue_window() -> Window {
+        Window {
+            lookback: Duration::from_millis(500),
+            cue: Some(-3_200..samples_in(CUE_LATENCY) as i64),
+        }
+    }
+
+    /// The room, `before` just ahead of the cue, the cue as the microphone
+    /// heard it, then `after` until the lookahead is over.
+    async fn record_cue(before: f32, after: f32) -> Vec<f32> {
+        let mut ring = ring();
+        push_level(&mut ring, 16_000 - 3_200 - 2_400, ROOM);
+        push_level(&mut ring, 2_400, before);
+        push_level(&mut ring, 3_200, CUE);
+        let (mut samples, _) = listen(&mut ring, cue_window());
+        let rest = samples_in(CUE_LATENCY + CUE_LOOKAHEAD) as usize;
+        for _ in 0..rest.div_ceil(320) {
+            push_level(&mut ring, 320, after);
+        }
+        heard(&mut samples).await.0
+    }
+
+    /// The start cue sounding into the microphone is silenced, keeping the
+    /// recording's timeline, when nobody talks into or right after it.
+    #[tokio::test]
+    async fn the_start_cue_is_silenced_when_nobody_talks_over_it() {
+        let heard = record_cue(ROOM, ROOM).await;
+        let span = 3_200 + samples_in(CUE_LATENCY) as usize;
+        assert!(heard[..AHEAD].iter().all(|&sample| sample == ROOM));
+        assert!(
+            heard[AHEAD..AHEAD + span]
+                .iter()
+                .all(|&sample| sample == 0.0)
+        );
+        assert!(heard[AHEAD + span..].iter().all(|&sample| sample == ROOM));
+        assert!(heard.len() >= AHEAD + span + samples_in(CUE_LOOKAHEAD) as usize);
+    }
+
+    /// Words said into the cue or just after it are kept as heard, cue and
+    /// all.
+    #[tokio::test]
+    async fn speech_over_the_start_cue_is_kept() {
+        for (before, after) in [(SPEECH, ROOM), (ROOM, SPEECH)] {
+            let heard = record_cue(before, after).await;
+            assert!(
+                heard[AHEAD..AHEAD + 3_200]
+                    .iter()
+                    .all(|&sample| sample == CUE)
+            );
+            assert!(!heard.contains(&0.0));
+        }
+    }
+
+    /// A dictation released while its cue is held gets it at once, so it
+    /// counts as said before the release and not as release tail.
+    #[tokio::test]
+    async fn a_release_sends_the_held_cue_at_once() {
+        let mut ring = ring();
+        push_level(&mut ring, 16_000 - 3_200, ROOM);
+        push_level(&mut ring, 3_200, CUE);
+        let (mut samples, control) = listen(&mut ring, cue_window());
+        assert_eq!(heard(&mut samples).await.0.len(), AHEAD);
+        ring.release(&control);
+        assert_eq!(heard(&mut samples).await.0.len(), 3_200);
     }
 
     /// Hex #1316: with other audio muted, lowered or paused while dictating,
