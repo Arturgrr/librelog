@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-stop-input-level"
+description = "Enables the stop_input_level command without any pre-configured scope."
+commands.allow = ["stop_input_level"]
+
+[[permission]]
+identifier = "deny-stop-input-level"
+description = "Denies the stop_input_level command without any pre-configured scope."
+commands.deny = ["stop_input_level"]

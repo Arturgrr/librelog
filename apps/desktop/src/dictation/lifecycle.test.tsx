@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     dictation_shortcuts: ["Control+Alt+Space"],
     dictation_hands_free: false,
     microphone_device: "",
+    dictation_avoid_bluetooth_microphone: true,
   } as Record<string, unknown>,
   meeting: { status: "inactive", loading: false },
   configure: vi.fn(),
@@ -362,6 +363,7 @@ describe("dictation access and lifecycle", () => {
       expect.anything(),
       expect.anything(),
       expect.any(Number),
+      true,
     );
     expect(mocks.discardRecording).toHaveBeenCalledWith("/tmp/dictation.wav");
   });
@@ -378,11 +380,16 @@ describe("dictation access and lifecycle", () => {
       expect(mocks.setWarmMicrophone).toHaveBeenCalledWith(
         true,
         "USB microphone",
+        true,
       ),
     );
     view.unmount();
     await waitFor(() =>
-      expect(mocks.setWarmMicrophone).toHaveBeenLastCalledWith(false, null),
+      expect(mocks.setWarmMicrophone).toHaveBeenLastCalledWith(
+        false,
+        null,
+        true,
+      ),
     );
   });
 
@@ -644,6 +651,7 @@ describe("dictation access and lifecycle", () => {
         expect.anything(),
         expect.anything(),
         expect.any(Number),
+        true,
       );
     },
   );

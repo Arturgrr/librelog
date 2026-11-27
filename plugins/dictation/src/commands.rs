@@ -5,6 +5,8 @@ use tauri::Manager;
 use crate::{
     events::HudEvent,
     ext::DictationPluginExt,
+    level::{LevelSource, LevelUpdate},
+    microphone::MicrophoneChoice,
     recorder::{Feedback, RecordedAudio, Recorder},
 };
 
@@ -140,11 +142,19 @@ pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     enabled: bool,
     microphone_device: Option<String>,
+    avoid_bluetooth_microphone: Option<bool>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
         .inner()
         .clone();
+    let microphone_device = if enabled {
+        choose_microphone(&audio, microphone_device, avoid_bluetooth_microphone)
+            .await?
+            .device
+    } else {
+        microphone_device
+    };
     app.state::<Recorder>()
         .set_warm_microphone(audio, microphone_device, enabled)
         .map_err(|error| error.to_string())
@@ -154,6 +164,10 @@ pub(crate) async fn set_warm_microphone<R: tauri::Runtime>(
 /// live preview's words arrive over `updates`, and `environment` quiets other
 /// audio and keeps the computer awake until the recording ends. `pressed_at_ms`
 /// is when the shortcut went down, in milliseconds since the Unix epoch.
+/// Without a chosen microphone, a Bluetooth default gives way to a wired one
+/// unless `avoid_bluetooth_microphone` is false.
+// The webview passes each argument by name.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn start_system_recording<R: tauri::Runtime>(
@@ -164,11 +178,16 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
     updates: tauri::ipc::Channel<crate::preview::RecordingUpdate>,
     environment: Option<crate::environment::RecordingEnvironment>,
     pressed_at_ms: Option<f64>,
+    avoid_bluetooth_microphone: Option<bool>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
         .inner()
         .clone();
+    let microphone_device =
+        choose_microphone(&audio, microphone_device, avoid_bluetooth_microphone)
+            .await?
+            .device;
     let hud = app.clone();
     let meter: crate::recorder::Meter = Arc::new(move |rms| hud.dictation().meter(rms));
     app.state::<Recorder>()
@@ -189,6 +208,75 @@ pub(crate) async fn start_system_recording<R: tauri::Runtime>(
             },
         )
         .map_err(|error| error.to_string())
+}
+
+/// The microphone a dictation records from given the chosen one, and the
+/// Bluetooth default it passes over. `avoid_bluetooth_microphone` is on
+/// unless a build says otherwise.
+async fn choose_microphone(
+    audio: &Arc<dyn anlg_audio::AudioProvider>,
+    microphone_device: Option<String>,
+    avoid_bluetooth_microphone: Option<bool>,
+) -> Result<MicrophoneChoice, String> {
+    let audio = audio.clone();
+    let avoid = avoid_bluetooth_microphone.unwrap_or(true);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::microphone::choose(audio.as_ref(), microphone_device, avoid)
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+/// Which microphone dictation records from with these settings, for the
+/// note in Settings.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn dictation_microphone<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    microphone_device: Option<String>,
+    avoid_bluetooth_microphone: bool,
+) -> Result<MicrophoneChoice, String> {
+    let audio = app
+        .state::<Arc<dyn anlg_audio::AudioProvider>>()
+        .inner()
+        .clone();
+    choose_microphone(&audio, microphone_device, Some(avoid_bluetooth_microphone)).await
+}
+
+/// Sends the level of the microphone dictation would record from over
+/// `levels` until `stop_input_level`, a minute, or a dictation that needs the
+/// microphone; never records. Callers check microphone access first, so this
+/// never prompts for it.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn start_input_level<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    microphone_device: Option<String>,
+    avoid_bluetooth_microphone: bool,
+    levels: tauri::ipc::Channel<LevelUpdate>,
+) -> Result<LevelSource, String> {
+    let audio = app
+        .state::<Arc<dyn anlg_audio::AudioProvider>>()
+        .inner()
+        .clone();
+    let microphone_device =
+        choose_microphone(&audio, microphone_device, Some(avoid_bluetooth_microphone))
+            .await?
+            .device;
+    app.state::<Recorder>()
+        .monitor_level(
+            audio.as_ref(),
+            microphone_device,
+            move |update| levels.send(update).is_ok(),
+            crate::level::MAX_LEVEL_MONITOR,
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn stop_input_level<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    app.state::<Recorder>().stop_level();
 }
 
 /// Asks macOS to let "Pause media" control each known media player that is

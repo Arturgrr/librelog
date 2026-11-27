@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::Error;
 use crate::environment::{Quiet, RecordingEnvironment};
+use crate::level::{LevelMonitor, LevelSource, LevelUpdate};
 use crate::preview::{Preview, PreviewConfig, RecordingUpdate};
 use crate::tail::{MAX_RELEASE_TAIL, RELEASE_TAIL, ReleaseTail, TAIL_DELIVERY_GRACE, Voice};
 use crate::warm::{Samples, WarmMicrophone};
@@ -63,6 +64,7 @@ pub struct Recorder {
     active: Mutex<Option<ActiveRecording>>,
     completed: Mutex<HashSet<PathBuf>>,
     warm: Mutex<Option<WarmMicrophone>>,
+    level: Mutex<Option<LevelMonitor>>,
 }
 
 impl Recorder {
@@ -71,6 +73,7 @@ impl Recorder {
             active: Mutex::new(None),
             completed: Mutex::new(HashSet::new()),
             warm: Mutex::new(None),
+            level: Mutex::new(None),
         }
     }
 
@@ -120,16 +123,55 @@ impl Recorder {
         if let Some(warm) = warm {
             return Ok(warm);
         }
-        let stream = audio
-            .open_mic_capture(microphone_device, SAMPLE_RATE, CHUNK_SIZE)
-            .map_err(|error| Error::Capture(error.to_string()))?;
-        Ok(stream
-            .map(|frame| {
-                frame
-                    .map(|frame| frame.preferred_mic())
-                    .map_err(|error| Error::Capture(error.to_string()))
-            })
-            .boxed())
+        open_cold(audio, microphone_device)
+    }
+
+    /// Measures `microphone_device` for the Settings level meter until
+    /// [`Self::stop_level`], `max`, or a dictation that needs its stream.
+    /// Reads the open microphone when it is open on that device, and opens
+    /// nothing while a dictation records.
+    pub fn monitor_level(
+        &self,
+        audio: &dyn anlg_audio::AudioProvider,
+        microphone_device: Option<String>,
+        emit: impl Fn(LevelUpdate) -> bool + Send + 'static,
+        max: std::time::Duration,
+    ) -> Result<LevelSource, Error> {
+        self.stop_level();
+        // Held until the meter is in place, so a dictation starting meanwhile
+        // still finds and closes it.
+        let active = self
+            .active
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if active.is_some() {
+            emit(LevelUpdate::Ended);
+            return Ok(LevelSource::InUse);
+        }
+        let warm = self
+            .warm
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .filter(|warm| warm.device == microphone_device)
+            .and_then(|warm| warm.meter());
+        let (stream, source) = match warm {
+            Some(stream) => (stream, LevelSource::OpenMicrophone),
+            None => (
+                open_cold(audio, microphone_device)?,
+                LevelSource::Microphone,
+            ),
+        };
+        let monitor = LevelMonitor::start(stream, source == LevelSource::Microphone, emit, max);
+        *self.level.lock().unwrap_or_else(|error| error.into_inner()) = Some(monitor);
+        Ok(source)
+    }
+
+    pub fn stop_level(&self) {
+        self.level
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
     }
 
     pub fn start(
@@ -160,6 +202,13 @@ impl Recorder {
             .unwrap_or_else(|error| error.into_inner());
         if active.is_some() {
             return Err(Error::AlreadyRecording);
+        }
+        // A meter on its own stream gives the microphone back to dictation.
+        {
+            let mut level = self.level.lock().unwrap_or_else(|error| error.into_inner());
+            if level.as_ref().is_some_and(|level| level.owns_stream) {
+                *level = None;
+            }
         }
 
         let since_press = pressed_at
@@ -284,6 +333,22 @@ impl Recorder {
         }
         Ok(active.take())
     }
+}
+
+fn open_cold(
+    audio: &dyn anlg_audio::AudioProvider,
+    microphone_device: Option<String>,
+) -> Result<Samples, Error> {
+    let stream = audio
+        .open_mic_capture(microphone_device, SAMPLE_RATE, CHUNK_SIZE)
+        .map_err(|error| Error::Capture(error.to_string()))?;
+    Ok(stream
+        .map(|frame| {
+            frame
+                .map(|frame| frame.preferred_mic())
+                .map_err(|error| Error::Capture(error.to_string()))
+        })
+        .boxed())
 }
 
 /// How a recording ends: cancelled at once, or released, keeping its tail.
@@ -715,6 +780,92 @@ mod tests {
         );
         recorder.discard(second.file_path).unwrap();
         server.await.unwrap();
+    }
+
+    async fn until(condition: impl Fn() -> bool) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    fn meter() -> (
+        Arc<Mutex<Vec<LevelUpdate>>>,
+        impl Fn(LevelUpdate) -> bool + Send + 'static,
+    ) {
+        let updates = Arc::new(Mutex::new(Vec::new()));
+        let heard = updates.clone();
+        (updates, move |update| {
+            heard.lock().unwrap().push(update);
+            true
+        })
+    }
+
+    /// The Settings meter measures the microphone and lets go of it when
+    /// stopped, when nobody stops it, and when a dictation needs it.
+    #[tokio::test]
+    async fn the_level_meter_releases_the_microphone() {
+        let audio = Arc::new(TestAudio::default());
+        let recorder = Recorder::new();
+        let ended = |updates: &Arc<Mutex<Vec<LevelUpdate>>>| {
+            updates.lock().unwrap().last() == Some(&LevelUpdate::Ended)
+        };
+
+        let (updates, emit) = meter();
+        let source = recorder
+            .monitor_level(audio.as_ref(), None, emit, Duration::from_secs(60))
+            .unwrap();
+        assert_eq!(source, LevelSource::Microphone);
+        until(|| {
+            updates
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|update| matches!(update, LevelUpdate::Level { .. }))
+        })
+        .await;
+        recorder.stop_level();
+        until(|| ended(&updates) && audio.open.load(Ordering::SeqCst) == 0).await;
+
+        let (updates, emit) = meter();
+        recorder
+            .monitor_level(audio.as_ref(), None, emit, Duration::from_millis(20))
+            .unwrap();
+        until(|| ended(&updates) && audio.open.load(Ordering::SeqCst) == 0).await;
+
+        let (updates, emit) = meter();
+        recorder
+            .monitor_level(audio.as_ref(), None, emit, Duration::from_secs(60))
+            .unwrap();
+        recorder
+            .start(audio.clone(), None, "system".into())
+            .unwrap();
+        until(|| ended(&updates) && audio.open.load(Ordering::SeqCst) == 1).await;
+        let (updates, emit) = meter();
+        assert_eq!(
+            recorder
+                .monitor_level(audio.as_ref(), None, emit, Duration::from_secs(60))
+                .unwrap(),
+            LevelSource::InUse
+        );
+        assert!(ended(&updates));
+        recorder.cancel("system").await.unwrap();
+
+        recorder
+            .set_warm_microphone(audio.clone(), None, true)
+            .unwrap();
+        let (_, emit) = meter();
+        assert_eq!(
+            recorder
+                .monitor_level(audio.as_ref(), None, emit, Duration::from_secs(60))
+                .unwrap(),
+            LevelSource::OpenMicrophone
+        );
+        assert_eq!(audio.open.load(Ordering::SeqCst), 1);
+        recorder.stop_level();
     }
 
     #[tokio::test]

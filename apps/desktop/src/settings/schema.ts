@@ -50,6 +50,13 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "warm_microphone"],
     default: false as boolean,
   },
+  // On by default, as meetings always do: a Bluetooth headset's microphone
+  // drops what it plays to call quality.
+  dictation_avoid_bluetooth_microphone: {
+    type: "boolean",
+    path: ["dictation", "avoid_bluetooth_microphone"],
+    default: true as boolean,
+  },
   dictation_hands_free: {
     type: "boolean",
     path: ["dictation", "hands_free"],

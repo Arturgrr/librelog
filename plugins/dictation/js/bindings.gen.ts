@@ -27,10 +27,12 @@ async startRecording(microphoneDevice: string | null, owner: string) : Promise<R
  * live preview's words arrive over `updates`, and `environment` quiets other
  * audio and keeps the computer awake until the recording ends. `pressed_at_ms`
  * is when the shortcut went down, in milliseconds since the Unix epoch.
+ * Without a chosen microphone, a Bluetooth default gives way to a wired one
+ * unless `avoid_bluetooth_microphone` is false.
  */
-async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null) : Promise<Result<null, string>> {
+async startSystemRecording(microphoneDevice: string | null, owner: string, preview: PreviewConfig | null, updates: TAURI_CHANNEL<RecordingUpdate>, environment: RecordingEnvironment | null, pressedAtMs: number | null, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_system_recording", { microphoneDevice, owner, preview, updates, environment, pressedAtMs, avoidBluetoothMicrophone }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -64,13 +66,42 @@ async discardRecording(filePath: string) : Promise<Result<null, string>> {
  * Keeps the dictation microphone open between dictations, so each one
  * includes a moment from before its shortcut, or closes it.
  */
-async setWarmMicrophone(enabled: boolean, microphoneDevice: string | null) : Promise<Result<null, string>> {
+async setWarmMicrophone(enabled: boolean, microphoneDevice: string | null, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|set_warm_microphone", { enabled, microphoneDevice }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|set_warm_microphone", { enabled, microphoneDevice, avoidBluetoothMicrophone }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Which microphone dictation records from with these settings, for the
+ * note in Settings.
+ */
+async dictationMicrophone(microphoneDevice: string | null, avoidBluetoothMicrophone: boolean) : Promise<Result<MicrophoneChoice, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|dictation_microphone", { microphoneDevice, avoidBluetoothMicrophone }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Sends the level of the microphone dictation would record from over
+ * `levels` until `stop_input_level`, a minute, or a dictation that needs the
+ * microphone; never records. Callers check microphone access first, so this
+ * never prompts for it.
+ */
+async startInputLevel(microphoneDevice: string | null, avoidBluetoothMicrophone: boolean, levels: TAURI_CHANNEL<LevelUpdate>) : Promise<Result<LevelSource, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_input_level", { microphoneDevice, avoidBluetoothMicrophone, levels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async stopInputLevel() : Promise<void> {
+    await TAURI_INVOKE("plugin:dictation|stop_input_level");
 },
 /**
  * Fails fast when text could not be inserted where the focus is now. Skipped
@@ -460,6 +491,32 @@ export type InsertMode =
  * did then.
  */
 { type: "replaceSelection"; fingerprint: string }
+/**
+ * Where the meter reads its level from.
+ */
+export type LevelSource = 
+/**
+ * A stream opened for the meter.
+ */
+"microphone" | 
+/**
+ * The microphone kept open for dictation.
+ */
+"openMicrophone" | 
+/**
+ * A dictation is recording, so no meter opened.
+ */
+"inUse"
+export type LevelUpdate = 
+/**
+ * The last window's RMS and peak, 0 to 1.
+ */
+{ type: "level"; rms: number; peak: number } | 
+/**
+ * The meter let go of the microphone: stopped, timed out, a dictation
+ * took the microphone, or the microphone stopped.
+ */
+{ type: "ended" }
 export type ListenParams = { model?: string | null; channels?: number; sample_rate?: number; languages?: string[]; keywords?: string[]; num_speakers?: number | null; min_speakers?: number | null; max_speakers?: number | null; mic_num_speakers?: number | null; custom_query?: Partial<{ [key in string]: string }> | null }
 /**
  * Whether macOS lets this app pause and resume a media player, under
@@ -474,6 +531,15 @@ export type MediaControl = "allowed" | "denied" |
  * macOS asks only while the player runs.
  */
 "notRunning"
+/**
+ * The microphone a dictation records from, and the Bluetooth default it
+ * passed over to do so.
+ */
+export type MicrophoneChoice = { 
+/**
+ * `None` records from the system default.
+ */
+device: string | null; passedOver: string | null }
 /**
  * The one model call to make, and the deadline after which it no longer counts.
  */

@@ -6,6 +6,8 @@ mod ext;
 mod handler;
 mod history;
 mod insertion;
+mod level;
+mod microphone;
 mod preview;
 mod recorder;
 mod tail;
@@ -33,6 +35,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::cancel_recording::<tauri::Wry>,
             commands::discard_recording::<tauri::Wry>,
             commands::set_warm_microphone::<tauri::Wry>,
+            commands::dictation_microphone::<tauri::Wry>,
+            commands::start_input_level::<tauri::Wry>,
+            commands::stop_input_level::<tauri::Wry>,
             commands::check_insertion,
             commands::insert_text,
             commands::insert_dictation,

@@ -1,10 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { platform } from "@tauri-apps/plugin-os";
 import { useShallow } from "zustand/react/shallow";
 
-import { commands as transcription } from "@anlg/plugin-transcription";
 import { Button } from "@anlg/ui/components/ui/button";
 import { Textarea } from "@anlg/ui/components/ui/textarea";
 
@@ -12,6 +11,7 @@ import { DesktopShortcutsNote } from "./desktop-shortcuts";
 import { DictationAiSettings } from "./dictation-ai";
 import { DictationAudioSettings } from "./dictation-audio";
 import { DictationIndicatorSetting } from "./dictation-indicator";
+import { DictationMicrophoneSettings } from "./dictation-microphone";
 import { DictationPasteLastSettings } from "./dictation-paste-last";
 import { DictationPresetSettings } from "./dictation-presets";
 import { DictationSendSettings } from "./dictation-send";
@@ -19,7 +19,6 @@ import { DictationShortcuts, isDoubleTapShortcut } from "./dictation-shortcut";
 import { DictationSpokenSettings } from "./dictation-spoken";
 
 import { useDictationStatus } from "~/dictation/state";
-import { AudioDeviceRow } from "~/settings/general/audio-settings";
 import { SettingsPageTitle } from "~/settings/page-title";
 import { useSetSettingValue } from "~/settings/queries";
 import { SettingSwitchRow } from "~/settings/setting-row";
@@ -40,17 +39,6 @@ export function SettingsDictation() {
   const setHandsFree = useSetSettingValue("dictation_hands_free");
   const sounds = useConfigValue("dictation_sounds");
   const setSounds = useSetSettingValue("dictation_sounds");
-  const microphone = useConfigValue("microphone_device");
-  const setMicrophone = useSetSettingValue("microphone_device");
-  const microphones = useQuery({
-    queryKey: ["microphone-devices"],
-    queryFn: async () => {
-      const result = await transcription.listMicrophoneDevices();
-      if (result.status === "error") throw new Error(result.error);
-      return result.data;
-    },
-    refetchInterval: 3_000,
-  });
   const status = useDictationStatus(
     useShallow((state) => ({
       phase: state.phase,
@@ -90,15 +78,7 @@ export function SettingsDictation() {
         />
         <DictationShortcuts shortcuts={shortcuts} />
         <DesktopShortcutsNote shortcuts={shortcuts} failure />
-        <AudioDeviceRow
-          title={<Trans>Microphone</Trans>}
-          description={
-            <Trans>Choose the microphone that captures your voice.</Trans>
-          }
-          value={microphone}
-          devices={microphones.data ?? []}
-          onChange={setMicrophone}
-        />
+        <DictationMicrophoneSettings />
         <SettingSwitchRow
           title={<Trans>Keep microphone ready</Trans>}
           description={

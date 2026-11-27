@@ -77,7 +77,11 @@ export function DictationLifecycle() {
 // Opens and closes the open microphone one change at a time, in order.
 let warmMicrophone: Promise<void> = Promise.resolve();
 
-function setWarmMicrophone(enabled: boolean, device: string | null) {
+function setWarmMicrophone(
+  enabled: boolean,
+  device: string | null,
+  avoidBluetooth: boolean,
+) {
   warmMicrophone = warmMicrophone
     .then(async () => {
       // Without microphone access, opening it would prompt out of the blue.
@@ -87,7 +91,9 @@ function setWarmMicrophone(enabled: boolean, device: string | null) {
         unwrap(await permissions.checkPermission("microphone")) !== "authorized"
       )
         return;
-      unwrap(await dictation.setWarmMicrophone(enabled, device));
+      unwrap(
+        await dictation.setWarmMicrophone(enabled, device, avoidBluetooth),
+      );
     })
     .catch((error: unknown) =>
       console.warn("[dictation] the microphone could not stay open", error),
@@ -101,14 +107,27 @@ function setWarmMicrophone(enabled: boolean, device: string | null) {
 function WarmMicrophone() {
   const enabled = useConfigValue("dictation_warm_microphone");
   const microphone = useConfigValue("microphone_device");
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   if (!enabled) return null;
-  return <OpenMicrophone key={microphone} device={microphone || null} />;
+  return (
+    <OpenMicrophone
+      key={`${microphone}:${avoidBluetooth}`}
+      device={microphone || null}
+      avoidBluetooth={avoidBluetooth}
+    />
+  );
 }
 
-function OpenMicrophone({ device }: { device: string | null }) {
+function OpenMicrophone({
+  device,
+  avoidBluetooth,
+}: {
+  device: string | null;
+  avoidBluetooth: boolean;
+}) {
   useMountEffect(() => {
-    setWarmMicrophone(true, device);
-    return () => setWarmMicrophone(false, null);
+    setWarmMicrophone(true, device, avoidBluetooth);
+    return () => setWarmMicrophone(false, null, avoidBluetooth);
   });
   return null;
 }
@@ -174,6 +193,7 @@ function ActiveDictation() {
   const runBatch = useRunBatch(id);
   const stopTranscription = useListener((state) => state.stopTranscription);
   const microphone = useConfigValue("microphone_device");
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   const livePreview = useConfigValue("dictation_live_preview");
   const dictionary = useConfigValue("personalization_dictionary_terms");
   const replacements = useConfigValue(
@@ -205,6 +225,7 @@ function ActiveDictation() {
   const current = useRef({
     runBatch,
     microphone,
+    avoidBluetooth,
     livePreview,
     languages,
     preset,
@@ -228,6 +249,7 @@ function ActiveDictation() {
   current.current = {
     runBatch,
     microphone,
+    avoidBluetooth,
     livePreview,
     languages,
     preset,
@@ -358,8 +380,15 @@ function ActiveDictation() {
         const field = learning
           ? read.then((read) => read?.text ?? null)
           : Promise.resolve(null);
-        const { microphone, livePreview, conn, languages, audio, hudPosition } =
-          current.current;
+        const {
+          microphone,
+          avoidBluetooth,
+          livePreview,
+          conn,
+          languages,
+          audio,
+          hudPosition,
+        } = current.current;
         useDictationStatus.setState({ error: null });
         const meeting = meetingRecording().catch(() => true);
         if (platform() === "macos") {
@@ -471,6 +500,7 @@ function ActiveDictation() {
               }),
               environment,
               pressedAtMs,
+              avoidBluetooth,
             ),
           );
         } catch (error) {

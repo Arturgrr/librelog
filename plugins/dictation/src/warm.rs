@@ -47,6 +47,8 @@ pub(crate) fn lookback(
 struct Ring {
     samples: VecDeque<f32>,
     listener: Option<mpsc::UnboundedSender<Result<Arc<[f32]>, Error>>>,
+    /// The Settings level meter, which reads beside a recording.
+    meter: Option<mpsc::UnboundedSender<Result<Arc<[f32]>, Error>>>,
     open: bool,
 }
 
@@ -56,11 +58,27 @@ impl Ring {
         self.samples.extend(samples.iter().copied());
         let excess = self.samples.len().saturating_sub(capacity);
         self.samples.drain(..excess);
+        if let Some(meter) = &self.meter
+            && meter.send(Ok(samples.clone())).is_err()
+        {
+            self.meter = None;
+        }
         if let Some(listener) = &self.listener
             && listener.send(Ok(samples)).is_err()
         {
             self.listener = None;
         }
+    }
+
+    /// The live audio for the level meter, without taking it from a
+    /// recording. A new meter replaces the last one.
+    fn meter(&mut self) -> Option<Samples> {
+        if !self.open {
+            return None;
+        }
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        self.meter = Some(sender);
+        Some(futures_util::stream::poll_fn(move |context| receiver.poll_recv(context)).boxed())
     }
 
     /// The live audio from now on, led by the last `lookback` of it.
@@ -112,6 +130,7 @@ impl WarmMicrophone {
             tracing::warn!(error = ?ended, "the open dictation microphone stopped");
             let mut ring = lock(&task_ring);
             ring.open = false;
+            ring.meter = None;
             if let (Some(listener), Some(error)) = (ring.listener.take(), ended) {
                 let _ = listener.send(Err(error));
             }
@@ -128,6 +147,11 @@ impl WarmMicrophone {
     /// listener replaces the last one.
     pub(crate) fn listen(&self, lookback: Duration) -> Option<Samples> {
         lock(&self.ring).listen(lookback)
+    }
+
+    /// The microphone's audio for the level meter; `None` once it stopped.
+    pub(crate) fn meter(&self) -> Option<Samples> {
+        lock(&self.ring).meter()
     }
 }
 
