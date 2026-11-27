@@ -1,12 +1,16 @@
 //! Copying a capture on Linux. A screenshot goes as PNG data, a GIF or a
-//! movie as a file reference (`text/uri-list` and GNOME's
-//! `x-special/gnome-copied-files`, which file managers and chat apps
-//! paste as the file), each with the other formats that fit. Librelog
-//! owns the X11 CLIPBOARD selection and serves every format from a thread
-//! until another client takes it; GNOME bridges that selection to Wayland
-//! apps through XWayland. Without X11, `wl-copy` serves the main format.
-//! The selection owner is adapted from Hex's `src/linux/clipboard.rs` (MIT,
-//! see THIRD_PARTY_NOTICES.md).
+//! movie as a file reference (`text/uri-list`, GNOME's
+//! `x-special/gnome-copied-files` and KDE's `application/x-kde-cutselection`,
+//! which file managers and chat apps paste as the file), each with the other
+//! formats that fit. In a Wayland session Librelog serves every format
+//! through the data-control protocol (KWin, wlroots), which needs no focus:
+//! KWin ignores an X11 selection taken while no XWayland window is active, as
+//! after a capture. Without it (GNOME), Librelog owns the X11 CLIPBOARD
+//! selection and serves every format from a thread until another client
+//! takes it; GNOME bridges that selection to Wayland apps through XWayland.
+//! Without either, `wl-copy` serves the main format. The selection owner is
+//! adapted from Hex's `src/linux/clipboard.rs` (MIT, see
+//! THIRD_PARTY_NOTICES.md).
 
 use std::io::Cursor;
 use std::path::Path;
@@ -20,6 +24,8 @@ pub const PNG: &str = "image/png";
 pub const GIF: &str = "image/gif";
 pub const URI_LIST: &str = "text/uri-list";
 pub const GNOME_FILES: &str = "x-special/gnome-copied-files";
+/// Dolphin reads `1` as a cut, which moves the file when pasted.
+pub const KDE_CUT: &str = "application/x-kde-cutselection";
 /// What the clipboard serves, larger formats past this are left out.
 const MAX_DATA: u64 = 64 * 1024 * 1024;
 
@@ -41,6 +47,7 @@ pub fn formats(path: &Path, kind: &str) -> Result<Vec<(String, Vec<u8>)>, Annota
     let files = vec![
         (URI_LIST.to_owned(), format!("{uri}\r\n").into_bytes()),
         (GNOME_FILES.to_owned(), format!("copy\n{uri}").into_bytes()),
+        (KDE_CUT.to_owned(), b"0".to_vec()),
     ];
     let small = std::fs::metadata(path)
         .map_err(|error| fail(codes::IO, error))?
@@ -76,36 +83,79 @@ pub fn formats(path: &Path, kind: &str) -> Result<Vec<(String, Vec<u8>)>, Annota
     })
 }
 
-/// The desktop's clipboard: X11 (also under XWayland), else `wl-copy`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Backend {
+    DataControl,
+    X11,
+    WlCopy,
+}
+
+/// The ways to try, in order. Data-control first: under KWin an X11
+/// selection taken without focus is never offered to Wayland apps.
+fn backends(wayland: bool, x11: bool, wl_copy: bool) -> Vec<Backend> {
+    [
+        (wayland, Backend::DataControl),
+        (x11, Backend::X11),
+        (wayland && wl_copy, Backend::WlCopy),
+    ]
+    .into_iter()
+    .filter_map(|(available, backend)| available.then_some(backend))
+    .collect()
+}
+
+/// The desktop's clipboard.
 pub struct Desktop;
 
 impl Clipboard for Desktop {
     fn set(&self, formats: Vec<(String, Vec<u8>)>) -> Result<(), AnnotateError> {
-        let x11 = std::env::var_os("DISPLAY").is_some_and(|display| !display.is_empty());
-        let wayland =
-            std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty());
-        let x11_error = if x11 {
-            match x11::serve(formats.clone()) {
-                Ok(()) => return Ok(()),
-                Err(error) => Some(error),
-            }
-        } else {
-            None
-        };
-        if wayland && super::gst::installed("wl-copy") {
-            let Some((mime, data)) = formats.into_iter().next() else {
-                return Ok(());
+        let set = |name| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+        let order = backends(
+            set("WAYLAND_DISPLAY"),
+            set("DISPLAY"),
+            super::gst::installed("wl-copy"),
+        );
+        if order.is_empty() {
+            return Err(fail(
+                codes::IO,
+                "could not use the clipboard: there is no Wayland or X11 display",
+            ));
+        }
+        let mut errors = Vec::new();
+        for backend in order {
+            let served = match backend {
+                Backend::DataControl => data_control(formats.clone()),
+                Backend::X11 => x11::serve(formats.clone()),
+                Backend::WlCopy => match formats.first() {
+                    Some((mime, data)) => wl_copy(mime, data.clone()),
+                    None => Ok(()),
+                },
             };
-            return wl_copy(&mime, data).map_err(|error| fail(codes::IO, error));
+            match served {
+                Ok(()) => return Ok(()),
+                Err(error) => errors.push(format!("{backend:?}: {error}")),
+            }
         }
         Err(fail(
             codes::IO,
-            match x11_error {
-                Some(error) => format!("could not use the clipboard: {error}"),
-                None => "could not use the clipboard: there is no X11 display, and wl-copy (the wl-clipboard package) is not installed".to_owned(),
-            },
+            format!("could not use the clipboard: {}", errors.join("; ")),
         ))
     }
+}
+
+/// Serves `formats` from a thread until another client takes the clipboard.
+/// Fails at once when the compositor lacks data-control (GNOME).
+fn data_control(formats: Vec<(String, Vec<u8>)>) -> Result<(), String> {
+    use wl_clipboard_rs::copy::{MimeSource, MimeType, Options, Source};
+    let sources = formats
+        .into_iter()
+        .map(|(mime, data)| MimeSource {
+            source: Source::Bytes(data.into_boxed_slice()),
+            mime_type: MimeType::Specific(mime),
+        })
+        .collect();
+    Options::new()
+        .copy_multi(sources)
+        .map_err(|error| error.to_string())
 }
 
 /// `wl-copy` forks a server that outlives it and keeps whatever output it
@@ -384,7 +434,7 @@ mod tests {
             .unwrap();
         let shot = formats(&jpeg, "screenshot").unwrap();
         let mimes: Vec<&str> = shot.iter().map(|(mime, _)| mime.as_str()).collect();
-        assert_eq!(mimes, [PNG, URI_LIST, GNOME_FILES]);
+        assert_eq!(mimes, [PNG, URI_LIST, GNOME_FILES, KDE_CUT]);
         assert!(shot[0].1.starts_with(b"\x89PNG"));
         let uri = String::from_utf8(shot[1].1.clone()).unwrap();
         assert!(uri.ends_with("/Librelog%20Screenshot.jpg\r\n"), "{uri}");
@@ -400,7 +450,7 @@ mod tests {
             .into_iter()
             .map(|(mime, _)| mime)
             .collect();
-        assert_eq!(mimes, [URI_LIST, GNOME_FILES]);
+        assert_eq!(mimes, [URI_LIST, GNOME_FILES, KDE_CUT]);
         let gif = dir.path().join("a.gif");
         std::fs::write(&gif, b"GIF89a").unwrap();
         let mimes: Vec<String> = formats(&gif, "gif")
@@ -408,6 +458,16 @@ mod tests {
             .into_iter()
             .map(|(mime, _)| mime)
             .collect();
-        assert_eq!(mimes, [URI_LIST, GNOME_FILES, GIF]);
+        assert_eq!(mimes, [URI_LIST, GNOME_FILES, KDE_CUT, GIF]);
+    }
+
+    /// The X11 selection came first whenever XWayland ran, and KWin dropped it
+    /// while a Wayland window had focus: Copy left the old clipboard.
+    #[test]
+    fn a_wayland_session_copies_through_data_control_before_x11() {
+        use Backend::*;
+        assert_eq!(backends(true, true, true), [DataControl, X11, WlCopy]);
+        assert_eq!(backends(true, false, false), [DataControl]);
+        assert_eq!(backends(false, true, true), [X11]);
     }
 }
