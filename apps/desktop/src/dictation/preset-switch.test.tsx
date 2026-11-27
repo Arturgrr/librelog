@@ -60,6 +60,8 @@ import {
 } from "./preset-switch";
 import { useDictationStatus } from "./state";
 
+import { listenerStore } from "~/store/zustand/listener/instance";
+
 const PRESETS = [
   {
     id: "pt",
@@ -122,6 +124,7 @@ describe("dictation presets", () => {
   });
   afterEach(async () => {
     cleanup();
+    listenerStore.setState(listenerStore.getInitialState(), true);
     await waitForDictationPresetCleanup();
   });
 
@@ -165,6 +168,30 @@ describe("dictation presets", () => {
     expect(current().active).toBe("");
 
     act(() => useDictationStatus.setState({ pending: 0 }));
+    await waitFor(() => expect(current().active).toBe("pt"));
+  });
+
+  it("keeps a live meeting's model until the meeting ends", async () => {
+    const live = (status: "active" | "finalizing" | "inactive") =>
+      listenerStore.setState((state) => ({
+        live: { ...state.live, status },
+      }));
+    render(<DictationPresetLifecycle />);
+    act(() => live("active"));
+    await press();
+    expect(current()).toEqual({
+      provider: "deepgram",
+      model: "nova-3",
+      active: "",
+    });
+    expect(mocks.toast).toHaveBeenLastCalledWith(
+      "Switching to Português · Whisper Turbo after this meeting.",
+    );
+
+    act(() => live("finalizing"));
+    expect(current().active).toBe("");
+
+    act(() => live("inactive"));
     await waitFor(() => expect(current().active).toBe("pt"));
   });
 });

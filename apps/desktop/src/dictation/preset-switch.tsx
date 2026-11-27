@@ -23,6 +23,7 @@ import {
   useSettingsReady,
 } from "~/settings/queries";
 import { resolveConfigValues, useConfigValue } from "~/shared/config";
+import { listenerStore } from "~/store/zustand/listener/instance";
 import { holdLocalModel } from "~/stt/local-model-hold";
 
 // Long enough for the next dictation to find the model loaded.
@@ -35,7 +36,7 @@ export const useDictationPresetStatus = create<{ error: string | null }>(
 let registration: Promise<void> = Promise.resolve();
 let trayUpdates: Promise<void> = Promise.resolve();
 let switching: Promise<void> = Promise.resolve();
-// The preset to switch to once the dictation in progress is done.
+// The preset to switch to once the dictation or meeting in progress is done.
 let deferred: number | null = null;
 let releaseHold = () => {};
 
@@ -63,6 +64,12 @@ function dictating() {
   return capturing || pending > 0;
 }
 
+// A meeting transcribes with the same provider and model until it ends.
+function meetingRecording() {
+  const { status } = listenerStore.getState().live;
+  return status === "active" || status === "finalizing";
+}
+
 async function apply(preset: DictationPreset) {
   await setSettingValues({
     current_stt_provider: preset.provider,
@@ -77,7 +84,8 @@ async function apply(preset: DictationPreset) {
 /**
  * Switches dictation to the preset at `request`, or to the one after the
  * preset in use when `request` is null. During a dictation the switch waits
- * for it, and every dictation waiting to be transcribed, to finish.
+ * for it, and every dictation waiting to be transcribed, to finish; during a
+ * meeting, for the meeting to end.
  */
 export function switchDictationPreset(request: number | null) {
   switching = switching
@@ -102,10 +110,14 @@ export function switchDictationPreset(request: number | null) {
       const index = request ?? (from + 1) % presets.length;
       const preset = presets[index];
       if (!preset) return;
-      if (dictating()) {
+      if (dictating() || meetingRecording()) {
         deferred = index;
         const label = presetLabel(preset);
-        toast(t`Switching to ${label} after this dictation.`);
+        toast(
+          dictating()
+            ? t`Switching to ${label} after this dictation.`
+            : t`Switching to ${label} after this meeting.`,
+        );
         return;
       }
       deferred = null;
@@ -148,16 +160,19 @@ function PresetRequests() {
         if (disposed) stop();
         else unlisten = stop;
       });
-    const unsubscribe = useDictationStatus.subscribe(() => {
-      if (deferred === null || dictating()) return;
+    const applyDeferred = () => {
+      if (deferred === null || dictating() || meetingRecording()) return;
       const index = deferred;
       deferred = null;
       void switchDictationPreset(index);
-    });
+    };
+    const unsubscribeDictation = useDictationStatus.subscribe(applyDeferred);
+    const unsubscribeMeeting = listenerStore.subscribe(applyDeferred);
     return () => {
       disposed = true;
       unlisten?.();
-      unsubscribe();
+      unsubscribeDictation();
+      unsubscribeMeeting();
       deferred = null;
       releaseHold();
       releaseHold = () => {};
