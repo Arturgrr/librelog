@@ -12,11 +12,12 @@ use tauri::Manager;
 use tauri_specta::Event;
 
 use super::Action;
-use super::bindings::{Binding, Does, RELEASE_WAIT, ReleaseGate};
+use super::bindings::{Binding, Does, RELEASE_WAIT, ReleaseGate, stale};
 
 use crate::{
     AnnotateShortcutEvent, CaptureShortcutEvent, DictationPresetEvent, PasteLastAnnotationEvent,
-    PasteLastEvent, ShortcutEvent, annotate, press,
+    PasteLastEvent, ShortcutEvent, annotate,
+    press::{self, TapLock},
 };
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -73,6 +74,7 @@ pub async fn bind(
                 .preferred_trigger(binding.trigger.as_str())
         })
         .collect();
+    let ids: Vec<String> = bindings.iter().map(|binding| binding.id.clone()).collect();
     let does: HashMap<String, Does> = bindings
         .into_iter()
         .map(|binding| (binding.id, binding.does))
@@ -122,9 +124,12 @@ pub async fn bind(
             ));
         }
     };
+    // KWin raises the approval dialog above Librelog's window, and gives
+    // it the focus, only when it knows whose it is.
+    let parent = main_window(&app);
     let bound = tokio::time::timeout(APPROVAL_TIMEOUT, async {
         portal
-            .bind_shortcuts(&session, &shortcuts, None, Default::default())
+            .bind_shortcuts(&session, &shortcuts, parent.as_ref(), Default::default())
             .await?
             .response()
     })
@@ -146,6 +151,7 @@ pub async fn bind(
         }
     };
     let bound_triggers = triggers(bound.shortcuts());
+    tauri::async_runtime::spawn(forget_stale(ids));
     let session_path: String =
         serde_json::from_value(serde_json::to_value(&session).map_err(|e| failed("session", &e))?)
             .map_err(|e| failed("session", &e))?;
@@ -155,6 +161,7 @@ pub async fn bind(
         does,
         gates: Default::default(),
         down: Default::default(),
+        locks: Default::default(),
     };
 
     let task = tauri::async_runtime::spawn({
@@ -169,12 +176,16 @@ pub async fn bind(
                         event = pressed.next() => {
                             let Some(event) = event else { break false };
                             if event.session_handle().as_str() == session_path {
+                                if let Some(token) = activation_token(event.options()) {
+                                    anlg_desktop_portal::set_activation_token(token);
+                                }
                                 handler.on(&app, event.shortcut_id(), true);
                             }
                         }
                         event = released.next() => {
                             let Some(event) = event else { break false };
                             if event.session_handle().as_str() == session_path {
+                                anlg_desktop_portal::note_shortcut_release();
                                 handler.on(&app, event.shortcut_id(), false);
                             }
                         }
@@ -201,6 +212,50 @@ pub async fn bind(
     Ok((Registration { stop, task, ended }, bound_triggers))
 }
 
+/// Librelog's main window, when it shows: a dialog parented to a hidden or
+/// minimized window would be hidden with it.
+fn main_window(app: &tauri::AppHandle) -> Option<ashpd::WindowIdentifier> {
+    let window = app.get_webview_window("main")?;
+    if !window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(true) {
+        return None;
+    }
+    anlg_desktop_portal::parent(&window)
+}
+
+/// The token an `Activated` signal carries (portal version 2), for the
+/// window the shortcut opens.
+fn activation_token(
+    options: &HashMap<String, ashpd::zbus::zvariant::OwnedValue>,
+) -> Option<String> {
+    let token = String::try_from(options.get("activation_token")?.try_clone().ok()?).ok()?;
+    (!token.is_empty()).then_some(token)
+}
+
+/// KDE keeps every shortcut id a session ever bound, listed under Librelog
+/// in System Settings, and a shortcut changed in Librelog's Settings is a
+/// new id. Once a session is bound, the ids it no longer has are removed
+/// from kglobalaccel, under the component the portal named after Librelog's
+/// app id.
+async fn forget_stale(bound: Vec<String>) {
+    if !super::trigger::kde() {
+        return;
+    }
+    let Some(component) = anlg_desktop_portal::app_id() else {
+        return;
+    };
+    match anlg_desktop_portal::kde_shortcut_ids(&component).await {
+        Ok(known) => {
+            for id in stale(&known, &bound) {
+                match anlg_desktop_portal::forget_kde_shortcut(&component, &id).await {
+                    Ok(()) => tracing::info!(id, "removed a shortcut Librelog no longer binds"),
+                    Err(error) => tracing::debug!(%error, id, "could not remove a stale shortcut"),
+                }
+            }
+        }
+        Err(error) => tracing::debug!(%error, "kglobalaccel did not list Librelog's shortcuts"),
+    }
+}
+
 fn triggers(shortcuts: &[ashpd::desktop::global_shortcuts::Shortcut]) -> Triggers {
     shortcuts
         .iter()
@@ -223,6 +278,8 @@ struct Handler {
     gates: Arc<Mutex<HashMap<String, ReleaseGate>>>,
     /// Shortcuts activated and not yet deactivated.
     down: Mutex<HashSet<String>>,
+    /// Each dictation shortcut's double-tap lock.
+    locks: Mutex<HashMap<String, TapLock>>,
 }
 
 impl Handler {
@@ -242,6 +299,7 @@ impl Handler {
         let action = match does {
             Does::Cancel => {
                 if pressed {
+                    self.locks.lock().unwrap_or_else(|e| e.into_inner()).clear();
                     let state = app.state::<super::GlobalState>();
                     if state.active.load(Ordering::SeqCst) {
                         press::cancel(app);
@@ -256,6 +314,22 @@ impl Handler {
         };
         match action {
             Action::Dictate(source) => {
+                let passes = {
+                    let mut locks = self.locks.lock().unwrap_or_else(|e| e.into_inner());
+                    let lock = locks.entry(id.to_owned()).or_default();
+                    if pressed {
+                        lock.press();
+                        true
+                    } else {
+                        lock.release(std::time::Instant::now())
+                    }
+                };
+                if !passes {
+                    // Locked: the dictation goes on, and the next press and
+                    // release of a dictation shortcut end it.
+                    press::forget(app, source);
+                    return;
+                }
                 let event = if pressed {
                     ShortcutEvent::Pressed
                 } else {
@@ -281,6 +355,8 @@ impl Handler {
     /// The session is going: what is still down is let go, as the desktop
     /// will not say so any more.
     fn release_all(&self, app: &tauri::AppHandle) {
+        // Nothing still down may lock a dictation now.
+        self.locks.lock().unwrap_or_else(|e| e.into_inner()).clear();
         let down: Vec<String> = self
             .down
             .lock()

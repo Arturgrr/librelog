@@ -10,12 +10,17 @@
 //! suggestion (GNOME, KDE). So each id carries the trigger it asks for: a
 //! shortcut changed in Settings is a new id, which the desktop asks about,
 //! while an unchanged one keeps its id and any key the user gave it there.
+//! A stable id rebound with a new suggestion would keep its old key: KDE's
+//! portal takes the key kglobalaccel stored for an id over the suggestion,
+//! and GNOME's keeps what it stored too. KDE also keeps every id it was
+//! ever given, so [`stale`] names the ones a later session no longer binds
+//! (see `portal::forget_stale`).
 
 use std::cell::RefCell;
 
 use tauri_plugin_global_shortcut::Shortcut;
 
-use super::{Action, Backend, trigger::portal_trigger};
+use super::{Action, Backend, trigger::trigger_for};
 use crate::CaptureAction;
 
 /// Control+Alt+Escape is KWin's Kill Window.
@@ -56,6 +61,39 @@ fn shortcut_id(base: &str, trigger: &str) -> String {
     format!("{base}-{}", trigger.replace('+', "-"))
 }
 
+/// Every id base [`Held::bindings`] gives out.
+const BASES: &[&str] = &[
+    "dictate",
+    "cancel-dictation",
+    "paste-last-dictation",
+    "annotate",
+    "paste-last-annotation",
+    "capture-area",
+    "capture-fullscreen",
+    "capture-window",
+    "capture-record",
+    "capture-gif",
+    "switch-dictation-preset",
+];
+
+/// The ids among `known` (what the desktop keeps for Librelog) that Librelog
+/// gave out once and `bound` no longer has. Ids it never gave out are left.
+pub(super) fn stale(known: &[String], bound: &[String]) -> Vec<String> {
+    known
+        .iter()
+        .filter(|id| !bound.contains(id))
+        .filter(|id| {
+            BASES.iter().any(|base| {
+                id.strip_prefix(base)
+                    .and_then(|rest| rest.strip_prefix('-'))
+                    .and_then(|trigger| trigger.chars().last())
+                    .is_some_and(|last| last.is_ascii_alphanumeric() || last == '_')
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Does {
     Act(Action),
@@ -69,7 +107,13 @@ impl Held {
     /// keep it from every app): a cancel shortcut, Control+Alt+period unless
     /// the user picks another, stands in for it while dictation or Annotate
     /// has a shortcut.
+    #[cfg(target_os = "linux")]
     pub fn bindings(&self) -> Result<Vec<Binding>, String> {
+        self.bindings_for(super::trigger::kde())
+    }
+
+    /// [`Self::bindings`] with its triggers in KDE's form or not.
+    pub fn bindings_for(&self, kde: bool) -> Result<Vec<Binding>, String> {
         let mut held: Vec<(Shortcut, Action)> = self
             .0
             .borrow()
@@ -110,7 +154,7 @@ impl Held {
                 ),
                 Action::Cancel | Action::AnnotatePen => continue,
             };
-            let trigger = portal_trigger(*key)?;
+            let trigger = trigger_for(*key, kde)?;
             bindings.push(Binding {
                 id: shortcut_id(&base, &trigger),
                 description,
@@ -173,20 +217,73 @@ pub(super) fn same_trigger(asked: &str, described: &str) -> bool {
     fn keys(trigger: &str) -> std::collections::BTreeSet<String> {
         let trigger = trigger.trim();
         let trigger = trigger.strip_prefix("Press ").unwrap_or(trigger);
+        // KDE writes `Alt+$` and `Alt++`; GNOME `<alt>dollar`.
+        let (trigger, plus) = match trigger.strip_suffix("++") {
+            Some(rest) => (rest, true),
+            None => (trigger, false),
+        };
+        let separators: &[char] = if trigger.contains('+') || plus {
+            &['+']
+        } else {
+            &['<', '>', ' ']
+        };
         trigger
-            .split(['+', '<', '>', ' '])
+            .split(separators)
+            .chain(plus.then_some("plus"))
             .filter(|key| !key.is_empty())
             .map(|key| match key.to_lowercase().as_str() {
                 "control" | "primary" => "ctrl".to_string(),
                 "logo" | "meta" | "win" | "mod4" => "super".to_string(),
-                "." => "period".to_string(),
                 "pgup" | "prior" => "page_up".to_string(),
                 "pgdown" | "next" => "page_down".to_string(),
-                key => key.to_string(),
+                key => symbol_name(key).unwrap_or(key).to_string(),
             })
             .collect()
     }
     keys(asked) == keys(described)
+}
+
+/// The xkb name of a symbol the desktop writes as itself.
+fn symbol_name(key: &str) -> Option<&'static str> {
+    let mut chars = key.chars();
+    let (Some(symbol), None) = (chars.next(), chars.next()) else {
+        return None;
+    };
+    Some(match symbol {
+        '!' => "exclam",
+        '@' => "at",
+        '#' => "numbersign",
+        '$' => "dollar",
+        '%' => "percent",
+        '^' => "asciicircum",
+        '&' => "ampersand",
+        '*' => "asterisk",
+        '(' => "parenleft",
+        ')' => "parenright",
+        '_' => "underscore",
+        '+' => "plus",
+        '{' => "braceleft",
+        '}' => "braceright",
+        '|' => "bar",
+        ':' => "colon",
+        '"' => "quotedbl",
+        '~' => "asciitilde",
+        '<' => "less",
+        '>' => "greater",
+        '?' => "question",
+        '.' => "period",
+        ',' => "comma",
+        '-' => "minus",
+        '=' => "equal",
+        '/' => "slash",
+        ';' => "semicolon",
+        '\'' => "apostrophe",
+        '`' => "grave",
+        '[' => "bracketleft",
+        ']' => "bracketright",
+        '\\' => "backslash",
+        _ => return None,
+    })
 }
 
 /// Paste shortcuts fire once the shortcut's keys are up: a Control+V sent
@@ -233,7 +330,7 @@ mod tests {
     }
 
     fn ids(held: &Held) -> Vec<(String, String)> {
-        held.bindings()
+        held.bindings_for(false)
             .unwrap()
             .into_iter()
             .map(|binding| (binding.id, binding.trigger))
@@ -303,7 +400,7 @@ mod tests {
             ]
         );
         keys.set_annotate(&held, None, None).unwrap();
-        assert!(held.bindings().unwrap().is_empty());
+        assert!(held.bindings_for(false).unwrap().is_empty());
     }
 
     /// Ids used to be positions: a desktop kept the key it stored for
@@ -336,12 +433,36 @@ mod tests {
         assert_eq!(dictation_ids(&held), ["dictate-ALT-j"]);
     }
 
+    /// KDE kept every id a changed shortcut left behind, listed under
+    /// Librelog in System Settings.
+    #[test]
+    fn only_ids_librelog_gave_out_and_no_longer_binds_are_stale() {
+        let known = [
+            "dictate-CTRL-ALT-space",
+            "dictate-ALT-d",
+            "capture-area-ALT-dollar",
+            "capture-area-ALT-SHIFT-4",
+            "dictate",
+            "dictate-",
+            "something-else",
+        ]
+        .map(String::from);
+        let bound = ["dictate-CTRL-ALT-space", "capture-area-ALT-dollar"].map(String::from);
+        assert_eq!(
+            stale(&known, &bound),
+            ["dictate-ALT-d", "capture-area-ALT-SHIFT-4"]
+        );
+    }
+
     #[test]
     fn the_desktops_own_wording_of_a_trigger_matches_what_was_asked() {
         assert!(same_trigger("CTRL+ALT+space", "Ctrl+Alt+Space"));
         assert!(same_trigger("CTRL+ALT+space", "Press <ctrl><alt>space"));
         assert!(same_trigger("LOGO+SHIFT+Page_Up", "Super+Shift+Page_Up"));
         assert!(same_trigger("CTRL+ALT+period", "Ctrl+Alt+."));
+        assert!(same_trigger("ALT+dollar", "Alt+$"));
+        assert!(same_trigger("ALT+plus", "Alt++"));
+        assert!(same_trigger("ALT+SHIFT+4", "<Alt><Shift>4"));
         assert!(!same_trigger("CTRL+ALT+space", "Ctrl+Alt+D"));
         assert!(!same_trigger("CTRL+ALT+space", "Alt+Space"));
     }

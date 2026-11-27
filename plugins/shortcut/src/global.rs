@@ -602,6 +602,8 @@ impl Backend for Global<'_> {
                 if event.state == ShortcutState::Pressed {
                     annotate::pressed(app);
                 } else {
+                    #[cfg(target_os = "linux")]
+                    anlg_desktop_portal::note_shortcut_release();
                     annotate::released(app);
                 }
             }),

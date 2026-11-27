@@ -45,6 +45,8 @@ anlg-desktop-portal = { workspace = true }
 ashpd = { workspace = true, features = ["screencast", "screenshot", "tokio"] }
 futures-util = { workspace = true }
 gif = "0.14"
+# Hands the area selector the shortcut's activation token.
+gtk = "0.18"
 libc = "0.2"
 url = { workspace = true }
 wl-clipboard-rs = "0.9"
