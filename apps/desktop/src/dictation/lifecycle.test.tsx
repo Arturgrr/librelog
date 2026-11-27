@@ -1152,6 +1152,59 @@ describe("dictation access and lifecycle", () => {
     }
   });
 
+  it("applies the spoken commands in the active preset's language", async () => {
+    Object.assign(mocks.settings, {
+      ai_language: "en",
+      spoken_languages: ["en"],
+      dictation_cleanup: false,
+      dictation_remove_fillers: true,
+      dictation_preset_active: "pt",
+      current_stt_provider: "deepgram",
+      current_stt_model: "nova-3",
+      dictation_presets: JSON.stringify([
+        {
+          id: "pt",
+          language: "pt",
+          provider: "deepgram",
+          model: "nova-3",
+          modelLabel: "Nova 3",
+        },
+      ]),
+    });
+    mocks.prepareDictationRefinement.mockResolvedValue({
+      type: "done",
+      outcome: { type: "raw", text: "Eu quero um café", reason: "cleanupOff" },
+    });
+    mocks.runBatch.mockImplementation(hears("Eu quero um café"));
+    try {
+      render(<DictationLifecycle />);
+      await waitFor(() =>
+        expect(useDictationStatus.getState().ready).toBe(true),
+      );
+      await shortcut("pressed");
+      await shortcut("released");
+      await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+      expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Eu quero um café",
+          spoken: expect.objectContaining({ languages: ["pt"], fillers: true }),
+        }),
+      );
+    } finally {
+      for (const key of [
+        "ai_language",
+        "spoken_languages",
+        "dictation_cleanup",
+        "dictation_remove_fillers",
+        "dictation_preset_active",
+        "current_stt_provider",
+        "current_stt_model",
+      ]) {
+        delete mocks.settings[key];
+      }
+    }
+  });
+
   it("keeps a cancelled dictation out of the history even when its text was ready", async () => {
     const finishFirst = holdFirstTranscription();
     render(<DictationLifecycle />);

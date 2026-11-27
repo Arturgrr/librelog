@@ -15,13 +15,16 @@ export class VoiceEditFailed extends Error {}
 
 /**
  * The spoken commands the person turned on, with the languages they dictate
- * in, which choose the words: only English and Portuguese have them.
+ * in, which choose the words: only English and Portuguese have them. A
+ * dictation preset's language replaces them, as it does for transcription.
  */
-export function useSpokenRules(): SpokenRules {
+export function useSpokenRules(presetLanguage?: string): SpokenRules {
   const main = useConfigValue("ai_language");
   const spoken = useConfigValue("spoken_languages");
   return {
-    languages: [main, ...(spoken || [])].filter(Boolean),
+    languages: presetLanguage
+      ? [presetLanguage]
+      : [main, ...(spoken || [])].filter(Boolean),
     fillers: useConfigValue("dictation_remove_fillers"),
     formatting: useConfigValue("dictation_spoken_formatting"),
     symbols: useConfigValue("dictation_spoken_symbols"),

@@ -182,7 +182,6 @@ function ActiveDictation() {
   const learning = useConfigValue("dictation_learning");
   const cleanup = useConfigValue("dictation_cleanup");
   const voiceEdit = useConfigValue("dictation_voice_edit");
-  const spoken = useSpokenRules();
   const context = useConfigValue("dictation_context");
   const exclusions = useConfigValue("dictation_context_exclusions");
   const model = useLanguageModel();
@@ -191,6 +190,7 @@ function ActiveDictation() {
   // A preset's language replaces the spoken languages for dictation only.
   const preset = useActiveDictationPreset();
   const languages = preset ? [preset.language] : spokenLanguages;
+  const spoken = useSpokenRules(preset?.language);
   const sounds = useConfigValue("dictation_sounds");
   const hudPosition = useConfigValue("dictation_hud_position");
   const audio = {
