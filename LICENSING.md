@@ -8,4 +8,4 @@ Third-party material, such as bundled models, fonts, and adapted code, keeps its
 
 ## Contributions
 
-Contributions are accepted under AGPL-3.0-or-later. Before adding third-party code or assets, check that the license is compatible with AGPL-3.0-or-later, keep the original copyright and license notices, and add an entry to `THIRD_PARTY_NOTICES.md` with the upstream source and revision.
+Contributions are accepted under AGPL-3.0-or-later and the [Librelog Contributor License Agreement](CLA.md), which each contributor signs once by commenting on a pull request. Before adding third-party code or assets, check that the license is compatible with AGPL-3.0-or-later, keep the original copyright and license notices, and add an entry to `THIRD_PARTY_NOTICES.md` with the upstream source and revision.
