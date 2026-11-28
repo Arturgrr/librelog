@@ -7558,6 +7558,15 @@ msgstr "O nível do microfone aparece quando sua reunião terminar."
 msgid "The microphone level stopped."
 msgstr "O nível do microfone parou."
 
+#: src/i18n/external-messages.ts
+msgid "The microphone stopped before anything was recorded."
+msgstr "O microfone parou antes de gravar qualquer coisa."
+
+#: src/chat/components/input/use-dictation.ts
+#: src/dictation/lifecycle.tsx
+msgid "The microphone stopped. Transcribing what was recorded."
+msgstr "O microfone parou. Transcrevendo o que foi gravado."
+
 #: src/settings/ai/llm/builtin.tsx
 msgid "The model file is removed from this computer. You can download it again later."
 msgstr "O arquivo do modelo é removido deste computador. Você pode baixá-lo novamente depois."
