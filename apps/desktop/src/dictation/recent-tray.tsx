@@ -1,6 +1,7 @@
 import { t } from "@lingui/core/macro";
+import { useLingui } from "@lingui/react/macro";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   commands as tray,
@@ -140,7 +141,8 @@ function RecentTrayMenu({
 }: {
   entries: { id: string; text: string }[];
 }) {
-  const menu: TrayRecentDictations = {
+  const { t } = useLingui();
+  const menu = JSON.stringify({
     title: t`Copy recent dictation`,
     empty: t`No recent dictations`,
     items: entries
@@ -149,14 +151,10 @@ function RecentTrayMenu({
         id: entry.id,
         preview: dictationPreview(entry.text),
       })),
-  };
-  return <ShowTrayMenu key={JSON.stringify(menu)} menu={menu} />;
-}
-
-function ShowTrayMenu({ menu }: { menu: TrayRecentDictations }) {
-  useMountEffect(() => {
-    showTrayMenu(menu);
-    return () => showTrayMenu(null);
-  });
+  } satisfies TrayRecentDictations);
+  useEffect(() => {
+    showTrayMenu(JSON.parse(menu) as TrayRecentDictations);
+  }, [menu]);
+  useMountEffect(() => () => showTrayMenu(null));
   return null;
 }

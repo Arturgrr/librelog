@@ -1,4 +1,12 @@
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { i18n } from "@lingui/core";
+import { I18nProvider } from "@lingui/react";
+import {
+  act,
+  cleanup,
+  render as renderInto,
+  waitFor,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -46,6 +54,13 @@ vi.mock("@anlg/plugin-tray", () => ({
 vi.mock("@anlg/ui/components/ui/toast", () => ({ toast: mocks.toast }));
 
 import { dictationPreview, RecentDictationsTray } from "./recent-tray";
+
+const render = (ui: ReactElement) =>
+  renderInto(ui, {
+    wrapper: ({ children }) => (
+      <I18nProvider i18n={i18n}>{children}</I18nProvider>
+    ),
+  });
 
 const lastMenu = () => mocks.setTrayRecentDictations.mock.lastCall?.[0];
 
@@ -111,5 +126,30 @@ describe("recent dictations in the tray", () => {
         items: [],
       }),
     );
+  });
+
+  it("replaces the menu when the history changes and clears it on unmount", async () => {
+    mocks.rows = [{ id: "a1", raw_text: "", final_text: "First." }];
+    const view = render(<RecentDictationsTray />);
+    await waitFor(() =>
+      expect(lastMenu()).toMatchObject({ items: [{ id: "a1" }] }),
+    );
+
+    mocks.rows = [
+      { id: "b2", raw_text: "", final_text: "Second." },
+      ...mocks.rows,
+    ];
+    view.rerender(<RecentDictationsTray />);
+    await waitFor(() =>
+      expect(lastMenu()).toMatchObject({
+        items: [{ id: "b2" }, { id: "a1" }],
+      }),
+    );
+    expect(
+      mocks.setTrayRecentDictations.mock.calls.map(([menu]) => menu),
+    ).not.toContain(null);
+
+    view.unmount();
+    await waitFor(() => expect(lastMenu()).toBeNull());
   });
 });
