@@ -1,7 +1,7 @@
 //! The context prompt Whisper and Qwen3-ASR read the dictation vocabulary
-//! from: the first terms in priority order, comma-separated so the echo
-//! filter in `session` can recognise the list, and as many as fit the
-//! model's prompt slot. Other families (Parakeet, Cohere, GigaAM, Nemotron)
+//! from: the terms in priority order, comma-separated so the echo filter in
+//! `session` can recognise the list, and only those that fit the model's
+//! prompt slot. Other families (Parakeet, Cohere, GigaAM, Nemotron)
 //! have no slot for it and get no prompt.
 //!
 //! Adapted from anomalyco/hex at 96d8ed31 (`src/dictation/vocabulary.rs`,
@@ -20,8 +20,9 @@ pub(crate) fn prompt_budget(architecture: &str) -> Option<usize> {
     }
 }
 
-/// The prompt for `terms`, most important first, as long as `tokens` says
-/// fits `budget`; `None` without a usable term. Terms with the list's own
+/// The prompt for `terms`, most important first, with each term that
+/// `tokens` says still fits `budget`; a term that does not is skipped, not
+/// the ones after it. `None` without a usable term. Terms with the list's own
 /// separators, or with bracketed text a tokenizer may read as a control
 /// token (which fails the run), are left out.
 pub(crate) fn prompt(
@@ -45,7 +46,7 @@ pub(crate) fn prompt(
             format!("{prompt}, {term}")
         };
         if tokens(&candidate) > budget {
-            break;
+            continue;
         }
         kept.push(term);
         prompt = candidate;
@@ -66,7 +67,7 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_lists_the_first_terms_that_fit_the_budget() {
+    fn the_prompt_lists_the_terms_that_fit_the_budget_in_order() {
         let list = terms(&[
             "Librelog",
             " Ottobit ",
@@ -84,6 +85,15 @@ mod tests {
             Some("Librelog, Ottobit")
         );
         assert_eq!(prompt(&list, 3, chars), None);
+        assert_eq!(
+            prompt(
+                &terms(&["Librelog", "Kubernetes", "Helm"]),
+                "Librelog, Helm".len(),
+                chars
+            )
+            .as_deref(),
+            Some("Librelog, Helm")
+        );
         assert_eq!(prompt(&[], 100, chars), None);
         assert_eq!(prompt(&terms(&["  ", ""]), 100, chars), None);
     }
