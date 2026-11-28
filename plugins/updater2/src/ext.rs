@@ -155,6 +155,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
     }
 
     pub async fn download(&self, version: &str) -> Result<(), crate::Error> {
+        if semver::Version::parse(version).is_err() {
+            return Err(crate::Error::InvalidVersion(version.to_string()));
+        }
         if !self_update_supported() {
             return Err(crate::Error::SelfUpdateUnsupported);
         }
@@ -332,7 +335,14 @@ fn get_cache_path<R: tauri::Runtime, M: tauri::Manager<R>>(
     manager: &M,
     version: &str,
 ) -> Option<PathBuf> {
-    Some(get_updates_dir(manager)?.join(format!("{}.bin", version)))
+    cache_file(&get_updates_dir(manager)?, version)
+}
+
+/// The cached download of `version` in `dir`, for a version that is a
+/// semver and so cannot name a path outside it.
+fn cache_file(dir: &Path, version: &str) -> Option<PathBuf> {
+    semver::Version::parse(version).ok()?;
+    Some(dir.join(format!("{version}.bin")))
 }
 
 fn prune_cached_updates<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M, keep: Option<&str>) {
@@ -366,7 +376,7 @@ fn prune_updates_dir(dir: &Path, keep: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use super::prune_updates_dir;
+    use super::{cache_file, prune_updates_dir};
 
     fn write_bins(dir: &std::path::Path, versions: &[&str]) {
         for v in versions {
@@ -403,5 +413,17 @@ mod tests {
 
         assert!(!dir.path().join("1.4.1.bin").exists());
         assert!(!dir.path().join("1.4.2.bin").exists());
+    }
+
+    #[test]
+    fn only_a_semver_names_a_cached_update() {
+        let dir = std::path::Path::new("/cache/updates");
+        assert_eq!(
+            cache_file(dir, "0.11.0-beta.1"),
+            Some(dir.join("0.11.0-beta.1.bin"))
+        );
+        for version in ["", "latest", "../../secret", "1.0.0/../../x", "1.0"] {
+            assert_eq!(cache_file(dir, version), None, "{version}");
+        }
     }
 }

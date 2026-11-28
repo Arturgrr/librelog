@@ -24,6 +24,8 @@ pub enum Error {
     CachePathUnavailable,
     #[error("cached update not found")]
     CachedUpdateNotFound,
+    #[error("invalid update version {0:?}")]
+    InvalidVersion(String),
     #[error("update not available")]
     UpdateNotAvailable,
     #[error("version mismatch: expected {expected}, got {actual}")]
