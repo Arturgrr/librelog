@@ -20,6 +20,7 @@ fn request(text: &str) -> RefineRequest {
         before: None,
         context: None,
         spoken: None,
+        deadline_ms: None,
     }
 }
 
@@ -183,6 +184,44 @@ fn types_the_raw_words_when_cleanup_times_out_fails_or_misbehaves_but_nothing_wh
             text: "<think>clean it</think>Check my website.".into()
         }),
         kept("Check https://johnjeong.com.")
+    );
+}
+
+#[test]
+fn waits_the_persons_cleanup_deadline_within_bounds_and_never_cuts_an_edit_short() {
+    let cleanup = |deadline_ms| {
+        ask(RefineRequest {
+            deadline_ms,
+            ..request("um check my website")
+        })
+        .0
+        .deadline_ms
+    };
+    assert_eq!(cleanup(Some(3_000)), 3_000);
+    assert_eq!(cleanup(Some(20_000)), 20_000);
+    assert_eq!(cleanup(Some(0)), MIN_CLEANUP_DEADLINE_MS);
+    assert_eq!(cleanup(Some(u32::MAX)), MAX_CLEANUP_DEADLINE_MS);
+
+    let edit = |deadline_ms| {
+        ask(RefineRequest {
+            selection: Some("Long sentence here.".into()),
+            deadline_ms,
+            ..request("shorten it")
+        })
+        .0
+        .deadline_ms
+    };
+    assert_eq!(edit(Some(3_000)), EDIT_DEADLINE_MS);
+    assert_eq!(edit(Some(20_000)), 20_000);
+
+    // The raw words are still typed when that deadline passes.
+    let (_, pending) = ask(RefineRequest {
+        deadline_ms: Some(3_000),
+        ..request("um check my website")
+    });
+    assert_eq!(
+        resolve_refinement(pending, ModelReply::TimedOut),
+        raw("um check my website", RefineReason::TimedOut)
     );
 }
 
