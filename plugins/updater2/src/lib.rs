@@ -1,4 +1,5 @@
 mod commands;
+pub mod download;
 mod error;
 mod events;
 mod ext;

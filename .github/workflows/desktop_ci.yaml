@@ -133,7 +133,7 @@ env:
     tauri-plugin-notify tauri-plugin-opener2 tauri-plugin-permissions
     tauri-plugin-settings tauri-plugin-sfx tauri-plugin-sidecar2
     tauri-plugin-store2 tauri-plugin-tantivy tauri-plugin-tracing
-    tauri-plugin-updater2 tauri-plugin-windows tcc vad vad-masking whisper
+    tauri-plugin-windows tcc vad vad-masking whisper
     whisper-local-model
 
 defaults:

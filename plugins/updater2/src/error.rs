@@ -10,6 +10,16 @@ pub enum Error {
     Updater(#[from] tauri_plugin_updater::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Http(#[from] reqwest::Error),
+    #[error(transparent)]
+    Config(#[from] serde_json::Error),
+    #[error("update download failed with status {0}")]
+    DownloadStatus(u16),
+    #[error("invalid update download response")]
+    InvalidDownloadResponse,
+    #[error("update signature verification failed")]
+    InvalidSignature,
     #[error("cache path unavailable")]
     CachePathUnavailable,
     #[error("cached update not found")]
