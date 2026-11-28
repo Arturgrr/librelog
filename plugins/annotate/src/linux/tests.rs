@@ -785,3 +785,19 @@ fn a_scroll_on_the_pen_goes_through_to_the_app_and_the_pen_takes_the_pointer_bac
     assert_eq!(x11::wheel_button(-30.0, 2.0), Some(6));
     assert_eq!(x11::wheel_button(0.0, 0.0), None);
 }
+
+#[test]
+fn a_level_that_finds_the_state_busy_is_skipped_but_a_lost_microphone_shows() {
+    let rig = rig();
+    start(&rig);
+    {
+        let _busy = rig.linux.state.lock().unwrap();
+        rig.linux.narration(true, 0.5).unwrap();
+    }
+    assert!(!rig.linux.surface().unwrap().unheard);
+
+    rig.linux.narration(false, 0.0).unwrap();
+    assert!(rig.linux.surface().unwrap().unheard);
+    rig.linux.narration(true, 0.5).unwrap();
+    assert!(!rig.linux.surface().unwrap().unheard);
+}

@@ -30,7 +30,7 @@ mod x11;
 mod tests;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::time::Duration;
 
 use anlg_annotate_macos::{AnnotateError, codes};
@@ -902,7 +902,18 @@ impl Native for Linux {
     }
 
     fn narration(&self, heard: bool, level: f32) -> Result<(), AnnotateError> {
-        let mut state = self.lock();
+        // Levels arrive many times a second from the recording task, so one
+        // that finds the state busy is skipped; the next one applies a
+        // microphone coming back. A lost microphone is rare and must show.
+        let mut state = if heard {
+            match self.state.try_lock() {
+                Ok(state) => state,
+                Err(TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(TryLockError::WouldBlock) => return Ok(()),
+            }
+        } else {
+            self.lock()
+        };
         let State::Recording(current) = &mut *state else {
             return Ok(());
         };
