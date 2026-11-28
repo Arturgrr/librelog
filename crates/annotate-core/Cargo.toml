@@ -2,6 +2,7 @@
 name = "annotate-core"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 description = "Annotation bundles: ink marks, key frames, contact sheet, summary and retention"
 
 [dependencies]

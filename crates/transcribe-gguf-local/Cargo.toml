@@ -2,6 +2,7 @@
 name = "transcribe-gguf-local"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 description = "The internal /v1/listen batch server for transcribe.cpp models"
 
 [dependencies]

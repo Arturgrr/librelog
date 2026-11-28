@@ -3,6 +3,7 @@ name = "tauri-plugin-capture"
 version = "0.1.0"
 edition = "2024"
 exclude = ["/js", "/node_modules"]
+license.workspace = true
 links = "tauri-plugin-capture"
 
 [build-dependencies]
@@ -44,8 +45,11 @@ anlg-desktop-portal = { workspace = true }
 ashpd = { workspace = true, features = ["screencast", "screenshot", "tokio"] }
 futures-util = { workspace = true }
 gif = "0.14"
+# Hands the area selector the shortcut's activation token.
+gtk = "0.18"
 libc = "0.2"
 url = { workspace = true }
+wl-clipboard-rs = "0.9"
 x11rb = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -6,6 +6,8 @@ mod ext;
 mod handler;
 mod history;
 mod insertion;
+#[cfg(target_os = "linux")]
+mod kwin;
 mod level;
 mod microphone;
 mod preview;

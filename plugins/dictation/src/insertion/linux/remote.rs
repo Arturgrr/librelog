@@ -1,15 +1,21 @@
 //! The paste keys through the desktop's RemoteDesktop portal (GNOME, KDE):
 //! a keyboard-only session the user approves once. The portal's restore
 //! token, kept in Librelog's data folder, restores that approval without a
-//! dialog. GNOME shows its remote-control indicator while a session is
-//! open, so a session that can be restored closes a while after the last
-//! paste and the next one restores it; one that cannot stays open.
+//! dialog; KDE may instead remember it itself, and then a new session opens
+//! at once without a token. GNOME and KDE show a remote-control indicator
+//! while a session is open, so a session that reopens without a dialog
+//! closes a while after the last paste. One that would need the dialog again
+//! stays open on GNOME. On KDE, whose portal may give no token, it closes
+//! after a long idle so the indicator does not stay for the whole run, and
+//! the next dictation asks again while the user speaks. Keys go by keysym,
+//! and by keycode when the active layout has no key for a keysym.
 //!
 //! The approval dialog can stay open as long as the user leaves it. It runs
 //! on its own task: an insertion waits a moment for it and otherwise leaves
 //! the text on the clipboard, while the approval stays pending for the next
 //! paste.
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -26,6 +32,11 @@ const APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// How long an insertion waits for a session that is still starting.
 const INSERTION_WAIT: Duration = Duration::from_secs(3);
 const IDLE: Duration = Duration::from_secs(15);
+/// How long KDE keeps a session that needs the dialog again, and its
+/// indicator, after the last paste.
+const KDE_DIALOG_IDLE: Duration = Duration::from_secs(10 * 60);
+/// A start that took longer showed the approval dialog.
+const NO_DIALOG: Duration = Duration::from_millis(500);
 /// A dialog takes focus; give it back to the app before the keys.
 const DIALOG_FOCUS_SETTLE: Duration = Duration::from_millis(250);
 
@@ -33,6 +44,12 @@ const XK_CONTROL_L: i32 = 0xffe3;
 const XK_SHIFT_L: i32 = 0xffe1;
 const XK_V: i32 = 0x76;
 const XK_RETURN: i32 = 0xff0d;
+/// Linux input event codes, for a keyboard layout where the keysyms find no
+/// key (Russian, Greek): the keys where V and Return are on a US layout.
+const KEY_LEFTCTRL: i32 = 29;
+const KEY_LEFTSHIFT: i32 = 42;
+const KEY_V: i32 = 47;
+const KEY_ENTER: i32 = 28;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static STATE: std::sync::Mutex<State> = std::sync::Mutex::new(State {
@@ -40,6 +57,7 @@ static STATE: std::sync::Mutex<State> = std::sync::Mutex::new(State {
     refused: None,
     starting: false,
     prompted: false,
+    silent: false,
     uses: 0,
 });
 static STARTED: tokio::sync::Notify = tokio::sync::Notify::const_new();
@@ -52,13 +70,17 @@ struct State {
     starting: bool,
     /// The session that just opened may have shown a dialog.
     prompted: bool,
+    /// A session opened this run without a token and without a dialog: the
+    /// desktop remembers the approval itself (KDE).
+    silent: bool,
     uses: u64,
 }
 
 struct Open {
     portal: RemoteDesktop,
     session: Session<RemoteDesktop>,
-    /// A restore token came back: a later session opens without a dialog.
+    /// A later session opens without a dialog: a restore token came back,
+    /// or the desktop remembers the approval.
     restorable: bool,
 }
 
@@ -91,13 +113,18 @@ fn begin() {
         let mut state = state();
         state.starting = false;
         match outcome {
-            Ok((open, restored)) => {
-                state.prompted = !restored || started.elapsed() > Duration::from_millis(500);
-                let restorable = open.restorable;
+            Ok((mut open, restored)) => {
+                let dialog = started.elapsed() > NO_DIALOG;
+                state.prompted = !restored || dialog;
+                if !open.restorable && !restored && !dialog {
+                    open.restorable = true;
+                    state.silent = true;
+                }
+                let idle = idle_close(open.restorable, crate::kwin::on_kde());
                 state.open = Some(Arc::new(open));
                 state.uses += 1;
-                if closes_when_idle(restorable) {
-                    close_when_idle(state.uses);
+                if let Some(idle) = idle {
+                    close_when_idle(state.uses, idle);
                 }
             }
             Err(Failure::Refused(reason)) => {
@@ -140,35 +167,40 @@ pub async fn send(chord: Chord) -> Result<(), String> {
     if prompted {
         tokio::time::sleep(DIALOG_FOCUS_SETTLE).await;
     }
-    let mut result = press(&open, chord).await;
+    let mut result = press(open.as_ref(), chord).await;
     if result.is_err() {
         // The user may have stopped it from the desktop's indicator.
         forget(&open).await;
         let (open, _) = session(INSERTION_WAIT).await?;
-        result = press(&open, chord).await;
+        result = press(open.as_ref(), chord).await;
     }
     let mut state = state();
     state.uses += 1;
-    if state
+    let idle = state
         .open
         .as_ref()
-        .is_some_and(|open| closes_when_idle(open.restorable))
-    {
-        close_when_idle(state.uses);
+        .and_then(|open| idle_close(open.restorable, crate::kwin::on_kde()));
+    if let Some(idle) = idle {
+        close_when_idle(state.uses, idle);
     }
     result
 }
 
-/// GNOME's remote-control indicator shows while a session is open, so one
-/// whose grant restores closes when idle; one that would need the dialog
-/// again stays for the app's lifetime.
-fn closes_when_idle(restorable: bool) -> bool {
-    restorable
+/// How long a session stays open after its last paste, while the desktop's
+/// remote-control indicator shows. One that reopens without a dialog closes
+/// soon. One that would need the dialog again stays for the app's lifetime
+/// on GNOME, and on KDE, which may never hand out a token, a long while.
+fn idle_close(restorable: bool, kde: bool) -> Option<Duration> {
+    match (restorable, kde) {
+        (true, _) => Some(IDLE),
+        (false, true) => Some(KDE_DIALOG_IDLE),
+        (false, false) => None,
+    }
 }
 
-fn close_when_idle(uses: u64) {
+fn close_when_idle(uses: u64, idle: Duration) {
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(IDLE).await;
+        tokio::time::sleep(idle).await;
         let open = {
             let mut state = state();
             if state.uses != uses {
@@ -195,43 +227,80 @@ async fn forget(open: &Arc<Open>) {
     }
 }
 
-async fn press(open: &Open, chord: Chord) -> Result<(), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Key {
+    Sym(i32),
+    Code(i32),
+}
+
+/// Sends one key through the portal.
+trait Injector {
+    fn key(&self, key: Key, state: KeyState) -> impl Future<Output = Result<(), String>>;
+}
+
+impl Injector for Open {
+    async fn key(&self, key: Key, state: KeyState) -> Result<(), String> {
+        let sent = match key {
+            Key::Sym(keysym) => {
+                tokio::time::timeout(
+                    CALL_TIMEOUT,
+                    self.portal.notify_keyboard_keysym(
+                        &self.session,
+                        keysym,
+                        state,
+                        Default::default(),
+                    ),
+                )
+                .await
+            }
+            Key::Code(keycode) => {
+                tokio::time::timeout(
+                    CALL_TIMEOUT,
+                    self.portal.notify_keyboard_keycode(
+                        &self.session,
+                        keycode,
+                        state,
+                        Default::default(),
+                    ),
+                )
+                .await
+            }
+        };
+        match sent {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(error.to_string()),
+            Err(_) => Err("the RemoteDesktop portal did not answer".into()),
+        }
+    }
+}
+
+/// Presses the chord by keysym, then by keycode when the desktop finds no
+/// key for a keysym in the active layout.
+async fn press(keys: &impl Injector, chord: Chord) -> Result<(), String> {
+    let Err(keysym_error) = press_keys(keys, chord_keys(chord, false)).await else {
+        return Ok(());
+    };
+    press_keys(keys, chord_keys(chord, true))
+        .await
+        .map_err(|keycode_error| format!("{keysym_error}; by keycode: {keycode_error}"))
+}
+
+async fn press_keys(keys: &impl Injector, chord: Vec<(Key, KeyState)>) -> Result<(), String> {
     let mut pressed = Vec::new();
     let mut result = Ok(());
-    for (keysym, state) in chord_keys(chord) {
-        if state == KeyState::Pressed {
-            pressed.push(keysym);
-        }
-        let sent = tokio::time::timeout(
-            CALL_TIMEOUT,
-            open.portal
-                .notify_keyboard_keysym(&open.session, keysym, state, Default::default()),
-        )
-        .await;
-        match sent {
-            Ok(Ok(())) => pressed.retain(|held| !(state == KeyState::Released && *held == keysym)),
-            Ok(Err(error)) => {
-                result = Err(error.to_string());
-                break;
-            }
-            Err(_) => {
-                result = Err("the RemoteDesktop portal did not answer".into());
+    for (key, state) in chord {
+        match keys.key(key, state).await {
+            Ok(()) if state == KeyState::Pressed => pressed.push(key),
+            Ok(()) => pressed.retain(|held| *held != key),
+            Err(error) => {
+                result = Err(error);
                 break;
             }
         }
     }
     // A key left down would stay down for every app.
-    for keysym in pressed.into_iter().rev() {
-        let _ = tokio::time::timeout(
-            CALL_TIMEOUT,
-            open.portal.notify_keyboard_keysym(
-                &open.session,
-                keysym,
-                KeyState::Released,
-                Default::default(),
-            ),
-        )
-        .await;
+    for key in pressed.into_iter().rev() {
+        let _ = keys.key(key, KeyState::Released).await;
     }
     result
 }
@@ -332,26 +401,28 @@ async fn start() -> Result<(Open, bool), Failure> {
 /// saved grant restores one.
 pub fn approved() -> bool {
     let state = state();
-    state.open.is_some() || (state.refused.is_none() && load_token().is_some())
+    state.open.is_some() || (state.refused.is_none() && (state.silent || load_token().is_some()))
 }
 
-fn chord_keys(chord: Chord) -> Vec<(i32, KeyState)> {
+fn chord_keys(chord: Chord, by_keycode: bool) -> Vec<(Key, KeyState)> {
+    let [control, shift, v, enter] = if by_keycode {
+        [KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_V, KEY_ENTER].map(Key::Code)
+    } else {
+        [XK_CONTROL_L, XK_SHIFT_L, XK_V, XK_RETURN].map(Key::Sym)
+    };
     if chord == Chord::Return {
-        return vec![
-            (XK_RETURN, KeyState::Pressed),
-            (XK_RETURN, KeyState::Released),
-        ];
+        return vec![(enter, KeyState::Pressed), (enter, KeyState::Released)];
     }
-    let shift = chord == Chord::TerminalPaste;
-    let mut keys = vec![(XK_CONTROL_L, KeyState::Pressed)];
-    if shift {
-        keys.push((XK_SHIFT_L, KeyState::Pressed));
+    let with_shift = chord == Chord::TerminalPaste;
+    let mut keys = vec![(control, KeyState::Pressed)];
+    if with_shift {
+        keys.push((shift, KeyState::Pressed));
     }
-    keys.extend([(XK_V, KeyState::Pressed), (XK_V, KeyState::Released)]);
-    if shift {
-        keys.push((XK_SHIFT_L, KeyState::Released));
+    keys.extend([(v, KeyState::Pressed), (v, KeyState::Released)]);
+    if with_shift {
+        keys.push((shift, KeyState::Released));
     }
-    keys.push((XK_CONTROL_L, KeyState::Released));
+    keys.push((control, KeyState::Released));
     keys
 }
 
@@ -396,11 +467,48 @@ mod tests {
     use super::*;
 
     /// A grant that cannot be restored used to close after 15 seconds too,
-    /// so every later paste showed the dialog again.
+    /// so every later paste showed the dialog again; on KDE one that can't
+    /// kept the remote-control indicator on for the whole run.
     #[test]
-    fn only_a_restorable_session_closes_when_idle() {
-        assert!(closes_when_idle(true));
-        assert!(!closes_when_idle(false));
+    fn only_a_restorable_session_closes_soon_and_kde_closes_the_others_later() {
+        assert_eq!(idle_close(true, false), Some(IDLE));
+        assert_eq!(idle_close(true, true), Some(IDLE));
+        assert_eq!(idle_close(false, false), None);
+        assert_eq!(idle_close(false, true), Some(KDE_DIALOG_IDLE));
+    }
+
+    /// A layout without V's keysym, as Russian or Greek may be for KWin.
+    struct NoV(std::sync::Mutex<Vec<(Key, KeyState)>>);
+
+    impl Injector for NoV {
+        async fn key(&self, key: Key, state: KeyState) -> Result<(), String> {
+            if key == Key::Sym(XK_V) {
+                return Err("no key for keysym".into());
+            }
+            self.0.lock().unwrap().push((key, state));
+            Ok(())
+        }
+    }
+
+    /// On a Russian or Greek layout the desktop may find no key for V's
+    /// keysym, and nothing pasted.
+    #[tokio::test]
+    async fn a_layout_without_the_keysym_gets_the_chord_by_keycode() {
+        let keys = NoV(Default::default());
+        press(&keys, Chord::TerminalPaste).await.unwrap();
+        let sent = keys.0.lock().unwrap().clone();
+        let (by_keysym, by_keycode) = sent.split_at(4);
+        // Control and Shift went down by keysym and must come up again.
+        assert_eq!(
+            by_keysym,
+            [
+                (Key::Sym(XK_CONTROL_L), KeyState::Pressed),
+                (Key::Sym(XK_SHIFT_L), KeyState::Pressed),
+                (Key::Sym(XK_SHIFT_L), KeyState::Released),
+                (Key::Sym(XK_CONTROL_L), KeyState::Released),
+            ]
+        );
+        assert_eq!(by_keycode, chord_keys(Chord::TerminalPaste, true));
     }
 
     #[test]

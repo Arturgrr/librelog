@@ -3018,6 +3018,7 @@ version = "0.1.0"
 dependencies = [
  "ashpd",
  "futures-util",
+ "raw-window-handle",
  "tempfile",
  "tokio",
  "tracing",
@@ -12632,7 +12633,9 @@ dependencies = [
 name = "tauri-plugin-anlg-tray"
 version = "0.1.0"
 dependencies = [
+ "ashpd",
  "desktop-portal",
+ "futures-util",
  "intercept",
  "libloading 0.8.9",
  "objc2",
@@ -12664,6 +12667,7 @@ dependencies = [
  "annotate-core",
  "annotate-macos",
  "audio",
+ "desktop-portal",
  "futures-util",
  "gtk",
  "hound",
@@ -12730,6 +12734,7 @@ dependencies = [
  "desktop-portal",
  "futures-util",
  "gif 0.14.2",
+ "gtk",
  "image",
  "libc",
  "objc2-foundation",
@@ -12747,6 +12752,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "wl-clipboard-rs",
  "x11rb",
 ]
 

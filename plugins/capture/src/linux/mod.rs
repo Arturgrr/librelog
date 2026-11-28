@@ -14,6 +14,7 @@ mod media;
 mod portal;
 mod record;
 mod screenshot;
+mod trash;
 mod windows;
 
 /// The screen recorder and GStreamer runner, which Annotate records with
@@ -278,20 +279,36 @@ impl Native for Linux {
         tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| fail(codes::IO, error))
     }
 
-    /// Through GIO's Trash when `gio` is installed (it is on GNOME).
+    /// Through GIO's Trash where `gio` is installed (GNOME, and most KDE
+    /// systems through glib2), KIO's on KDE, else straight into the home
+    /// trash as the FreeDesktop spec lays it out.
     fn trash(&self, path: &Path) -> Result<(), AnnotateError> {
-        if !gst::installed("gio") {
-            return Err(fail(codes::UNSUPPORTED, "the Trash needs gio"));
+        let shown = path.to_string_lossy();
+        let within = Duration::from_secs(20);
+        if gst::installed("gio") {
+            return crate::process::run("gio", &["trash", "--", &shown], None, within)
+                .map(drop)
+                .map_err(|error| fail(codes::IO, error));
         }
-        let path = path.to_string_lossy();
-        crate::process::run(
-            "gio",
-            &["trash", "--", &path],
-            None,
-            Duration::from_secs(20),
-        )
-        .map(drop)
-        .map_err(|error| fail(codes::IO, error))
+        if let Some(kioclient) = ["kioclient", "kioclient6", "kioclient5"]
+            .into_iter()
+            .find(|program| gst::installed(program))
+        {
+            match crate::process::run(
+                kioclient,
+                &["--noninteractive", "move", &shown, "trash:/"],
+                None,
+                within,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(error) => tracing::warn!(%error, "kioclient_trash_failed"),
+            }
+        }
+        let trash = trash::home_trash()
+            .ok_or_else(|| fail(codes::UNSUPPORTED, "no home folder for the Trash"))?;
+        trash::move_to(&trash, path, &trash::now())
+            .map(drop)
+            .map_err(|error| fail(codes::IO, error))
     }
 }
 

@@ -9,7 +9,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const MANAGED: &str = "X-Librelog-Managed=true";
+pub(crate) const MANAGED: &str = "X-Librelog-Managed=true";
 
 pub struct Launcher<'a> {
     pub identifier: &'a str,
@@ -20,9 +20,6 @@ pub struct Launcher<'a> {
     /// a development build's entry only names it to the portal.
     pub visible: bool,
     pub icon: Option<&'a Path>,
-    /// The window's WM_CLASS instance and Wayland app id: GTK takes both from
-    /// the program name.
-    pub window_class: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -101,7 +98,9 @@ pub fn desktop_entry(launcher: &Launcher<'_>) -> String {
         "[Desktop Entry]\nType=Application\nName={}\nExec={} %u\nTerminal=false\nCategories=Office;\nStartupWMClass={}\n",
         launcher.name,
         exec_value(launcher.executable),
-        launcher.window_class,
+        // The window's WM_CLASS instance and Wayland app id: the app names
+        // GTK's program after the identifier.
+        launcher.identifier,
     );
     if let Some(icon) = launcher.icon {
         entry.push_str(&format!("Icon={}\n", icon.display()));
@@ -118,7 +117,7 @@ pub fn desktop_entry(launcher: &Launcher<'_>) -> String {
 /// around anything with reserved characters, `"`, `` ` ``, `$` and `\`
 /// escaped inside them, and then every `\` doubled again because `Exec` is a
 /// string value; `%` is written `%%`.
-fn exec_value(path: &Path) -> String {
+pub(crate) fn exec_value(path: &Path) -> String {
     let path = path.to_string_lossy().replace('%', "%%");
     let reserved = |c: char| " \t\n\"'\\><~|&;$*?#()`".contains(c);
     let argument = if path.contains(reserved) {
@@ -148,7 +147,6 @@ mod tests {
             executable,
             visible,
             icon: None,
-            window_class: "librelog",
         }
     }
 

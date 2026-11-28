@@ -118,4 +118,16 @@ When the macOS build never starts because GitHub has no runner for it ("The job 
 
 ## License
 
-By submitting a contribution, you agree that it may be distributed under the repository's [MIT License](LICENSE). Only submit material you have the right to license this way, and record the upstream revision and license of any third-party code you reuse.
+Librelog is licensed under the [GNU Affero General Public License, version 3 or later](LICENSE) (`AGPL-3.0-or-later`); the code that came from Anarlog remains available under the MIT License, as [LICENSE-MIT](LICENSE-MIT) explains. By submitting a contribution, you agree that it may be distributed under AGPL-3.0-or-later and under the [Contributor License Agreement](#contributor-license-agreement). Only submit material you have the right to license this way, and record the upstream revision and license of any third-party code you reuse; it must be compatible with AGPL-3.0-or-later.
+
+## Contributor License Agreement
+
+Before a pull request can be merged, each person who authored a commit in it signs the [Librelog Individual Contributor License Agreement](CLA.md) once. You keep the copyright in your work; the agreement gives the maintainer a permanent license to use and distribute it, including under licenses other than AGPL-3.0-or-later, and a patent license for it.
+
+The CLA Assistant check comments on your first pull request. To sign, read the agreement and reply on the pull request with exactly:
+
+```text
+I have read the CLA Document and I hereby sign the CLA
+```
+
+Comment `recheck` to run the check again. Your signature is stored in `signatures/cla.json` on the `cla-signatures` branch and covers your later pull requests. Every commit author needs a GitHub account linked to the commit's email address for the check to find them.

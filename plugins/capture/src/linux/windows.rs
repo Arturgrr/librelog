@@ -288,6 +288,11 @@ impl AreaPicker for AreaWindow {
                 let _ = sender.send(Ok(()));
                 return;
             }
+            // Opened from a shortcut, the selector brings the shortcut's
+            // activation token: without it KWin's focus-stealing prevention
+            // may keep the focus where it was, and Return and Escape would
+            // go to the app below. The token is set before the window maps.
+            let token = anlg_desktop_portal::take_activation_token();
             let built = WebviewWindowBuilder::new(
                 &app,
                 AREA_LABEL,
@@ -301,8 +306,17 @@ impl AreaPicker for AreaWindow {
             .skip_taskbar(true)
             .fullscreen(true)
             .focused(true)
+            .visible(token.is_none())
             .disable_drag_drop_handler()
             .build();
+            if let (Ok(window), Some(token)) = (&built, token) {
+                use gtk::prelude::GtkWindowExt;
+                if let Ok(gtk_window) = window.gtk_window() {
+                    gtk_window.set_startup_id(&token);
+                }
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             let _ = sender.send(built.map(drop).map_err(|error| error.to_string()));
         });
         let built = match queued {

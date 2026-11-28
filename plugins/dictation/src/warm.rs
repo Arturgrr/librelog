@@ -340,9 +340,13 @@ impl Ring {
     fn end(&mut self, error: Option<Error>) {
         self.open = false;
         self.meter = None;
-        let listener = self.listener.take();
-        if let (Some(listener), Some(error)) = (listener, error) {
-            let _ = listener.sender.send(Err(Error::Capture(error.to_string())));
+        // What it holds around the start cue was heard, so the recording
+        // keeps it.
+        if let Some(mut listener) = self.listener.take() {
+            listener.flush();
+            if let Some(error) = error {
+                let _ = listener.sender.send(Err(error));
+            }
         }
     }
 }

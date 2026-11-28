@@ -174,7 +174,12 @@ async fn a_cards_buttons_on_linux_reach_the_plugin_through_its_event_poll() {
     }
     assert_eq!(
         s.clipboard.0.lock().unwrap()[0],
-        ["image/png", "text/uri-list", "x-special/gnome-copied-files"]
+        [
+            "image/png",
+            "text/uri-list",
+            "x-special/gnome-copied-files",
+            "application/x-kde-cutselection"
+        ]
     );
 
     assert!(s.cards.press(&entry.id, "close"));

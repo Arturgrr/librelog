@@ -3,6 +3,7 @@ name = "tauri-plugin-annotate"
 version = "0.1.0"
 edition = "2024"
 exclude = ["/js", "/node_modules"]
+license.workspace = true
 links = "tauri-plugin-annotate"
 
 [build-dependencies]
@@ -36,6 +37,8 @@ tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 # Annotate records with Capture's Linux recorder.
 tauri-plugin-capture = { workspace = true }
+# Whether the desktop reports the shortcut's release.
+anlg-desktop-portal = { workspace = true }
 image = { workspace = true, features = ["png"] }
 # The overlay's input shape, set through GTK and confirmed with the X server.
 gtk = "0.18"

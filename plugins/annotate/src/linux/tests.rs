@@ -358,6 +358,13 @@ fn hover_ink_ends_without_word_from_the_shortcut_or_on_a_click_and_the_pen_after
     assert_eq!(events(&rig), ["ink_off:idle"]);
     assert_eq!(*rig.surfaces.taken.lock().unwrap(), [true, false]);
 
+    // A desktop that reports releases (KDE) let the ink go after 8 s of a
+    // hold all the same.
+    let mut machine = Machine::new(0);
+    machine.set_ink(InkMode::Hover, 0);
+    assert!(!machine.tick(60_000, true).ink_off);
+    assert!(machine.tick(60_000, false).ink_off);
+
     // Held again: a click gives the pointer back.
     rig.linux.set_ink_mode("hover").unwrap();
     rig.linux.pointer("down", 10.0, 10.0);

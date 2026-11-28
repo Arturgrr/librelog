@@ -10,22 +10,35 @@
 //! once and is shared. The registry finds the app through its desktop entry,
 //! `<app id>.desktop`: the packages install it, and [`prepare_app_id`] writes
 //! one for an AppImage or a development build. A portal without the registry
-//! (older ones derive the id from the systemd unit instead) or a refused
+//! derives the id from the systemd unit instead, so Librelog gives itself a
+//! unit named after its id when it has none (see [`scope`]). A refused
 //! registration never fails a request: it just goes unregistered.
 
+#[cfg(any(target_os = "linux", test))]
+pub mod autostart;
 #[cfg(any(target_os = "linux", test))]
 mod entry;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(any(target_os = "linux", test))]
+mod scope;
 #[cfg(target_os = "linux")]
 mod shortcuts_held;
+#[cfg(target_os = "linux")]
+mod window;
 
 #[cfg(target_os = "linux")]
 pub use linux::{
-    connection, prepare_app_id, set_app_id, status_notifier_host, watch_status_notifier_host,
+    app_id, connection, forget_kde_shortcut, kde_shortcut_ids, prepare_app_id, set_app_id,
+    status_notifier_host, watch_status_notifier_host,
 };
 #[cfg(target_os = "linux")]
-pub use shortcuts_held::{set_shortcuts_held, wait_until_no_shortcut_is_held};
+pub use shortcuts_held::{
+    note_shortcut_release, set_shortcuts_held, shortcut_releases_reported,
+    wait_until_no_shortcut_is_held,
+};
+#[cfg(target_os = "linux")]
+pub use window::{parent, set_activation_token, take_activation_token};
 
 /// GNOME before 51 refuses portal app ids that are not reverse-DNS (two or
 /// more dot-separated elements of letters, digits, `_` and `-`, none

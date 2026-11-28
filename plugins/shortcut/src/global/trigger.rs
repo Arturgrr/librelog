@@ -1,6 +1,57 @@
 use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
 
+/// Whether this is a KDE session, whose portal matches triggers by the
+/// symbol a key types (see [`trigger_for`]).
+pub(super) fn kde() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktops| {
+        desktops
+            .split(':')
+            .any(|desktop| desktop.eq_ignore_ascii_case("KDE"))
+    })
+}
+
 pub(super) fn portal_trigger(key: Shortcut) -> Result<String, String> {
+    trigger_for(key, kde())
+}
+
+/// The symbol Shift makes each key type on a US layout, by its xkb name.
+fn shifted(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "Digit1" => "exclam",
+        "Digit2" => "at",
+        "Digit3" => "numbersign",
+        "Digit4" => "dollar",
+        "Digit5" => "percent",
+        "Digit6" => "asciicircum",
+        "Digit7" => "ampersand",
+        "Digit8" => "asterisk",
+        "Digit9" => "parenleft",
+        "Digit0" => "parenright",
+        "Minus" => "underscore",
+        "Equal" => "plus",
+        "BracketLeft" => "braceleft",
+        "BracketRight" => "braceright",
+        "Backslash" => "bar",
+        "Semicolon" => "colon",
+        "Quote" => "quotedbl",
+        "Backquote" => "asciitilde",
+        "Comma" => "less",
+        "Period" => "greater",
+        "Slash" => "question",
+        _ => return None,
+    })
+}
+
+/// The trigger the portal is asked for. KWin hands kglobalaccel the symbol a
+/// chord types with Shift taken out when Shift made it (Alt+Shift+4 arrives
+/// as Alt+$), except for letters, so on KDE `ALT+SHIFT+4` never fires and
+/// `ALT+dollar` does. Other layouts put other symbols there; the user can
+/// rebind those in System Settings, which Librelog then shows.
+pub(super) fn trigger_for(key: Shortcut, kde: bool) -> Result<String, String> {
+    let code = key.key.to_string();
+    let symbol = (kde && key.mods.contains(Modifiers::SHIFT))
+        .then(|| shifted(&code))
+        .flatten();
     let mut parts = Vec::new();
     for (flag, label) in [
         (Modifiers::CONTROL, "CTRL"),
@@ -8,11 +59,14 @@ pub(super) fn portal_trigger(key: Shortcut) -> Result<String, String> {
         (Modifiers::SHIFT, "SHIFT"),
         (Modifiers::SUPER, "LOGO"),
     ] {
-        if key.mods.contains(flag) {
+        if key.mods.contains(flag) && !(flag == Modifiers::SHIFT && symbol.is_some()) {
             parts.push(label.to_string());
         }
     }
-    let code = key.key.to_string();
+    if let Some(symbol) = symbol {
+        parts.push(symbol.into());
+        return Ok(parts.join("+"));
+    }
     parts.push(match code.as_str() {
         "Space" => "space".into(),
         "Backspace" => "BackSpace".into(),
@@ -97,6 +151,29 @@ mod tests {
         }
         assert!(
             portal_trigger(Shortcut::new(Some(Modifiers::CONTROL), Code::Unidentified)).is_err()
+        );
+    }
+
+    /// Capture's Alt+Shift+4 default never fired on KDE: KWin reports that
+    /// chord as Alt+$.
+    #[test]
+    fn kde_is_asked_for_the_symbol_shift_types_except_for_letters() {
+        let alt_shift = Modifiers::ALT | Modifiers::SHIFT;
+        for (key, kde, expected) in [
+            (Code::Digit4, true, "ALT+dollar"),
+            (Code::Slash, true, "ALT+question"),
+            (Code::KeyA, true, "ALT+SHIFT+a"),
+            (Code::F5, true, "ALT+SHIFT+F5"),
+            (Code::Digit4, false, "ALT+SHIFT+4"),
+        ] {
+            assert_eq!(
+                trigger_for(Shortcut::new(Some(alt_shift), key), kde).unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            trigger_for(Shortcut::new(Some(Modifiers::ALT), Code::Digit4), true).unwrap(),
+            "ALT+4"
         );
     }
 }

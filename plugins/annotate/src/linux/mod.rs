@@ -833,7 +833,9 @@ impl Native for Linux {
                     self.ink_changed(current);
                 }
             }
-            let effects = current.machine.tick(now);
+            let effects = current
+                .machine
+                .tick(now, anlg_desktop_portal::shortcut_releases_reported());
             if effects.ink_off {
                 self.ink_changed(current);
             } else if effects.question_closed {

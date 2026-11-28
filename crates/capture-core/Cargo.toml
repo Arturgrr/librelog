@@ -2,6 +2,7 @@
 name = "capture-core"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 description = "Capture's files: names, destinations, the captures index and the macOS screenshot shortcut settings"
 
 [dependencies]

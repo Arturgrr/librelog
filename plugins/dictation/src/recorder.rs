@@ -26,6 +26,11 @@ const PREVIEW_CHUNK_SIZE: usize = 1_600;
 /// 64 KB/s (about 460 MB in two hours) and nothing grows in memory, and long
 /// clips are transcribed in chunks.
 const MAX_RECORDING: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+/// Less audio than this from a microphone that failed is not worth
+/// transcribing, so the dictation fails as a whole.
+const MIN_INTERRUPTED: u64 = SAMPLE_RATE as u64 * 300 / 1_000;
+/// A recording that never gets louder than this (-60 dBFS) heard nothing.
+const SILENCE: f32 = 0.001;
 
 /// Receives the RMS of each captured buffer.
 pub type Meter = Arc<dyn Fn(f32) + Send + Sync>;
@@ -36,6 +41,9 @@ pub struct RecordedAudio {
     pub file_path: String,
     pub duration_ms: u64,
     pub transcript: Option<String>,
+    /// The microphone failed or stopped before the recording was stopped;
+    /// this is what it captured until then.
+    pub interrupted: bool,
 }
 
 /// What a capture reports while it records, and what it asks of the
@@ -170,6 +178,7 @@ impl Recorder {
             .take();
     }
 
+    #[cfg(test)]
     pub fn start(
         &self,
         audio: Arc<dyn anlg_audio::AudioProvider>,
@@ -240,6 +249,7 @@ impl Recorder {
         let task_finalize = finalize.clone();
         let task_reading = reading.clone();
         let task = tauri::async_runtime::spawn(async move {
+            let interrupted = updates.clone();
             let preview = preview
                 .zip(updates)
                 .map(|(config, updates)| Preview::start(config, updates));
@@ -249,6 +259,7 @@ impl Recorder {
                     cancel: task_cancellation,
                     release: task_release,
                     reading: task_reading,
+                    interrupted,
                 },
                 &task_path,
                 preview,
@@ -360,11 +371,19 @@ fn open_cold(
         .boxed())
 }
 
-/// How a recording ends: cancelled at once, or released, keeping its tail.
+/// How a recording ends: cancelled at once, or released, keeping its tail;
+/// or on its own when the microphone fails, which `interrupted` hears of.
 struct Stop {
     cancel: CancellationToken,
     release: CancellationToken,
     reading: Option<Reading>,
+    interrupted: Option<Channel<RecordingUpdate>>,
+}
+
+impl Stop {
+    fn stopping(&self) -> bool {
+        self.cancel.is_cancelled() || self.release.is_cancelled()
+    }
 }
 
 /// Where a recording's audio goes: the WAV, the HUD meter and the live
@@ -372,6 +391,8 @@ struct Stop {
 struct Output {
     writer: hound::WavWriter<std::io::BufWriter<std::fs::File>>,
     sample_count: u64,
+    /// The loudest buffer's RMS.
+    loudest: f32,
     meter: Option<Meter>,
     preview: Option<Preview>,
     pending: Vec<f32>,
@@ -385,8 +406,10 @@ impl Output {
                 .map_err(|error| Error::Recording(error.to_string()))?;
         }
         self.sample_count += samples.len() as u64;
+        let rms = crate::events::rms(samples);
+        self.loudest = self.loudest.max(rms);
         if let Some(meter) = &self.meter {
-            meter(crate::events::rms(samples));
+            meter(rms);
         }
         if self.preview.is_some() {
             self.pending.extend_from_slice(samples);
@@ -425,6 +448,7 @@ async fn record_to_file(
     let mut output = Output {
         writer,
         sample_count: 0,
+        loudest: 0.0,
         meter,
         preview,
         pending: Vec::with_capacity(PREVIEW_CHUNK_SIZE),
@@ -436,6 +460,7 @@ async fn record_to_file(
     tokio::pin!(tail_deadline);
     let mut released: Option<(tokio::time::Instant, ReleaseTail)> = None;
     let mut voice = Voice::default();
+    let mut interruption: Option<Error> = None;
 
     loop {
         tokio::select! {
@@ -448,11 +473,11 @@ async fn record_to_file(
                 // belongs to the recording, not to its tail.
                 let mut ended = false;
                 while let Some(next) = stream.next().now_or_never() {
-                    let Some(samples) = next else {
+                    // A microphone failing now only shortens the tail.
+                    let Some(Ok(samples)) = next else {
                         ended = true;
                         break;
                     };
-                    let samples = samples?;
                     voice.extend(&samples);
                     output.write(&samples)?;
                 }
@@ -466,10 +491,20 @@ async fn record_to_file(
             _ = &mut tail_deadline, if released.is_some() => break,
             _ = &mut deadline => break,
             next = stream.next() => {
-                let Some(samples) = next else {
-                    break;
+                let mut samples = match next {
+                    Some(Ok(samples)) => samples,
+                    // Ending before it was stopped, the microphone keeps
+                    // what it heard: the recording goes on as stopped.
+                    failed => {
+                        if released.is_none() && !stop.stopping() {
+                            interruption = Some(match failed {
+                                Some(Err(error)) => error,
+                                _ => Error::Capture("the microphone stopped".into()),
+                            });
+                        }
+                        break;
+                    }
                 };
-                let mut samples = samples?;
                 let mut done = false;
                 match &mut released {
                     None => {
@@ -496,6 +531,11 @@ async fn record_to_file(
             }
         }
     }
+    if let (Some(error), Some(updates)) = (&interruption, &stop.interrupted) {
+        tracing::warn!(%error, "the dictation microphone failed mid-recording");
+        // Ahead of `Ended`, so the stop this asks for is under way by then.
+        let _ = updates.send(RecordingUpdate::Interrupted);
+    }
     // The live transcript can take seconds to finish; the next dictation may
     // open the microphone meanwhile, and other audio comes back now.
     drop(stream);
@@ -503,6 +543,7 @@ async fn record_to_file(
     let Output {
         writer,
         sample_count,
+        loudest,
         mut preview,
         pending,
         ..
@@ -518,20 +559,30 @@ async fn record_to_file(
     writer
         .finalize()
         .map_err(|error| Error::Recording(error.to_string()))?;
-
-    let transcript = if finalize.load(Ordering::SeqCst) {
-        if let Some(preview) = preview {
-            preview.finish().await
-        } else {
-            None
+    let interrupted = match interruption {
+        Some(error) if sample_count < MIN_INTERRUPTED || loudest < SILENCE => {
+            return Err(error);
         }
-    } else {
-        None
+        Some(_) => true,
+        None => false,
+    };
+
+    // An interrupted recording is finished as if stopped now, unless it is
+    // cancelled first.
+    let transcript = match preview {
+        Some(preview) if interrupted || finalize.load(Ordering::SeqCst) => {
+            tokio::select! {
+                transcript = preview.finish() => transcript,
+                _ = stop.cancel.cancelled() => None,
+            }
+        }
+        _ => None,
     };
     Ok(RecordedAudio {
         transcript,
         file_path: path.to_string_lossy().into_owned(),
         duration_ms: sample_count.saturating_mul(1_000) / u64::from(SAMPLE_RATE),
+        interrupted,
     })
 }
 
@@ -557,6 +608,8 @@ mod tests {
         fail_first: AtomicBool,
         /// Every stream fails after its first frame.
         fail_every: AtomicBool,
+        /// When not zero, each stream fails after this many frames.
+        fail_after: AtomicUsize,
         /// The system default input, `test-mic` unless set.
         default: Mutex<Option<String>>,
     }
@@ -607,6 +660,20 @@ mod tests {
                         },
                     ),
                 ));
+            }
+            let fail_after = self.fail_after.load(Ordering::SeqCst);
+            if fail_after > 0 {
+                let frame = CaptureFrame {
+                    raw_mic: Arc::from([0.25_f32; CHUNK_SIZE]),
+                    raw_speaker: Arc::from([]),
+                    aec_mic: None,
+                };
+                let frames = std::iter::repeat_n(Ok(frame), fail_after)
+                    .chain([Err(anlg_audio::Error::MicOpenFailed)]);
+                return Ok(CaptureStream::new(stream::iter(frames).map(move |item| {
+                    let _open = &open;
+                    item
+                })));
             }
             let frame = CaptureFrame {
                 raw_mic: Arc::from([0.25_f32; CHUNK_SIZE]),
@@ -670,6 +737,55 @@ mod tests {
 
         recorder.discard(recorded.file_path).unwrap();
         assert!(!path.exists());
+    }
+
+    /// A microphone failing mid-dictation used to abort it and lose its
+    /// audio: the recording now ends there, says so, and stops as usual with
+    /// what was captured. Too little of it still fails the dictation.
+    #[tokio::test]
+    async fn a_failing_microphone_keeps_what_it_captured() {
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let heard = interrupted.clone();
+        let audio = Arc::new(TestAudio::default());
+        audio.fail_after.store(20, Ordering::SeqCst);
+        let recorder = Recorder::new();
+        recorder
+            .start_with_feedback(
+                audio.clone(),
+                None,
+                "test".into(),
+                Feedback {
+                    updates: Some(Channel::new(move |body| {
+                        if let tauri::ipc::InvokeResponseBody::Json(json) = body
+                            && json.contains("interrupted")
+                        {
+                            heard.store(true, Ordering::SeqCst);
+                        }
+                        Ok(())
+                    })),
+                    ..Feedback::default()
+                },
+            )
+            .unwrap();
+        until(|| interrupted.load(Ordering::SeqCst)).await;
+
+        let recorded = recorder.stop("test").await.unwrap();
+        assert!(recorded.interrupted);
+        assert_eq!(
+            hound::WavReader::open(&recorded.file_path)
+                .unwrap()
+                .duration(),
+            20 * CHUNK_SIZE as u32
+        );
+        recorder.discard(recorded.file_path).unwrap();
+
+        audio.fail_after.store(1, Ordering::SeqCst);
+        recorder.start(audio.clone(), None, "test".into()).unwrap();
+        until(|| audio.open.load(Ordering::SeqCst) == 0).await;
+        assert!(matches!(
+            recorder.stop("test").await,
+            Err(Error::Capture(_))
+        ));
     }
 
     #[tokio::test]

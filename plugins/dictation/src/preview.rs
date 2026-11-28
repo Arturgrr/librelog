@@ -22,6 +22,9 @@ pub enum RecordingUpdate {
         partial: String,
     },
     PreviewUnavailable,
+    /// The microphone failed or stopped before the recording was stopped:
+    /// stop it to keep what it captured.
+    Interrupted,
     /// The microphone is closed and any audio the capture quieted is audible
     /// again, so a stop sound played now is heard.
     Ended,

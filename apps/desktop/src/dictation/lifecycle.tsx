@@ -499,6 +499,13 @@ function ActiveDictation() {
                   if (capture.stopped) void cue("StopRecording");
                   return;
                 }
+                // The microphone failed: what it recorded is kept, stopped
+                // as if the shortcut had been released.
+                if (update.type === "interrupted") {
+                  if (!disposed && !signal.aborted && live === capture)
+                    controller.release(true);
+                  return;
+                }
                 if (
                   disposed ||
                   !livePreview ||
@@ -543,6 +550,10 @@ function ActiveDictation() {
         // quieted is back.
         if (capture) capture.stopped = true;
         const recorded = unwrap(await dictation.stopRecording(id));
+        if (recorded.interrupted && !disposed)
+          toast.warning(
+            t`The microphone stopped. Transcribing what was recorded.`,
+          );
         return {
           filePath: recorded.filePath,
           durationMs: recorded.durationMs,

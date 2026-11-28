@@ -11,6 +11,8 @@
 
 This crate came to Librelog from Anarlog (`fastrepl/anarlog`, MIT) at `b82e3c9cf7`. Librelog changes: term weights are kept for one local person instead of per account, and the chat field is Librelog's.
 
+Librelog distributes this crate as part of a work licensed under AGPL-3.0-or-later, so its `Cargo.toml` names that license like every other Librelog crate. The code ported from Anarlog, and through Anarlog from Char, is still available under Anarlog's MIT license, whose notice is kept in the repository's `LICENSE-MIT`; Librelog's changes to it are AGPL-3.0-or-later.
+
 ## Files
 
 | Anarlog path                                     | Upstream path                                                                                   | How used and changes                                                                                                                                                                                                                                                                     |

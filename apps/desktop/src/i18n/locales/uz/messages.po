@@ -7545,6 +7545,15 @@ msgstr ""
 msgid "The microphone level stopped."
 msgstr ""
 
+#: src/i18n/external-messages.ts
+msgid "The microphone stopped before anything was recorded."
+msgstr ""
+
+#: src/chat/components/input/use-dictation.ts
+#: src/dictation/lifecycle.tsx
+msgid "The microphone stopped. Transcribing what was recorded."
+msgstr ""
+
 #: src/settings/ai/llm/builtin.tsx
 msgid "The model file is removed from this computer. You can download it again later."
 msgstr ""

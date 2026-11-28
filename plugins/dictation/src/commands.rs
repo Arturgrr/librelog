@@ -85,7 +85,8 @@ pub(crate) async fn hud<R: tauri::Runtime>(
 
 /// Records for in-app dictation, from the same microphone as system-wide
 /// dictation: without a chosen one, a Bluetooth default gives way to a wired
-/// one unless `avoid_bluetooth_microphone` is false.
+/// one unless `avoid_bluetooth_microphone` is false. `updates` hears when the
+/// microphone fails before the recording is stopped.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn start_recording<R: tauri::Runtime>(
@@ -93,6 +94,7 @@ pub(crate) async fn start_recording<R: tauri::Runtime>(
     microphone_device: Option<String>,
     owner: String,
     avoid_bluetooth_microphone: Option<bool>,
+    updates: tauri::ipc::Channel<crate::preview::RecordingUpdate>,
 ) -> Result<(), String> {
     let audio = app
         .state::<Arc<dyn anlg_audio::AudioProvider>>()
@@ -103,7 +105,15 @@ pub(crate) async fn start_recording<R: tauri::Runtime>(
             .await?
             .device;
     app.state::<Recorder>()
-        .start(audio, microphone_device, owner)
+        .start_with_feedback(
+            audio,
+            microphone_device,
+            owner,
+            Feedback {
+                updates: Some(updates),
+                ..Feedback::default()
+            },
+        )
         .map_err(|error| error.to_string())
 }
 

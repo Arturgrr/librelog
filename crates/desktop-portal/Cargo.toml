@@ -2,6 +2,7 @@
 name = "desktop-portal"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -12,4 +13,5 @@ tracing = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { workspace = true, features = ["tokio"] }
 futures-util = { workspace = true }
+raw-window-handle = "0.6"
 tokio = { workspace = true, features = ["sync", "time"] }

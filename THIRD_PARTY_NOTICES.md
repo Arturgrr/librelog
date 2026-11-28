@@ -1,6 +1,6 @@
 # Third-party notices
 
-Librelog's own code is available under the [MIT License](LICENSE). This repository also contains third-party material that keeps its original license. This file lists that material, where it lives, and where it came from.
+Librelog's own code is available under the [GNU Affero General Public License, version 3 or later](LICENSE). The code that came from [Anarlog](https://github.com/fastrepl/anarlog) remains available under the MIT License, as [LICENSE-MIT](LICENSE-MIT) explains; that file keeps Fastrepl's copyright and license notice. This repository also contains third-party material that keeps its original license. This file lists that material, where it lives, and where it came from.
 
 Packages fetched by Cargo or pnpm carry their own license metadata. They appear here only when they need a specific notice.
 
@@ -137,11 +137,11 @@ The catalogs' data lives in `crates/gguf-model/src/catalog.rs` and `crates/local
 ## Other material
 
 - `patches/` holds changes to npm packages. Each patch stays under the license of the package it modifies.
-- Company and product logos in `apps/desktop/public/assets` identify the services they represent. They remain trademarks of their owners and are not covered by the MIT License.
+- Company and product logos in `apps/desktop/public/assets` identify the services they represent. They remain trademarks of their owners and are not covered by Librelog's license.
 
 ## License texts
 
-The desktop app bundles this file, `LICENSE`, and the full license texts it requires under `licenses/` in its resources:
+The desktop app bundles this file, `LICENSE`, `LICENSE-MIT`, and the full license texts it requires under `licenses/` in its resources:
 
 - `licenses/MIT.txt`: applies to each MIT-licensed item above, with that item's copyright line.
 - `licenses/llama.cpp/`: llama.cpp, ggml and the code built into the bundled llama.cpp server.

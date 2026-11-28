@@ -56,10 +56,15 @@ pub async fn frontmost() -> Option<TargetApp> {
 
 #[cfg(target_os = "linux")]
 pub async fn frontmost() -> Option<TargetApp> {
-    tokio::time::timeout(std::time::Duration::from_secs(2), linux::frontmost())
+    let found = tokio::time::timeout(std::time::Duration::from_secs(2), linux::frontmost())
         .await
         .ok()
-        .flatten()
+        .flatten();
+    match found {
+        Some(app) => Some(app),
+        // Plasma keeps Qt apps off AT-SPI unless accessibility is turned on.
+        None => linux::kwin_frontmost().await,
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -228,5 +233,49 @@ mod linux {
     fn executable(process: u32) -> Option<String> {
         let path = std::fs::read_link(format!("/proc/{process}/exe")).ok()?;
         Some(path.file_name()?.to_string_lossy().into_owned())
+    }
+
+    /// KWin's active window, named as its desktop entry names it.
+    pub async fn kwin_frontmost() -> Option<TargetApp> {
+        let window = crate::kwin::active_window().await?;
+        let name = window
+            .desktop_file
+            .as_deref()
+            .and_then(entry_name)
+            .or_else(|| Some(window.name.clone()).filter(|name| !name.is_empty()))
+            .or_else(|| Some(window.class.clone()).filter(|class| !class.is_empty()))?;
+        Some(TargetApp {
+            name,
+            id: window.pid.and_then(executable),
+        })
+    }
+
+    /// `Name=` from `<id>.desktop` in the XDG data folders.
+    fn entry_name(id: &str) -> Option<String> {
+        let home = std::env::var_os("XDG_DATA_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                Some(std::path::PathBuf::from(std::env::var_os("HOME")?).join(".local/share"))
+            });
+        let dirs = std::env::var("XDG_DATA_DIRS")
+            .ok()
+            .filter(|dirs| !dirs.is_empty())
+            .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+        let text = home
+            .into_iter()
+            .chain(dirs.split(':').map(std::path::PathBuf::from))
+            .find_map(|dir| {
+                std::fs::read_to_string(dir.join("applications").join(format!("{id}.desktop"))).ok()
+            })?;
+        let mut in_entry = false;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('[') {
+                in_entry = line == "[Desktop Entry]";
+            } else if in_entry && let Some(name) = line.strip_prefix("Name=") {
+                return Some(name.trim().to_owned()).filter(|name| !name.is_empty());
+            }
+        }
+        None
     }
 }

@@ -64,6 +64,8 @@ export function localizeExternalMessage(message: string): string {
       return t`This dictation is too long to type. Copy your last dictation from Settings > Dictation.`;
     case "Dictation text contains an unsupported NUL character":
       return t`The dictation contains a character that cannot be inserted.`;
+    case "microphone capture failed: the microphone stopped":
+      return t`The microphone stopped before anything was recorded.`;
     case "voice recording is already active":
       return t`Voice recording is already active.`;
     case "voice recording is not active":

@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/Arturgrr/librelog/tree/main/agent-plugins/librelog",
   "repository": "https://github.com/Arturgrr/librelog/tree/main/agent-plugins/librelog",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "keywords": [
     "meetings",
     "notes",

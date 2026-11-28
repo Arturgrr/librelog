@@ -733,9 +733,45 @@ fn overlay_origin(occupied: i32) -> Option<(i32, i32)> {
 }
 
 fn prefers_dark_theme() -> bool {
-    gtk::Settings::default()
-        .map(|settings| settings.is_gtk_application_prefer_dark_theme())
-        .unwrap_or(false)
+    dark_theme(portal_color_scheme(), || {
+        gtk::Settings::default()
+            .map(|settings| settings.is_gtk_application_prefer_dark_theme())
+            .unwrap_or(false)
+    })
+}
+
+/// The Settings portal's `color-scheme` (1 dark, 2 light) decides; KDE sets
+/// it but not GTK's prefer-dark setting. Without an answer, GTK's setting.
+fn dark_theme(color_scheme: Option<u32>, gtk_prefers_dark: impl FnOnce() -> bool) -> bool {
+    match color_scheme {
+        Some(1) => true,
+        Some(2) => false,
+        _ => gtk_prefers_dark(),
+    }
+}
+
+fn portal_color_scheme() -> Option<u32> {
+    use gtk::gio;
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).ok()?;
+    let reply = bus
+        .call_sync(
+            Some("org.freedesktop.portal.Desktop"),
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Settings",
+            "Read",
+            Some(&("org.freedesktop.appearance", "color-scheme").to_variant()),
+            None,
+            gio::DBusCallFlags::NONE,
+            250,
+            gio::Cancellable::NONE,
+        )
+        .ok()?;
+    // `Read` answers a variant, which portals before 1.15 wrap twice.
+    let mut value = reply.child_value(0);
+    while let Some(inner) = value.as_variant() {
+        value = inner;
+    }
+    value.get::<u32>()
 }
 
 fn detail_row(label: &str, value: &str) -> GtkBox {
@@ -851,4 +887,18 @@ pub fn dismiss_all() {
             manager.borrow_mut().dismiss_all();
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dark_theme;
+
+    /// Breeze Dark on KDE showed light toasts: only GTK's setting was read.
+    #[test]
+    fn the_portal_colour_scheme_overrides_the_gtk_setting() {
+        assert!(dark_theme(Some(1), || false));
+        assert!(!dark_theme(Some(2), || true));
+        assert!(dark_theme(Some(0), || true));
+        assert!(!dark_theme(None, || false));
+    }
 }

@@ -9,8 +9,9 @@ use crate::commands::InkMode;
 
 /// The pen left this long without a stroke goes back to off.
 pub const INK_IDLE_MS: u64 = 30_000;
-/// Hover ink lasts this long after the shortcut said it is held: a desktop
-/// that never reports the release must not keep the pointer.
+/// Hover ink lasts this long after the shortcut said it is held, unless the
+/// desktop has said it reports releases (X11, KDE and GNOME do): one that
+/// never reports the release must not keep the pointer.
 pub const HOVER_MS: u64 = 8_000;
 /// An unanswered "Discard?" goes back to recording.
 pub const QUESTION_MS: u64 = 4_000;
@@ -141,11 +142,13 @@ impl Machine {
         false
     }
 
-    pub fn tick(&mut self, now: u64) -> Effects {
+    /// `releases`: the desktop reports a shortcut's release, which then
+    /// ends hover ink however long it is held.
+    pub fn tick(&mut self, now: u64, releases: bool) -> Effects {
         let mut effects = Effects::default();
         let idle = match self.ink {
             InkMode::Off => false,
-            InkMode::Hover => now.saturating_sub(self.hover_since) >= HOVER_MS,
+            InkMode::Hover => !releases && now.saturating_sub(self.hover_since) >= HOVER_MS,
             InkMode::Drag => now.saturating_sub(self.last_activity) >= INK_IDLE_MS,
         };
         if idle {

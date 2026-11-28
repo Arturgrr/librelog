@@ -17,11 +17,12 @@ async hud(event: HudEvent) : Promise<Result<null, string>> {
 /**
  * Records for in-app dictation, from the same microphone as system-wide
  * dictation: without a chosen one, a Bluetooth default gives way to a wired
- * one unless `avoid_bluetooth_microphone` is false.
+ * one unless `avoid_bluetooth_microphone` is false. `updates` hears when the
+ * microphone fails before the recording is stopped.
  */
-async startRecording(microphoneDevice: string | null, owner: string, avoidBluetoothMicrophone: boolean | null) : Promise<Result<null, string>> {
+async startRecording(microphoneDevice: string | null, owner: string, avoidBluetoothMicrophone: boolean | null, updates: TAURI_CHANNEL<RecordingUpdate>) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner, avoidBluetoothMicrophone }) };
+    return { status: "ok", data: await TAURI_INVOKE("plugin:dictation|start_recording", { microphoneDevice, owner, avoidBluetoothMicrophone, updates }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -588,7 +589,12 @@ contextTerms: string[];
  */
 weights: string | null; limit: number | null }
 export type RecordRequest = { nowMs: number; dictionary: string[]; weights: string | null; event: TermEvent }
-export type RecordedAudio = { filePath: string; durationMs: number; transcript: string | null }
+export type RecordedAudio = { filePath: string; durationMs: number; transcript: string | null; 
+/**
+ * The microphone failed or stopped before the recording was stopped;
+ * this is what it captured until then.
+ */
+interrupted: boolean }
 /**
  * What a dictation asks of the computer's other audio, and of sleep, while
  * it records.
@@ -602,6 +608,11 @@ export type RecordingEnvironment = { config: Config;
  */
 delayMs: number }
 export type RecordingUpdate = { type: "transcript"; text: string; partial: string } | { type: "previewUnavailable" } | 
+/**
+ * The microphone failed or stopped before the recording was stopped:
+ * stop it to keep what it captured.
+ */
+{ type: "interrupted" } | 
 /**
  * The microphone is closed and any audio the capture quieted is audible
  * again, so a stop sound played now is heard.

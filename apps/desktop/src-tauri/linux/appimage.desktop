@@ -11,7 +11,7 @@ Terminal=false
 Categories={{categories}}
 Keywords=notes;meeting;transcription;recording;dictation;
 StartupNotify=true
-StartupWMClass={{exec}}
+StartupWMClass=@IDENTIFIER@
 {{#if mime_type}}
 MimeType={{mime_type}}
 {{/if}}
