@@ -6,6 +6,7 @@ import { Button } from "@anlg/ui/components/ui/button";
 import { Textarea } from "@anlg/ui/components/ui/textarea";
 
 import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
+import { DictationCleanupSettings } from "~/settings/dictation-cleanup";
 import { useSetSettingValue } from "~/settings/queries";
 import { SettingSwitchRow } from "~/settings/setting-row";
 import { useConfigValue } from "~/shared/config";
@@ -40,6 +41,7 @@ export function DictationAiSettings() {
         checked={cleanup}
         onChange={setCleanup}
       />
+      {cleanup && <DictationCleanupSettings />}
       <SettingSwitchRow
         title={<Trans>Edit selected text by voice</Trans>}
         description={

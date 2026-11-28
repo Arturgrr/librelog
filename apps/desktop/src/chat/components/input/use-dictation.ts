@@ -10,8 +10,12 @@ import {
 import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
-import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
-import { refineTranscript, useSpokenRules } from "~/dictation/refine";
+import { useDictationCleanupModel } from "~/ai/hooks/useLLMConnection";
+import {
+  refineTranscript,
+  useCleanupPreferences,
+  useSpokenRules,
+} from "~/dictation/refine";
 import { useConfigValue } from "~/shared/config";
 import { useTabs } from "~/store/zustand/tabs";
 import { useRunBatch } from "~/stt/useRunBatch";
@@ -38,7 +42,8 @@ export function useDictation({
   const replacements = useConfigValue(
     "personalization_dictionary_replacements",
   );
-  const model = useLanguageModel();
+  const model = useDictationCleanupModel();
+  const preferences = useCleanupPreferences();
   const [phase, setPhaseState] = useState<DictationPhase>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const phaseRef = useRef<DictationPhase>("idle");
@@ -209,9 +214,11 @@ export function useDictation({
           context: false,
           replacements,
           spoken,
+          ...preferences,
         },
         field: null,
-        model,
+        // Nothing is edited by voice here, so only cleanup's model is used.
+        models: { cleanup: model, edit: null },
         signal: new AbortController().signal,
       });
       if (mountedRef.current && generation === generationRef.current) {
@@ -245,6 +252,7 @@ export function useDictation({
     cleanup,
     editorRef,
     model,
+    preferences,
     replacements,
     runBatch,
     setPhase,

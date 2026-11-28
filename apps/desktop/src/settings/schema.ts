@@ -141,6 +141,30 @@ export const SETTING_DEFINITIONS = {
     path: ["dictation", "cleanup"],
     default: false as boolean,
   },
+  // The person's own rules for cleanup and edits, after the built-in ones;
+  // empty keeps only the built-in ones.
+  dictation_cleanup_instructions: {
+    type: "string",
+    path: ["dictation", "cleanup_instructions"],
+    default: "" as string,
+  },
+  // A model just for cleanup; both empty uses the selected AI model.
+  dictation_cleanup_provider: {
+    type: "string",
+    path: ["dictation", "cleanup_provider"],
+    default: "" as string,
+  },
+  dictation_cleanup_model: {
+    type: "string",
+    path: ["dictation", "cleanup_model"],
+    default: "" as string,
+  },
+  // Seconds cleanup waits for the model before typing the words as said.
+  dictation_cleanup_deadline_seconds: {
+    type: "number",
+    path: ["dictation", "cleanup_deadline_seconds"],
+    default: 6 as number,
+  },
   // A dictation over selected text is an instruction to edit it.
   dictation_voice_edit: {
     type: "boolean",

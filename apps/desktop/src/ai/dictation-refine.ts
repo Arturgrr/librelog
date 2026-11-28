@@ -9,8 +9,9 @@ import {
 } from "@anlg/plugin-dictation";
 
 /**
- * Cleans up a finished dictation, or edits the selection by voice, through the one model the
- * person selected (`useLanguageModel()`, with its own credentials and auth fetch). The rules for
+ * Cleans up a finished dictation, or edits the selection by voice, through the one model given:
+ * the person's dictation cleanup model or selected AI model, with its own credentials and auth
+ * fetch. The rules for
  * whether a call happens, what it says, its deadline and which reply may be typed live in
  * `dictation-core`; this only makes the call. It always resolves: a failure types the raw words
  * for cleanup and nothing for an edit, and there is never a second route. Cancellation wins at
@@ -20,14 +21,17 @@ export async function refineDictation({
   model,
   request,
   signal,
+  onModelError,
 }: {
   model: LanguageModel | null;
   request: RefineRequest;
   signal?: AbortSignal;
+  /** Hears why the model call failed, which the outcome only names as failed. */
+  onModelError?: (error: unknown) => void;
 }): Promise<RefineOutcome> {
   if (signal?.aborted) return { type: "cancelled" };
   // `refine` never rejects, so only the cancellation lands in `catch`.
-  return until(refine(model, request, signal), signal).catch(
+  return until(refine(model, request, signal, onModelError), signal).catch(
     (): RefineOutcome => ({ type: "cancelled" }),
   );
 }
@@ -36,6 +40,7 @@ async function refine(
   model: LanguageModel | null,
   request: RefineRequest,
   signal: AbortSignal | undefined,
+  onModelError: ((error: unknown) => void) | undefined,
 ): Promise<RefineOutcome> {
   const unreachable = fallbackFor(request);
   let plan;
@@ -51,7 +56,7 @@ async function refine(
   if (plan.type === "done") return plan.outcome;
   if (!model) return unreachable;
 
-  const reply = await ask(model, plan.call, signal);
+  const reply = await ask(model, plan.call, signal, onModelError);
   return resolve(plan.pending, reply, unreachable);
 }
 
@@ -59,6 +64,7 @@ async function ask(
   model: LanguageModel,
   call: { system: string; prompt: string; deadlineMs: number },
   signal: AbortSignal | undefined,
+  onModelError: ((error: unknown) => void) | undefined,
 ): Promise<ModelReply> {
   if (signal?.aborted) return { type: "cancelled" };
   const deadline = new AbortController();
@@ -82,8 +88,9 @@ async function ask(
       stop,
     );
     reply = { type: "text", text: result.text };
-  } catch {
+  } catch (error) {
     reply = { type: "failed" };
+    if (!stop.aborted) onModelError?.(error);
   } finally {
     clearTimeout(timer);
   }

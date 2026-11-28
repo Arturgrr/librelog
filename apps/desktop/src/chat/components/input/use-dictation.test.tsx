@@ -48,7 +48,7 @@ vi.mock("~/shared/config", () => ({
 }));
 
 vi.mock("~/ai/hooks/useLLMConnection", () => ({
-  useLanguageModel: () => null,
+  useDictationCleanupModel: () => null,
 }));
 
 vi.mock("~/stt/useRunBatch", () => ({

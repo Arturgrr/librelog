@@ -127,6 +127,7 @@ function request(text: string, selection: string | null = null): RefineRequest {
     before: null,
     context: null,
     spoken: null,
+    deadlineMs: null,
   };
 }
 
@@ -214,10 +215,16 @@ describe("refineDictation", () => {
     expect(doGenerate).not.toHaveBeenCalled();
   });
 
-  test("never falls back to another route when the selected model fails or is missing", async () => {
+  test("never falls back to another route when the selected model fails or is missing, and says why it failed", async () => {
+    const heard: unknown[] = [];
     await expect(
-      refineDictation({ model: failing(), request: request("um send it") }),
+      refineDictation({
+        model: failing(),
+        request: request("um send it"),
+        onModelError: (error) => heard.push(error),
+      }),
     ).resolves.toEqual({ type: "raw", text: "um send it", reason: "failed" });
+    expect(String(heard[0])).toContain("Ollama isn't answering");
     await expect(
       refineDictation({ model: null, request: request("um send it") }),
     ).resolves.toEqual({ type: "raw", text: "um send it", reason: "noModel" });
