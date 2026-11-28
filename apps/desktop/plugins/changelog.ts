@@ -1,4 +1,4 @@
-import { readFileSync, watch } from "node:fs";
+import { readdirSync, readFileSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin, ViteDevServer } from "vite";
@@ -22,19 +22,31 @@ function getAppVersion(): string | null {
   }
 }
 
-function buildModule(): string {
-  const latest = getAppVersion();
-  let content: string | null = null;
+function readLatestFiles(version: string): Record<string, string> {
+  const paths = [`${version}.md`];
+  try {
+    for (const entry of readdirSync(changelogDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) paths.push(`${entry.name}/${version}.md`);
+    }
+  } catch {}
 
-  if (latest) {
+  const files: Record<string, string> = {};
+  for (const path of paths) {
     try {
-      content = readFileSync(resolve(changelogDir, `${latest}.md`), "utf-8");
+      files[path] = readFileSync(resolve(changelogDir, path), "utf-8");
     } catch {}
   }
+  return files;
+}
+
+// The current version's notes are inlined in every language, keyed like
+// `findLocalizedChangelog` expects.
+function buildModule(): string {
+  const latest = getAppVersion();
 
   return [
     `export const latestVersion = ${JSON.stringify(latest)};`,
-    `export const latestContent = ${JSON.stringify(content)};`,
+    `export const latestFiles = ${JSON.stringify(latest ? readLatestFiles(latest) : {})};`,
   ].join("\n");
 }
 

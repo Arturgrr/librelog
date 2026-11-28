@@ -1,18 +1,27 @@
+import { useLingui } from "@lingui/react";
 import { useQuery } from "@tanstack/react-query";
 // @ts-ignore virtual module provided by the Vite changelog plugin
-import { latestContent, latestVersion } from "virtual:changelog";
+import { latestFiles, latestVersion } from "virtual:changelog";
 
-import { processContent } from "@anlg/changelog";
+import { findLocalizedChangelog, processContent } from "@anlg/changelog";
 
 import { loadBundledChangelog } from "./source";
 
 export function useChangelogContent(version: string) {
+  const { i18n } = useLingui();
+  const locale = i18n.locale;
   const query = useQuery({
-    queryKey: ["changelog", version],
+    queryKey: ["changelog", version, locale],
     queryFn: async () => {
-      if (version === latestVersion && latestContent)
-        return latestContent as string;
-      return loadBundledChangelog(version);
+      if (version === latestVersion) {
+        const latest = findLocalizedChangelog<string>(
+          latestFiles,
+          version,
+          locale,
+        );
+        if (latest) return latest.file;
+      }
+      return (await loadBundledChangelog(version, locale))?.raw ?? null;
     },
     staleTime: Infinity,
   });
