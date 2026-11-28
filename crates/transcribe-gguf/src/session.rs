@@ -134,27 +134,46 @@ fn compact(text: &str) -> String {
         .collect()
 }
 
-/// How many of `pieces`, from the first, spell out exactly `prompt` (in
-/// `compact` form); `None` when they do not start with it.
-fn leading_echo<'a>(pieces: impl IntoIterator<Item = &'a str>, prompt: &str) -> Option<usize> {
-    let mut read = String::new();
-    for (index, piece) in pieces.into_iter().enumerate() {
-        read.push_str(&compact(piece));
-        if read.len() >= prompt.len() {
-            return (read == prompt).then_some(index + 1);
+/// How many of `pieces`, from the first, repeat every one of the prompt's
+/// `hints` (in `compact` form) as the list it is: each hint followed by a
+/// `,` or `;`, the last one by those, a sentence end, or nothing more.
+/// `None` otherwise, so speech that merely starts with the terms
+/// ("Kubernetes Helm chart is broken") is kept.
+fn leading_echo(pieces: &[&str], hints: &[String]) -> Option<usize> {
+    let mut index = 0;
+    for (position, hint) in hints.iter().enumerate() {
+        let mut read = String::new();
+        while read.len() < hint.len() {
+            read.push_str(&compact(pieces.get(index)?));
+            index += 1;
+            if !hint.starts_with(&read) {
+                return None;
+            }
         }
-        if !prompt.starts_with(&read) {
-            return None;
+        let last = position + 1 == hints.len();
+        let separates = |punctuation: &str| {
+            punctuation.contains([',', ';']) || (last && punctuation.contains(['.', '!', '?', ':']))
+        };
+        let piece = pieces[index - 1];
+        let tail = &piece[piece
+            .trim_end_matches(|character: char| !character.is_alphanumeric())
+            .len()..];
+        if separates(tail) || (last && index == pieces.len()) {
+            continue;
+        }
+        match pieces.get(index) {
+            Some(next) if compact(next).is_empty() && separates(next) => index += 1,
+            _ => return None,
         }
     }
-    None
+    Some(index)
 }
 
 /// `text` without the prompt it starts by repeating, and how many words
 /// went; `None` when it does not start with it.
-fn strip_leading_echo(text: &str, prompt: &str) -> Option<(String, usize)> {
+fn strip_leading_echo(text: &str, hints: &[String]) -> Option<(String, usize)> {
     let pieces = text.split_whitespace().collect::<Vec<_>>();
-    let echoed = leading_echo(pieces.iter().copied(), prompt)?;
+    let echoed = leading_echo(&pieces, hints)?;
     let rest = pieces[echoed..].join(" ");
     let rest = rest.trim_start_matches(|character: char| {
         character.is_whitespace() || character.is_ascii_punctuation()
@@ -164,8 +183,12 @@ fn strip_leading_echo(text: &str, prompt: &str) -> Option<(String, usize)> {
 
 /// How many of `words`, from the first, repeat the prompt; none when they do
 /// not spell it out.
-fn echoed_words(words: &[transcribe_cpp::Word], prompt: &str) -> usize {
-    leading_echo(words.iter().map(|word| word.text.as_str()), prompt).unwrap_or(0)
+fn echoed_words(words: &[transcribe_cpp::Word], hints: &[String]) -> usize {
+    let pieces = words
+        .iter()
+        .map(|word| word.text.as_str())
+        .collect::<Vec<_>>();
+    leading_echo(&pieces, hints).unwrap_or(0)
 }
 
 /// Drops what only repeats the prompt. Whisper and Qwen3-ASR can return
@@ -176,10 +199,10 @@ pub(crate) fn drop_prompt_echo(transcript: &mut transcribe_cpp::Transcript, prom
     let is_separator = |character: char| matches!(character, ',' | ';' | '\n');
     let hints = prompt
         .split(is_separator)
-        .filter(|hint| !hint.trim().is_empty())
-        .count();
-    let compact_prompt = compact(prompt);
-    if hints < 2 || compact_prompt.is_empty() {
+        .map(compact)
+        .filter(|hint| !hint.is_empty())
+        .collect::<Vec<_>>();
+    if hints.len() < 2 {
         return;
     }
     let normalize = |text: &str| normalize_spoken(&text.replace(is_separator, " "));
@@ -189,16 +212,18 @@ pub(crate) fn drop_prompt_echo(transcript: &mut transcribe_cpp::Transcript, prom
         if echoes(&transcript.text) {
             transcript.text.clear();
             transcript.words.clear();
-        } else if let Some((rest, _)) = strip_leading_echo(&transcript.text, &compact_prompt) {
+        } else if let Some((rest, _)) = strip_leading_echo(&transcript.text, &hints) {
             transcript.text = rest;
-            let echoed = echoed_words(&transcript.words, &compact_prompt);
+            let echoed = echoed_words(&transcript.words, &hints);
             transcript.words.drain(..echoed);
         }
         return;
     }
-    if !transcript.segments.iter().any(|segment| {
-        echoes(&segment.text) || strip_leading_echo(&segment.text, &compact_prompt).is_some()
-    }) {
+    if !transcript
+        .segments
+        .iter()
+        .any(|segment| echoes(&segment.text) || strip_leading_echo(&segment.text, &hints).is_some())
+    {
         return;
     }
     let words = std::mem::take(&mut transcript.words);
@@ -209,12 +234,12 @@ pub(crate) fn drop_prompt_echo(transcript: &mut transcribe_cpp::Transcript, prom
         }
         let mut first = (segment.first_word.max(0) as usize).min(words.len());
         let last = (first + segment.n_words.max(0) as usize).min(words.len());
-        if let Some((rest, _)) = strip_leading_echo(&segment.text, &compact_prompt) {
+        if let Some((rest, _)) = strip_leading_echo(&segment.text, &hints) {
             if rest.is_empty() {
                 continue;
             }
             segment.text = rest;
-            first += echoed_words(&words[first..last], &compact_prompt);
+            first += echoed_words(&words[first..last], &hints);
         }
         segment.first_word = transcript.words.len() as i32;
         segment.n_words = (last - first) as i32;
@@ -395,6 +420,24 @@ mod tests {
         let before = speech.clone();
         drop_prompt_echo(&mut speech, "T3 Code, Ottobit");
         assert_eq!(speech, before);
+
+        let mut unseparated = transcript(&["Kubernetes Helm chart is broken"]);
+        let before = unseparated.clone();
+        drop_prompt_echo(&mut unseparated, "Kubernetes, Helm");
+        assert_eq!(unseparated, before);
+
+        let mut short_terms = transcribe_cpp::Transcript {
+            text: "OK I think so".into(),
+            ..Default::default()
+        };
+        let before = short_terms.clone();
+        drop_prompt_echo(&mut short_terms, "OK, I");
+        assert_eq!(short_terms, before);
+
+        let mut echoed = transcript(&["Kubernetes, Helm. Hello"]);
+        drop_prompt_echo(&mut echoed, "Kubernetes, Helm");
+        assert_eq!(echoed.text, "Hello");
+        assert_eq!(words(&echoed), ["Hello"]);
 
         let mut single = transcript(&["Ottobit."]);
         let before = single.clone();
