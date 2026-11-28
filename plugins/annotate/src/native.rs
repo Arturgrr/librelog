@@ -23,6 +23,9 @@ pub trait Native: Send + Sync + 'static {
     /// What the capsule shows after the recording: `ready`, `failed` or
     /// `hidden` (it shows `processing` by itself from the stop on).
     fn capsule(&self, stage: &str) -> Result<(), AnnotateError>;
+    /// What the capsule shows of the narration while recording: whether its
+    /// microphone records, and its level from 0 to 1. Never blocks.
+    fn narration(&self, heard: bool, level: f32) -> Result<(), AnnotateError>;
     fn poll_events(&self) -> Result<String, AnnotateError>;
     fn extract_frames(&self, request: &str) -> Result<String, AnnotateError>;
 }
@@ -75,6 +78,10 @@ impl Native for System {
 
     fn capsule(&self, stage: &str) -> Result<(), AnnotateError> {
         anlg_annotate_macos::capsule(stage)
+    }
+
+    fn narration(&self, heard: bool, level: f32) -> Result<(), AnnotateError> {
+        anlg_annotate_macos::narration(heard, level)
     }
 
     fn poll_events(&self) -> Result<String, AnnotateError> {

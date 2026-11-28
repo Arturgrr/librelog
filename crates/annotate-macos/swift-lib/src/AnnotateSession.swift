@@ -153,6 +153,13 @@ final class AnnotateSession {
     return .success(AnnotateNothing())
   }
 
+  /// Whether the narration's microphone records, and its level from 0 to
+  /// 1, for the recording's capsule.
+  func narration(heard: Bool, level: Double) -> Result<AnnotateNothing, AnnotateFailure> {
+    DispatchQueue.main.async { self.current?.pill.narration(heard: heard, level: level) }
+    return .success(AnnotateNothing())
+  }
+
   // MARK: Worker threads
 
   func start(_ request: AnnotateStartRequest) -> Result<AnnotateStartReply, AnnotateFailure> {

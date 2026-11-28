@@ -131,6 +131,7 @@ impl Surfaces for FakeSurfaces {
     fn publish(&self, surface: &AnnotateSurface) {
         self.published.lock().unwrap().push(surface.clone());
     }
+    fn level(&self, _level: f32) {}
     fn scroll(&self, button: u8) -> Result<(), String> {
         self.scrolled.lock().unwrap().push(button);
         Ok(())

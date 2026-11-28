@@ -82,7 +82,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
         ])
         .events(tauri_specta::collect_events![
             AnnotateEvent,
-            AnnotateSurface
+            AnnotateSurface,
+            AnnotateLevel
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }

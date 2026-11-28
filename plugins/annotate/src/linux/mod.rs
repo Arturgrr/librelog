@@ -179,6 +179,7 @@ struct LabelsRequest {
     keep: Option<String>,
     draw: Option<String>,
     stop: Option<String>,
+    unheard: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -210,6 +211,8 @@ struct Current {
     ink: bool,
     labels: CapsuleLabels,
     warnings: Vec<String>,
+    /// The narration's microphone isn't recording.
+    unheard: bool,
     /// The recorder stopped by itself; `stop` collects it.
     ended: bool,
     /// When the overlay last let a scroll through, while it does.
@@ -363,6 +366,7 @@ impl Linux {
             drawable: current.ink,
             asking: current.machine.asking(),
             started_wall_ms: current.wall_ms,
+            unheard: current.unheard,
             labels: current.labels.clone(),
         }
     }
@@ -482,6 +486,7 @@ impl Linux {
                 keep: labels.keep.clone(),
                 draw: labels.draw.clone(),
                 stop: labels.stop.clone(),
+                unheard: labels.unheard.clone(),
             });
         let current = Current {
             dir: request.dir.clone(),
@@ -493,6 +498,7 @@ impl Linux {
             ink,
             labels,
             warnings,
+            unheard: false,
             ended: false,
             scrolled: None,
         };
@@ -891,6 +897,25 @@ impl Native for Linux {
                 after.generation
             };
             self.close_after(generation, linger);
+        }
+        Ok(())
+    }
+
+    fn narration(&self, heard: bool, level: f32) -> Result<(), AnnotateError> {
+        let mut state = self.lock();
+        let State::Recording(current) = &mut *state else {
+            return Ok(());
+        };
+        if current.ended {
+            return Ok(());
+        }
+        if current.unheard == heard {
+            current.unheard = !heard;
+            self.surfaces.publish(&Self::surface_of(current));
+        }
+        drop(state);
+        if heard {
+            self.surfaces.level(level);
         }
         Ok(())
     }

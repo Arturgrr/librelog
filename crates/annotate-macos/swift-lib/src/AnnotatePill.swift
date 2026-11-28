@@ -16,6 +16,9 @@ final class AnnotatePillView: NSView {
   var clock = "0:00"
   var asking = false
   var penOn = false
+  /// The narration's microphone records, and its level from 0 to 1.
+  var heard = true
+  var level: Double = 0
   var dark = false
   var reduceMotion = false
   var labels = AnnotateLabels()
@@ -144,8 +147,7 @@ final class AnnotatePillView: NSView {
       }
       return
     }
-    Self.red.setFill()
-    NSBezierPath(ovalIn: place(parts.dot)).fill()
+    drawDot(place(parts.dot), text: text)
     label(clock, in: place(parts.clock), color: text, center: false)
     text.withAlphaComponent(0.2).setFill()
     place(parts.divider).fill()
@@ -176,6 +178,22 @@ final class AnnotatePillView: NSView {
         break
       }
     }
+  }
+
+  /// The recording dot, ringed by the narration's level so the person sees
+  /// they are heard; a crossed-out microphone while nothing records it.
+  private func drawDot(_ dot: NSRect, text: NSColor) {
+    guard heard else {
+      symbol("mic.slash.fill", in: dot.insetBy(dx: -4, dy: -4), color: text, scale: 0.8)
+      return
+    }
+    let ring = CGFloat(min(max(level, 0), 1)) * 4
+    if ring > 0.5 {
+      Self.red.withAlphaComponent(0.3).setFill()
+      NSBezierPath(ovalIn: dot.insetBy(dx: -ring, dy: -ring)).fill()
+    }
+    Self.red.setFill()
+    NSBezierPath(ovalIn: dot).fill()
   }
 
   /// Processing: a faint trace with light passing along it, as the HUD's
@@ -272,6 +290,14 @@ final class AnnotatePill {
   }
   var asking = false {
     didSet { if asking != oldValue { redraw() } }
+  }
+
+  /// The narration's microphone and its level, from the host.
+  func narration(heard: Bool, level: Double) {
+    guard heard != view.heard || abs(level - view.level) >= 0.02 else { return }
+    view.heard = heard
+    view.level = heard ? level : 0
+    view.needsDisplay = true
   }
 
   var windowNumber: Int { panel.windowNumber }

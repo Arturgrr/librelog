@@ -92,7 +92,8 @@ const live: {
   runBatch: ReturnType<typeof useRunBatch> | null;
   conn: ReturnType<typeof useSTTConnection>["conn"];
   microphone: string;
-} = { runBatch: null, conn: null, microphone: "" };
+  avoidBluetooth: boolean;
+} = { runBatch: null, conn: null, microphone: "", avoidBluetooth: true };
 let shared: Flow | null = null;
 
 /**
@@ -107,18 +108,19 @@ function annotateFlow(): Flow {
       screenRecording: async () => unwrap(await annotate.screenRecording()),
       requestScreenRecording: async () =>
         unwrap(await annotate.requestScreenRecording()),
-      start: async () => {
+      start: async (narrate) => {
         const microphone = await narrationMicrophone(
           async () => unwrap(await transcription.getCurrentMicrophoneDevice()),
           live.microphone || null,
         );
         return unwrap(
-          await annotate.start(microphone, {
+          await annotate.start(microphone, live.avoidBluetooth, narrate, {
             discardQuestion: t`Discard?`,
             discard: t`Discard`,
             keep: t`Keep`,
             draw: t`Draw`,
             stop: t`Stop`,
+            unheard: t`The narration isn't being recorded`,
           }),
         );
       },
@@ -205,9 +207,18 @@ function annotateFlow(): Flow {
           description: t`macOS applies the Screen Recording permission after a relaunch.`,
         }),
       microphoneDenied: () =>
-        toast.error(
-          t`Enable microphone permission in Settings > Permissions before annotating.`,
+        toast.warning(
+          t`This annotation records the screen without narration.`,
+          {
+            description: t`Enable microphone permission in Settings > Permissions to narrate.`,
+          },
         ),
+      narration: (heard) =>
+        heard
+          ? toast(t`The microphone is recording the narration again.`)
+          : toast.warning(t`The narration isn't being recorded.`, {
+              description: t`The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back.`,
+            }),
       transcriptionFailed: (error) => {
         console.error("[annotate] transcription", error);
         toast.warning(
@@ -242,10 +253,14 @@ function ActiveAnnotate() {
   const [flow, setFlow] = useState<Flow | null>(null);
   const runBatch = useRunBatch(BATCH_ID);
   const microphone = useConfigValue("microphone_device");
+  // The setting dictation's microphone shares: a Bluetooth headset's
+  // microphone drops what it plays to call quality while narrating too.
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   live.runBatch = runBatch;
   const { conn } = useSTTConnection();
   live.conn = conn;
   live.microphone = microphone;
+  live.avoidBluetooth = avoidBluetooth;
 
   useMountEffect(() => {
     let disposed = false;

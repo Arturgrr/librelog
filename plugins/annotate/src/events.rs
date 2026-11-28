@@ -13,6 +13,7 @@ pub struct Stopped {
     pub duration_ms: u32,
     /// `stop`, `max_duration` or `stream_error`.
     pub ended_by: String,
+    /// What the recording missed, the narration's gaps included.
     pub warnings: Vec<String>,
 }
 
@@ -29,6 +30,10 @@ pub enum AnnotateEvent {
     Ink { on: bool },
     /// Ending the recording failed; the session is idle again.
     Failed { message: String },
+    /// The narration's microphone stopped (`heard` false) while recording,
+    /// or opened again after stopping or failing to open. The screen keeps
+    /// recording either way.
+    Narration { heard: bool },
 }
 
 /// What the capsule shows: the recording, then, once it stopped, that the
@@ -56,5 +61,16 @@ pub struct AnnotateSurface {
     /// The capsule asks "Discard?".
     pub asking: bool,
     pub started_wall_ms: i64,
+    /// The narration's microphone isn't recording: it was off, failed to
+    /// open or stopped.
+    pub unheard: bool,
     pub labels: crate::session::CapsuleLabels,
+}
+
+/// The narration's level on a meter, 0 to 1, about 25 times a second while
+/// the microphone hears: for the Linux capsule.
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotateLevel {
+    pub level: f32,
 }

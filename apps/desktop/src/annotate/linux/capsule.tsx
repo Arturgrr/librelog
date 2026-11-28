@@ -8,6 +8,7 @@ import {
 } from "@anlg/plugin-annotate";
 import {
   Check,
+  MicrophoneSlash,
   PencilSimple,
   WarningCircle,
   X,
@@ -74,13 +75,19 @@ const SPRING = { type: "spring", duration: 0.3, bounce: 0.15 } as const;
 export function AnnotateCapsuleScreen() {
   const [surface, setSurface] = useState<AnnotateSurface | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [level, setLevel] = useState(0);
 
   useMountEffect(() => {
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    const unlisten: (() => void)[] = [];
+    const keep = (stop: () => void) =>
+      disposed ? stop() : unlisten.push(stop);
     void annotateEvents.annotateSurface
       .listen(({ payload }) => setSurface(payload))
-      .then((stop) => (disposed ? stop() : (unlisten = stop)));
+      .then(keep);
+    void annotateEvents.annotateLevel
+      .listen(({ payload }) => setLevel(payload.level))
+      .then(keep);
     void (async () => {
       const result = await annotate.surface();
       if (!disposed && result.status === "ok") {
@@ -97,7 +104,7 @@ export function AnnotateCapsuleScreen() {
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => {
       disposed = true;
-      unlisten?.();
+      for (const stop of unlisten) stop();
       clearInterval(timer);
     };
   });
@@ -119,7 +126,7 @@ export function AnnotateCapsuleScreen() {
         transition={SPRING}
       >
         {stage === "recording" ? (
-          <Recording surface={surface} now={now} />
+          <Recording surface={surface} now={now} level={level} />
         ) : (
           <Outcome stage={stage} />
         )}
@@ -131,9 +138,11 @@ export function AnnotateCapsuleScreen() {
 function Recording({
   surface,
   now,
+  level,
 }: {
   surface: AnnotateSurface | null;
   now: number;
+  level: number;
 }) {
   const labels = surface?.labels;
   // The app's words come with the state; English until then.
@@ -170,7 +179,11 @@ function Recording({
 
   return (
     <div className="flex w-full items-center gap-0.5 pr-0.5 pl-2.5">
-      <span className="size-2 shrink-0 rounded-full bg-[#ff3b30]" />
+      <Dot
+        unheard={surface?.unheard ?? false}
+        label={labels?.unheard ?? "The narration isn't being recorded"}
+        level={level}
+      />
       <span className="min-w-0 flex-1 pl-1.5">
         {clock(surface ? now - surface.startedWallMs : 0)}
       </span>
@@ -206,6 +219,37 @@ function Recording({
         <X className="size-3.5" />
       </button>
     </div>
+  );
+}
+
+/**
+ * The recording dot, ringed by the narration's level so the person sees
+ * they are heard; a crossed-out microphone while nothing records it.
+ */
+function Dot({
+  unheard,
+  label,
+  level,
+}: {
+  unheard: boolean;
+  label: string;
+  level: number;
+}) {
+  if (unheard) {
+    return (
+      <span title={label} aria-label={label} role="img" className="shrink-0">
+        <MicrophoneSlash className="size-3.5" weight="bold" />
+      </span>
+    );
+  }
+  return (
+    <span className="relative flex size-3 shrink-0 items-center justify-center">
+      <span
+        className="absolute inset-0 rounded-full bg-[#ff3b30]/30 transition-transform duration-75"
+        style={{ transform: `scale(${(2 + 4 * level) / 3})` }}
+      />
+      <span className="relative size-2 rounded-full bg-[#ff3b30]" />
+    </span>
   );
 }
 
