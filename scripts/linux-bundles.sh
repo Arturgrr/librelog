@@ -227,7 +227,10 @@ verify() {
   expect_lines "$deb" "$files" "${BINARIES[@]/#//usr/bin/}" "$DESKTOP_FILE" "$HIDDEN_DESKTOP_FILE" "$ICON"
   local entries
   entries="$(mktemp -d)"
-  (cd "$entries" && "$appimage" --appimage-extract '*.desktop' >/dev/null)
+  # The entry at the AppImage's root is a link into usr/share/applications, so extract both.
+  (cd "$entries" &&
+    "$appimage" --appimage-extract '*.desktop' >/dev/null &&
+    "$appimage" --appimage-extract 'usr/share/applications/*.desktop' >/dev/null)
   local appimage_entries=("$entries"/squashfs-root/*.desktop)
   [[ ${#appimage_entries[@]} -eq 1 && -f "${appimage_entries[0]}" ]] ||
     fail "$appimage does not carry one desktop entry"
