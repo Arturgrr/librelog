@@ -8,6 +8,7 @@ pub mod gpu_health;
 mod placement;
 mod session;
 mod timing;
+mod vocabulary;
 
 use std::path::{Path, PathBuf};
 
@@ -72,6 +73,10 @@ pub struct TimedWord {
 pub struct Request {
     /// Spoken languages, most likely first (BCP-47).
     pub languages: Vec<String>,
+    /// Terms to listen for, most important first. Whisper and Qwen3-ASR read
+    /// as many as fit their prompt slot as the context prompt, unless
+    /// `prompt` is set; other models ignore them.
+    pub vocabulary: Vec<String>,
     /// A context prompt for Whisper and Qwen3-ASR; segments that only echo it
     /// are dropped.
     pub prompt: Option<String>,
@@ -102,6 +107,9 @@ pub struct Engine {
     session: OfflineSession,
     capabilities: transcribe_cpp::Capabilities,
     run_samples: usize,
+    /// How many tokens of vocabulary the model reads as its context prompt;
+    /// `None` for a model without that slot.
+    prompt_budget: Option<usize>,
     gpu: Option<DeviceInfo>,
     device_label: String,
 }
@@ -237,6 +245,8 @@ impl Engine {
             .map_or(MAX_RUN_SAMPLES, |ms| {
                 (ms * SAMPLE_RATE / 1_000).min(MAX_RUN_SAMPLES)
             });
+        let prompt_budget = vocabulary::prompt_budget(&model.arch())
+            .filter(|_| model.supports(transcribe_cpp::Feature::ContextPrompt));
         tracing::info!(
             arch = model.arch(),
             variant = model.variant(),
@@ -250,6 +260,7 @@ impl Engine {
             session: OfflineSession::new(model)?,
             capabilities,
             run_samples,
+            prompt_budget,
             gpu,
             device_label,
         };
@@ -312,6 +323,21 @@ impl Engine {
         }
     }
 
+    /// The context prompt a run of `request` reads: its own, or its
+    /// vocabulary bounded to what this model's prompt slot holds.
+    fn prompt_for(&self, request: &Request) -> Option<String> {
+        if request.prompt.is_some() {
+            return request.prompt.clone();
+        }
+        let budget = self.prompt_budget?;
+        let model = self.session.model();
+        vocabulary::prompt(&request.vocabulary, budget, |text| {
+            model
+                .tokenize(text)
+                .map_or_else(|_| text.chars().count(), |ids| ids.len())
+        })
+    }
+
     fn language_for(&self, requested: &[String]) -> Option<String> {
         if let Some(catalog) = self.catalog {
             return catalog.runtime_language(requested);
@@ -367,6 +393,7 @@ impl Engine {
         request: &Request,
     ) -> Result<EngineTranscript, Error> {
         let language = self.language_for(&request.languages);
+        let prompt = self.prompt_for(request);
         let mut text = Vec::new();
         let mut words = Vec::new();
         let mut detected = None;
@@ -383,7 +410,7 @@ impl Engine {
             if padded.len() < MIN_RUN_SAMPLES {
                 padded.resize(MIN_RUN_SAMPLES, 0.0);
             }
-            let transcript = self.run(&padded, language.clone(), request)?;
+            let transcript = self.run(&padded, language.clone(), prompt.clone(), request)?;
             let duration = part.len() as f64 / SAMPLE_RATE as f64;
             let (mut timed, source) = timing::words(&transcript, duration);
             timing::offset(
@@ -412,16 +439,17 @@ impl Engine {
         &mut self,
         samples: &[f32],
         language: Option<String>,
+        prompt: Option<String>,
         request: &Request,
     ) -> Result<transcribe_cpp::Transcript, Error> {
-        let options = self.run_options(language.clone(), request.prompt.clone());
+        let options = self.run_options(language.clone(), prompt.clone());
         match self.session.run(samples, &options, request.cancel.as_ref()) {
             // A file the user picked may list a language it takes no hint for.
             Err(transcribe_cpp::Error::Unsupported(reason))
                 if language.is_some() && self.catalog.is_none() =>
             {
                 tracing::info!(reason, "the model took no language hint; letting it choose");
-                let options = self.run_options(None, request.prompt.clone());
+                let options = self.run_options(None, prompt);
                 Ok(self
                     .session
                     .run(samples, &options, request.cancel.as_ref())?)

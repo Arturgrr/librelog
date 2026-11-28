@@ -381,6 +381,7 @@ where
             .iter()
             .map(|language| language.bcp47_code())
             .collect(),
+        vocabulary: params.keywords.clone(),
         prompt: None,
         cancel: Some(cancellation.engine.clone()),
     };

@@ -64,6 +64,7 @@ SenseVoice Small and Parakeet Unified English, which transcribe.cpp also runs, a
 
 - **Best for your languages** marks the model Librelog recommends for your main and spoken languages, and the list puts the next choices after it. For English and Portuguese, Parakeet TDT 0.6B v3 comes first and Whisper large-v3-turbo second; when two models are about as accurate, the one with word timing comes first. A model that cannot transcribe one of your languages is never recommended.
 - **Timing** affects speaker labels. Word timing places each word where it was spoken. With segment timing or none, word positions are estimated, so speaker separation after a meeting is less precise.
+- **Dictionary** terms reach the Whisper models and Qwen3-ASR, including a Whisper or Qwen3-ASR file you pick, as context, most important first and as many as the model reads. If the model only repeats the list back, on silence or before what you said, the repeat is removed. Parakeet, Cohere Transcribe, GigaAM and Nemotron take no context, so they transcribe without your Dictionary.
 - Local models work after recording. During a meeting, Librelog transcribes the recording a minute at a time; when you stop, it transcribes the whole recording again if the recording is kept. They do not show live captions, and dictation shows no live preview while you speak.
 
 #### Speech engine
