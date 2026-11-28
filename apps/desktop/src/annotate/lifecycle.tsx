@@ -17,6 +17,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { createAnnotateFlow, narrationMicrophone } from "./flow";
+import { narrationNotices } from "./narration-notices";
 import { chainRegistration } from "./registration";
 import { annotateRuns, useAnnotateStatus } from "./state";
 import {
@@ -83,6 +84,7 @@ export function AnnotateLifecycle() {
 type Flow = ReturnType<typeof createAnnotateFlow>;
 
 const BATCH_ID = `annotate-${crypto.randomUUID()}`;
+const NARRATION_TOAST = "annotate-narration";
 
 /**
  * What the mounted Annotate gives the flow: its transcriber, the speech-to-text
@@ -102,7 +104,19 @@ let shared: Flow | null = null;
  * remount's recovery never starts a second transcription of it.
  */
 function annotateFlow(): Flow {
-  shared ??= createAnnotateFlow({
+  if (shared) return shared;
+  const narration = narrationNotices({
+    lost: () =>
+      toast.warning(t`The narration isn't being recorded.`, {
+        id: NARRATION_TOAST,
+        description: t`The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back.`,
+      }),
+    back: () =>
+      toast(t`The microphone is recording the narration again.`, {
+        id: NARRATION_TOAST,
+      }),
+  });
+  shared = createAnnotateFlow({
     plugin: {
       status: async () => unwrap(await annotate.status()),
       screenRecording: async () => unwrap(await annotate.screenRecording()),
@@ -213,12 +227,7 @@ function annotateFlow(): Flow {
             description: t`Enable microphone permission in Settings > Permissions to narrate.`,
           },
         ),
-      narration: (heard) =>
-        heard
-          ? toast(t`The microphone is recording the narration again.`)
-          : toast.warning(t`The narration isn't being recorded.`, {
-              description: t`The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back.`,
-            }),
+      narration: (heard) => narration.heard(heard),
       transcriptionFailed: (error) => {
         console.error("[annotate] transcription", error);
         toast.warning(
@@ -238,7 +247,10 @@ function annotateFlow(): Flow {
         }),
       error: (error) => toast.error(describe(error)),
     },
-    onPhase: (phase) => useAnnotateStatus.setState({ phase }),
+    onPhase: (phase) => {
+      if (phase !== "recording") narration.reset();
+      useAnnotateStatus.setState({ phase });
+    },
   });
   return shared;
 }
