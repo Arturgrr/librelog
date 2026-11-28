@@ -97,13 +97,13 @@ What works as on GNOME, without extensions:
 
 - **The tray icon.** Plasma shows it in the system tray, and closing Librelog's window hides it there. The icon is dark on a light panel and white on a dark one, following Plasma's colour scheme; with a third-party Plasma style it gets a dark outline that shows on either. Librelog's notifications also follow the colour scheme.
 - **Shortcuts.** Librelog's shortcuts go through KDE's Global Shortcuts portal. KDE may ask you to confirm them the first time; afterwards they are listed under **Librelog** in **System Settings → Keyboard → Shortcuts**, where you can give them other keys, and Librelog's Settings show the keys KDE uses. KDE reports when you let go of a shortcut, so holding the dictation shortcut to talk works. Control + Alt + period cancels a dictation; Control + Alt + Escape stays KWin's.
-- **Pasting.** The first dictation that needs a paste makes KDE ask whether Librelog may control the keyboard (remote control). If KDE gives Librelog a way to restore that approval, Librelog keeps it and does not ask again. On Plasma versions that do not, KDE asks again each time Librelog starts, and Plasma may show that the computer is being controlled remotely for as long as Librelog runs.
+- **Pasting.** The first dictation that needs a paste makes KDE ask whether Librelog may control the keyboard (remote control). If KDE gives Librelog a way to restore that approval, Librelog keeps it and does not ask again. On Plasma versions that do not, KDE asks again when Librelog needs it after a while: Librelog closes the remote-control session after 10 idle minutes, so Plasma does not show that the computer is being controlled remotely the whole time.
 - **Screenshots, recordings and Annotate.** They use KDE's screenshot and screen-sharing dialogs.
 - **The Trash.** Deleting a capture moves it to the Trash, which Dolphin lists, with or without GNOME's `gio`.
 
 ### Accessibility for Qt apps
 
-Dictation types into native fields through accessibility (AT-SPI). Plasma leaves it off for Qt and KDE apps, so to Librelog they show no field: dictation pastes into them instead, cannot leave out their password fields, and cannot tell which app is in front. To turn accessibility on for Qt apps, create `~/.config/plasma-workspace/env/qt-accessibility.sh` with this line, then log out and back in:
+Dictation types into native fields through accessibility (AT-SPI). Plasma leaves it off for Qt and KDE apps, so to Librelog they show no field: dictation pastes into them instead and cannot leave out their password fields. Librelog still learns which app is in front by asking KWin. To turn accessibility on for Qt apps, create `~/.config/plasma-workspace/env/qt-accessibility.sh` with this line, then log out and back in:
 
 ```bash
 export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
@@ -113,7 +113,7 @@ Turning on the screen reader in **System Settings → Accessibility** also works
 
 ### Konsole and Yakuake
 
-Without accessibility (above), Librelog cannot tell that Konsole or Yakuake is in front, so it presses Control + V, which they do not paste: in bash it inserts the next key literally. Turn on accessibility for Qt apps, or copy the dictation from **Settings → Dictation history** and paste it with Control + Shift + V.
+Librelog asks KWin which window is in front, so Konsole and Yakuake get Control + Shift + V, which they paste. If KWin does not answer, Librelog presses Control + V, which they do not paste; then copy the dictation from **Settings → Dictation history** and paste it with Control + Shift + V.
 
 ### Scaling
 
@@ -121,10 +121,9 @@ Librelog's windows run through XWayland. With fractional scaling (125% or 150%),
 
 ### Known limitations on KDE
 
-- Without accessibility for Qt apps, a dictation's history entry and Annotate's summary have no app name, and **Send after pasting** never presses Return.
+- Annotate's summary has no app name on KDE.
 - The dictation indicator, the meeting bar and notifications stay below full-screen windows.
-- Annotate stops drawing 8 seconds after you press its shortcut, as on other Wayland desktops, even though KDE reports the release.
-- Plasma 5 and xdg-desktop-portal versions before 1.19 (Kubuntu 24.04) are not tested. With them, a Librelog started at login or from a terminal can count as another app, so KDE asks for its shortcuts and remote control again.
+- Plasma 5 and xdg-desktop-portal versions before 1.19 (Kubuntu 24.04) are not tested. Librelog names its login entry and its process after its app id so KDE should see one app however it starts, but this has not been tried there.
 
 ## What is not available on Linux yet
 
