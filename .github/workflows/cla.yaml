@@ -41,8 +41,10 @@ jobs:
           path-to-signatures: signatures/cla.json
           path-to-document: https://github.com/Arturgrr/librelog/blob/main/CLA.md
           branch: cla-signatures
-          # Commits with no linked GitHub account are matched by their git
-          # author name: "Claude" covers the maintainer's coding-agent commits.
-          allowlist: Arturgrr,Claude,dependabot[bot],github-actions[bot],claude[bot]
+          # The maintainer's coding-agent commits are matched by the GitHub
+          # account their email links to ("claude"), or by their git author
+          # name ("Claude") when no account is linked; the match is
+          # case-sensitive.
+          allowlist: Arturgrr,claude,Claude,dependabot[bot],github-actions[bot],claude[bot]
           custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
           lock-pullrequest-aftermerge: false
