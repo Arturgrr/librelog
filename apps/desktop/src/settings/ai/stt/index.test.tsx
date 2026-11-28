@@ -201,7 +201,11 @@ describe("Transcription settings", () => {
   test("a provider added to the catalog is listed in Settings and in onboarding", async () => {
     for (const ui of [
       <SttModelPicker key="settings" variant="page" />,
-      <TranscriptionStep key="onboarding" onContinue={vi.fn()} />,
+      <TranscriptionStep
+        key="onboarding"
+        onContinue={vi.fn()}
+        onContinueWithoutModel={vi.fn()}
+      />,
     ]) {
       renderPage(ui);
       fireEvent.change(

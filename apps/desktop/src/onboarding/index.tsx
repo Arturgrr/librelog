@@ -17,8 +17,11 @@ import {
   getStepStatus,
   limitToMissingSelection,
   type OnboardingStep,
+  readContinuedWithoutTranscription,
+  saveContinuedWithoutTranscription,
   saveOnboardingStep,
 } from "./config";
+import { DictationStep } from "./dictation";
 import { FinalStep } from "./final";
 import { WelcomeLanguagePicker } from "./language-picker";
 import {
@@ -32,6 +35,7 @@ import { OnboardingSection } from "./shared";
 
 import { captureOnLinux } from "~/capture/system";
 import { NotificationProvider } from "~/contexts/notifications";
+import { DictationLifecycle } from "~/dictation/lifecycle";
 import { useSettingsReady } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
 import { StandaloneWindowShell } from "~/shared/window-shell";
@@ -84,6 +88,7 @@ export function StandaloneOnboardingScreen({
           onFinish={onFinish}
           headerClassName="px-12 pt-4 pb-8"
           headerDragRegion
+          runsDictation
         />
       </NotificationProvider>
     </StandaloneWindowShell>
@@ -94,16 +99,22 @@ function OnboardingScreenContent({
   onFinish,
   headerClassName,
   headerDragRegion = false,
+  runsDictation = false,
 }: {
   onFinish: (sessionId: string) => void;
   headerClassName: string;
   headerDragRegion?: boolean;
+  /** Without the main window's services, dictation runs here to practice. */
+  runsDictation?: boolean;
 }) {
   const queryClient = useQueryClient();
   const { t } = useLingui();
   const [isMuted, setIsMuted] = useState(false);
   const [savedStep, setSavedStep] = useState(getInitialStep);
-  const missingSelectionStep = useMissingSelectionStep();
+  const [withoutTranscription, setWithoutTranscription] = useState(
+    readContinuedWithoutTranscription,
+  );
+  const missingSelectionStep = useMissingSelectionStep(withoutTranscription);
   const currentStep = limitToMissingSelection(savedStep, missingSelectionStep);
   const onboardingVideoRef = useRef<HTMLVideoElement>(null);
   const currentPlatform = platform();
@@ -124,6 +135,15 @@ function OnboardingScreenContent({
     [currentStep, goTo],
   );
   const skipCapture = useSkipCapture(goNext);
+
+  const continueFromTranscription = useCallback(
+    (withModel: boolean) => {
+      saveContinuedWithoutTranscription(!withModel);
+      setWithoutTranscription(!withModel);
+      goNext();
+    },
+    [goNext],
+  );
 
   useMountEffect(() => {
     sfxCommands.play("BGM").catch(console.error);
@@ -259,7 +279,10 @@ function OnboardingScreenContent({
             onNext={goNext}
             onEdit={() => goTo("transcription")}
           >
-            <TranscriptionStep onContinue={goNext} />
+            <TranscriptionStep
+              onContinue={() => continueFromTranscription(true)}
+              onContinueWithoutModel={() => continueFromTranscription(false)}
+            />
           </OnboardingSection>
 
           <OnboardingSection
@@ -279,7 +302,33 @@ function OnboardingScreenContent({
             onNext={goNext}
             onEdit={() => goTo("intelligence")}
           >
-            <IntelligenceStep onBack={goBack} onContinue={goNext} />
+            <IntelligenceStep
+              onBack={goBack}
+              onContinue={goNext}
+              continuedWithoutTranscription={withoutTranscription}
+            />
+          </OnboardingSection>
+
+          <OnboardingSection
+            eyebrow={<Trans>Optional</Trans>}
+            title={<Trans>Try dictation</Trans>}
+            completedTitle={<Trans>Dictation</Trans>}
+            description={
+              <Trans>
+                Speak instead of typing, in any app. Try it here before you use
+                it elsewhere.
+              </Trans>
+            }
+            status={getStepStatus("dictation", currentStep)}
+            onBack={goBack}
+            onNext={goNext}
+            onEdit={() => goTo("dictation")}
+          >
+            {runsDictation ? <DictationLifecycle /> : null}
+            <DictationStep
+              onContinue={goNext}
+              onChooseModel={() => goTo("transcription")}
+            />
           </OnboardingSection>
 
           <OnboardingSection
@@ -323,7 +372,9 @@ function OnboardingScreenContent({
   );
 }
 
-function useMissingSelectionStep(): OnboardingStep | null {
+function useMissingSelectionStep(
+  withoutTranscription: boolean,
+): OnboardingStep | null {
   const settingsReady = useSettingsReady();
   const pendingStt = usePendingSttSelection((state) => state.selection);
   const {
@@ -340,6 +391,7 @@ function useMissingSelectionStep(): OnboardingStep | null {
 
   if (!settingsReady) return null;
   if (
+    !withoutTranscription &&
     !pendingStt &&
     !isConfiguredSttModel(current_stt_provider, current_stt_model)
   ) {

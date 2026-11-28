@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useEffect, useRef } from "react";
 
 import {
@@ -45,6 +45,7 @@ export function OnboardingSection({
 }) {
   const { t } = useLingui();
   const sectionRef = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
 
   const isActive = status === "active";
   const isCompleted = status === "completed";
@@ -53,12 +54,12 @@ export function OnboardingSection({
     if (!isActive) return;
     const timeout = setTimeout(() => {
       sectionRef.current?.scrollIntoView({
-        behavior: "smooth",
+        behavior: reduceMotion ? "auto" : "smooth",
         block: "start",
       });
     }, SCROLL_DELAY_MS);
     return () => clearTimeout(timeout);
-  }, [isActive]);
+  }, [isActive, reduceMotion]);
 
   if (!status || status === "upcoming") return null;
 
@@ -155,7 +156,7 @@ export function OnboardingSection({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: "easeInOut" }}
             className={cn([
               "-mx-5 -mb-5 overflow-hidden px-5 pt-3 pb-5",
               fill && "flex min-h-0 flex-1 flex-col",

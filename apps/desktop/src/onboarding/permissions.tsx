@@ -109,6 +109,20 @@ function PermissionBlock({
   );
 }
 
+function handleAction(
+  perm: ReturnType<typeof usePermission>,
+  opensSettingsWhenDenied: boolean,
+  assisted = false,
+) {
+  // Assisted panes are granted by hand in System Settings; their request API
+  // only prompts once, so every click after that would be a silent no-op.
+  if (assisted || (opensSettingsWhenDenied && perm.status === "denied")) {
+    perm.open();
+  } else {
+    perm.request();
+  }
+}
+
 function ContinueWhenComplete({
   onContinue,
   hasContinuedRef,
@@ -145,20 +159,6 @@ function PermissionsSectionContent({
     mic.status === "authorized" &&
     systemAudio.status === "authorized" &&
     (!accessibility || accessibility.status === "authorized");
-
-  const handleAction = (
-    perm: ReturnType<typeof usePermission>,
-    opensSettingsWhenDenied: boolean,
-    assisted = false,
-  ) => {
-    // Assisted panes are granted by hand in System Settings; their request API
-    // only prompts once, so every click after that would be a silent no-op.
-    if (assisted || (opensSettingsWhenDenied && perm.status === "denied")) {
-      perm.open();
-    } else {
-      perm.request();
-    }
-  };
 
   return (
     <div>
@@ -262,5 +262,79 @@ export function PermissionsSection({
 
   return (
     <PermissionsSectionContent onContinue={onContinue} runtimeCapabilities />
+  );
+}
+
+function DictationMicrophone({
+  runtimeCapabilities,
+}: {
+  runtimeCapabilities: boolean;
+}) {
+  const { t } = useLingui();
+  const mic = usePermission("microphone");
+  return (
+    <PermissionBlock
+      enabledLabel={t`Librelog can hear your voice`}
+      enableLabel={t`Let Librelog hear what you dictate`}
+      enabledBody={t`Microphone access turned on`}
+      enableBody={
+        mic.error ?? t`Dictation records your voice only while you dictate`
+      }
+      Icon={Microphone}
+      permissionName={t`Microphone`}
+      status={mic.status}
+      isPending={mic.isPending}
+      onAction={() => handleAction(mic, !runtimeCapabilities)}
+      actionLabel={
+        runtimeCapabilities && mic.status === "denied"
+          ? `${t`Try again`}: ${t`Microphone`}`
+          : undefined
+      }
+      opensSettingsWhenDenied={!runtimeCapabilities}
+    />
+  );
+}
+
+function MacOSDictationPermissions() {
+  const { t } = useLingui();
+  const accessibility = usePermission("accessibility");
+  const guidance = usePermissionGuidance("accessibility");
+
+  useMountEffect(() => () => void closePermissionAssistant());
+
+  return (
+    <>
+      <DictationMicrophone runtimeCapabilities={false} />
+      <PermissionBlock
+        enabledLabel={t`Librelog can type for you`}
+        enableLabel={t`Let Librelog type into other apps`}
+        enabledBody={t`Accessibility access turned on`}
+        enableBody={
+          guidance
+            ? t`Opens System Settings and guides you to add Librelog to the ${localizeSettingsPane(guidance.paneTitle)} list`
+            : t`Dictation types your words into the app you're using`
+        }
+        Icon={Cursor}
+        permissionName={t`Accessibility`}
+        status={accessibility.status}
+        isPending={accessibility.isPending}
+        onAction={() => handleAction(accessibility, false, Boolean(guidance))}
+        assisted={Boolean(guidance)}
+        opensSettingsWhenDenied={false}
+      />
+    </>
+  );
+}
+
+/** What dictation needs: the microphone, and on macOS Accessibility to type. */
+export function DictationPermissions() {
+  return (
+    <div className="flex flex-col gap-2">
+      {platform() === "macos" ? (
+        <MacOSDictationPermissions />
+      ) : (
+        <DictationMicrophone runtimeCapabilities />
+      )}
+    </div>
   );
 }
