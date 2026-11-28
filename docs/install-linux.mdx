@@ -19,6 +19,7 @@ Every release on [GitHub Releases](https://github.com/Arturgrr/librelog/releases
 
 - An x86_64 computer with a distribution at least as new as Ubuntu 24.04 (glibc 2.39). The packages are built on Ubuntu 24.04.
 - Fedora 42 or later is recommended on GNOME: it has the desktop portal Librelog uses for global keyboard shortcuts.
+- On KDE Plasma, Plasma 6 with `xdg-desktop-portal-kde`, which Plasma installs. See [KDE Plasma](#kde-plasma).
 - On GNOME, the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) to see the Librelog icon in the top bar. On Fedora, install it with `sudo dnf install gnome-shell-extension-appindicator`, log out and back in, and turn it on in the Extensions app. Without it, Librelog runs without a top-bar icon, closing its window minimizes it instead of hiding it, and you quit it from **File → Quit Librelog** in its title bar or with Control + Q.
 - A Vulkan-capable GPU is optional. Local models use it when it works and transcribe on the CPU otherwise. The RPM and deb install the Vulkan loader, and the AppImage carries one.
 
@@ -87,6 +88,43 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 - **Screenshots and recordings.** They use your desktop's screenshot tool and screen-sharing dialog. Recordings are MP4, or WebM when no H.264 encoder is installed, and have no sound, countdown or outline yet. On Fedora, `gstreamer1-plugin-openh264` provides the H.264 encoder; dnf installs it with the RPM when the Cisco OpenH264 repository is enabled. See [Screenshots and recordings](/capture#on-linux).
 - **Annotate.** The capsule and your red marks are part of the screen recording. With `LIBRELOG_WAYLAND=1` there is no drawing overlay. See [Annotate](/annotate#on-linux).
 - **Built-in models.** The model server ships inside the packages and needs a CPU with AVX2. It uses your GPU through Vulkan when it works.
+
+## KDE Plasma
+
+Librelog runs on Plasma 6 on Wayland (Fedora KDE, Kubuntu, KDE neon, Arch and others) through KDE's desktop portals. Plasma 5 is not tested.
+
+What works as on GNOME, without extensions:
+
+- **The tray icon.** Plasma shows it in the system tray, and closing Librelog's window hides it there. The icon is dark on a light panel and white on a dark one, following Plasma's colour scheme; with a third-party Plasma style it gets a dark outline that shows on either. Librelog's notifications also follow the colour scheme.
+- **Shortcuts.** Librelog's shortcuts go through KDE's Global Shortcuts portal. KDE may ask you to confirm them the first time; afterwards they are listed under **Librelog** in **System Settings → Keyboard → Shortcuts**, where you can give them other keys, and Librelog's Settings show the keys KDE uses. KDE reports when you let go of a shortcut, so holding the dictation shortcut to talk works. Control + Alt + period cancels a dictation; Control + Alt + Escape stays KWin's.
+- **Pasting.** The first dictation that needs a paste makes KDE ask whether Librelog may control the keyboard (remote control). If KDE gives Librelog a way to restore that approval, Librelog keeps it and does not ask again. On Plasma versions that do not, KDE asks again each time Librelog starts, and Plasma may show that the computer is being controlled remotely for as long as Librelog runs.
+- **Screenshots, recordings and Annotate.** They use KDE's screenshot and screen-sharing dialogs.
+- **The Trash.** Deleting a capture moves it to the Trash, which Dolphin lists, with or without GNOME's `gio`.
+
+### Accessibility for Qt apps
+
+Dictation types into native fields through accessibility (AT-SPI). Plasma leaves it off for Qt and KDE apps, so to Librelog they show no field: dictation pastes into them instead, cannot leave out their password fields, and cannot tell which app is in front. To turn accessibility on for Qt apps, create `~/.config/plasma-workspace/env/qt-accessibility.sh` with this line, then log out and back in:
+
+```bash
+export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+```
+
+Turning on the screen reader in **System Settings → Accessibility** also works, but turns accessibility on for every app, which can slow some of them down.
+
+### Konsole and Yakuake
+
+Without accessibility (above), Librelog cannot tell that Konsole or Yakuake is in front, so it presses Control + V, which they do not paste: in bash it inserts the next key literally. Turn on accessibility for Qt apps, or copy the dictation from **Settings → Dictation history** and paste it with Control + Shift + V.
+
+### Scaling
+
+Librelog's windows run through XWayland. With fractional scaling (125% or 150%), the **Legacy applications (X11)** setting in **System Settings → Display & Monitor** decides how they look: **Scaled by the system** makes them blurry, **Apply scaling themselves** keeps them sharp but they may look smaller than other apps. Starting Librelog with `LIBRELOG_WAYLAND=1` makes it sharp at the right size, but KWin then places the dictation indicator, the meeting bar and notifications itself and may cover them, and Annotate has no ink.
+
+### Known limitations on KDE
+
+- Without accessibility for Qt apps, a dictation's history entry and Annotate's summary have no app name, and **Send after pasting** never presses Return.
+- The dictation indicator, the meeting bar and notifications stay below full-screen windows.
+- Annotate stops drawing 8 seconds after you press its shortcut, as on other Wayland desktops, even though KDE reports the release.
+- Plasma 5 and xdg-desktop-portal versions before 1.19 (Kubuntu 24.04) are not tested. With them, a Librelog started at login or from a terminal can count as another app, so KDE asks for its shortcuts and remote control again.
 
 ## What is not available on Linux yet
 
