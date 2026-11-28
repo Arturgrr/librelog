@@ -27,7 +27,13 @@ import {
 } from "~/settings/ai/stt/shared";
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
 
-export function TranscriptionStep({ onContinue }: { onContinue: () => void }) {
+export function TranscriptionStep({
+  onContinue,
+  onContinueWithoutModel,
+}: {
+  onContinue: () => void;
+  onContinueWithoutModel: () => void;
+}) {
   const status = useTranscriptionSetup();
   const canContinue = status.kind === "ready" || status.kind === "installing";
 
@@ -37,11 +43,33 @@ export function TranscriptionStep({ onContinue }: { onContinue: () => void }) {
         <SttModelPicker variant="embedded" />
       </SettingsHydrationBoundary>
       <StepFooter
-        status={<ChosenModel status={status} />}
+        status={
+          <>
+            <ChosenModel status={status} />
+            {canContinue ? null : (
+              <span className="text-muted-foreground text-xs">
+                <Trans>
+                  You can also go on without one. Meetings and dictation ask you
+                  to choose a model when you first use them.
+                </Trans>
+              </span>
+            )}
+          </>
+        }
         actions={
-          <OnboardingButton disabled={!canContinue} onClick={onContinue}>
-            <Trans>Continue to Intelligence</Trans>
-          </OnboardingButton>
+          <>
+            {canContinue ? null : (
+              <OnboardingButton
+                variant="ghost"
+                onClick={onContinueWithoutModel}
+              >
+                <Trans>Continue without a model</Trans>
+              </OnboardingButton>
+            )}
+            <OnboardingButton disabled={!canContinue} onClick={onContinue}>
+              <Trans>Continue to Intelligence</Trans>
+            </OnboardingButton>
+          </>
         }
       />
     </div>
@@ -51,17 +79,23 @@ export function TranscriptionStep({ onContinue }: { onContinue: () => void }) {
 export function IntelligenceStep({
   onBack,
   onContinue,
+  continuedWithoutTranscription = false,
 }: {
   onBack: () => void;
   onContinue: () => void;
+  continuedWithoutTranscription?: boolean;
 }) {
   const status = useIntelligenceSetup();
   const transcription = useTranscriptionSetup();
   // Running downloads keep going in the background, so neither holds up
   // this step.
+  const transcriptionSettled =
+    continuedWithoutTranscription ||
+    transcription.kind === "ready" ||
+    transcription.kind === "installing";
   const canContinue =
     (status.kind === "ready" || status.kind === "installing") &&
-    (transcription.kind === "ready" || transcription.kind === "installing");
+    transcriptionSettled;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -73,7 +107,9 @@ export function IntelligenceStep({
         status={
           <>
             <ChosenModel status={status} />
-            <TranscriptionBlocker status={transcription} />
+            {transcriptionSettled ? null : (
+              <TranscriptionBlocker status={transcription} />
+            )}
           </>
         }
         actions={

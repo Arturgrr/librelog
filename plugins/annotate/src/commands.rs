@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anlg_annotate_core::retention::Preset;
 use tauri::Manager;
 
+use crate::audio::Microphone;
 use crate::bundle::{Finalized, TranscriptInput};
 use crate::events::Stopped;
 use crate::session::{CapsuleLabels, Session, Started, Status};
@@ -54,22 +55,32 @@ pub(crate) async fn open_screen_recording_settings<R: tauri::Runtime>(
         .map_err(text)
 }
 
-/// Starts recording the display under the pointer and the microphone.
+/// Starts recording the display under the pointer and, when `narrate` is
+/// not false, the microphone: `microphone_device`, or the default input,
+/// which gives way to the built-in or wired microphone when it is a
+/// Bluetooth headset's unless `avoid_bluetooth_microphone` is false. The
+/// screen records even when the microphone does not open.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn start<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     microphone_device: Option<String>,
+    avoid_bluetooth_microphone: Option<bool>,
+    narrate: Option<bool>,
     labels: Option<CapsuleLabels>,
 ) -> Result<Started> {
-    let audio = app
-        .state::<Arc<dyn anlg_audio::AudioProvider>>()
-        .inner()
-        .clone();
-    session(&app)
-        .start(audio, microphone_device, labels)
-        .await
-        .map_err(text)
+    let microphone = narrate.unwrap_or(true).then(|| {
+        let audio = app
+            .state::<Arc<dyn anlg_audio::AudioProvider>>()
+            .inner()
+            .clone();
+        Microphone::new(
+            audio,
+            microphone_device,
+            avoid_bluetooth_microphone.unwrap_or(true),
+        )
+    });
+    session(&app).start(microphone, labels).await.map_err(text)
 }
 
 /// Stops the screen and the microphone; the recording waits for `finalize`.

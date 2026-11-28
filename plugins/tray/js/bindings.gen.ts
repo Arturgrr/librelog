@@ -104,6 +104,26 @@ export const commands = {
     }
   },
   /**
+   * Shows the newest dictations in a submenu of the tray menu, to copy one;
+   * with none it says so, disabled, and `null` hides it.
+   */
+  async setTrayRecentDictations(
+    recent: TrayRecentDictations | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE(
+          "plugin:anlg-tray|set_tray_recent_dictations",
+          { recent },
+        ),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
    * Claims a "Start a new meeting" click from the menu bar icon. Returns true
    * once per click, so it starts one recording however many times it is asked.
    */
@@ -137,10 +157,20 @@ export const commands = {
 
 /** user-defined events **/
 
+export const events = __makeEvents__<{
+  copyRecentDictationEvent: CopyRecentDictationEvent;
+}>({
+  copyRecentDictationEvent: "plugin:anlg-tray:copy-recent-dictation-event",
+});
+
 /** user-defined constants **/
 
 /** user-defined types **/
 
+/**
+ * A recent dictation was chosen in the tray menu: copy its text.
+ */
+export type CopyRecentDictationEvent = { id: string };
 /**
  * The dictation presets the tray menu offers, with labels in the app
  * language. Hidden while there are fewer than two.
@@ -221,6 +251,23 @@ export type TrayLabels = {
    * Contains `{error}`.
    */
   checkFailedMessage: string;
+};
+export type TrayRecentDictation = {
+  /**
+   * The history entry's id, sent back when it is chosen.
+   */
+  id: string;
+  preview: string;
+};
+/**
+ * The newest dictations the tray menu offers to copy, as previews, with
+ * labels in the app language. With no items the submenu holds `empty`,
+ * disabled.
+ */
+export type TrayRecentDictations = {
+  title: string;
+  empty: string;
+  items: TrayRecentDictation[];
 };
 
 /** tauri-specta globals **/

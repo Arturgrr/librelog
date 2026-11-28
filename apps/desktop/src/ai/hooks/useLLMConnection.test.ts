@@ -3,9 +3,13 @@ import { renderHook } from "@testing-library/react";
 import { generateText, streamText } from "ai";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { useLanguageModel } from "./useLLMConnection";
+import { useDictationCleanupModel, useLanguageModel } from "./useLLMConnection";
 
-const mocks = vi.hoisted(() => ({ provider: "custom" as string }));
+const mocks = vi.hoisted(() => ({
+  provider: "custom" as string,
+  cleanupProvider: "",
+  cleanupModel: "",
+}));
 const managed = vi.hoisted(() => ({ ready: true, disabled: false }));
 vi.mock("@tauri-apps/plugin-http", () => ({ fetch: vi.fn() }));
 vi.mock("~/settings/queries", () => ({
@@ -24,11 +28,15 @@ vi.mock("~/shared/config", () => ({
     current_llm_provider: mocks.provider,
     current_llm_model: "mtplx",
     current_llm_reasoning_effort: "default",
+    dictation_cleanup_provider: mocks.cleanupProvider,
+    dictation_cleanup_model: mocks.cleanupModel,
   }),
 }));
 
 afterEach(() => {
   mocks.provider = "custom";
+  mocks.cleanupProvider = "";
+  mocks.cleanupModel = "";
 });
 
 it.each([false, true])(
@@ -89,6 +97,41 @@ it.each([false, true])(
     unmount();
   },
 );
+
+it("cleans up dictation with the model chosen for it, or the selected one when none is", async () => {
+  const asked: string[] = [];
+  vi.mocked(tauriFetch).mockImplementation(async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    asked.push(body.model);
+    return Response.json({
+      id: "cleanup",
+      model: body.model,
+      created: 0,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "Cleaned." },
+          finish_reason: "stop",
+        },
+      ],
+    });
+  });
+  const cleanUp = async () => {
+    const { result, unmount } = renderHook(() => useDictationCleanupModel());
+    await generateText({
+      model: result.current!,
+      prompt: "um hello",
+      maxRetries: 0,
+    });
+    unmount();
+  };
+
+  await cleanUp();
+  mocks.cleanupProvider = "custom";
+  mocks.cleanupModel = "fast-cleanup";
+  await cleanUp();
+  expect(asked).toEqual(["mtplx", "fast-cleanup"]);
+});
 
 it("sends OpenRouter app-attribution headers for the BYOK openrouter provider", async () => {
   mocks.provider = "openrouter";

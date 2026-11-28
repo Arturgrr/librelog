@@ -18,6 +18,10 @@ use crate::text::{char_len, tail_chars};
 pub const CLEANUP_DEADLINE_MS: u32 = 6_000;
 /// Editing a selection is the whole point, so it waits longer and never types the raw words.
 pub const EDIT_DEADLINE_MS: u32 = 17_000;
+/// The bounds of the person's own cleanup deadline: shorter can't fit a model call, longer
+/// keeps them waiting for words they already said.
+pub const MIN_CLEANUP_DEADLINE_MS: u32 = 1_000;
+pub const MAX_CLEANUP_DEADLINE_MS: u32 = 30_000;
 pub const MAX_TEXT_LENGTH: usize = 20_000;
 pub const MAX_SELECTION_LENGTH: usize = 20_000;
 pub const MAX_INSTRUCTIONS_LENGTH: usize = 4_100;
@@ -55,6 +59,10 @@ pub struct RefineRequest {
     /// Spoken commands to apply to a dictation that edits nothing, before the replacements and
     /// any cleanup, so they hold even with cleanup off.
     pub spoken: Option<SpokenRules>,
+    /// How long cleanup waits for the model before typing the words as said; `None` keeps
+    /// [`CLEANUP_DEADLINE_MS`]. An edit waits at least [`EDIT_DEADLINE_MS`], since it has no raw
+    /// words to fall back to.
+    pub deadline_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -214,7 +222,9 @@ pub fn prepare_refinement(request: RefineRequest) -> RefinePlan {
             call: ModelCall {
                 system: prompt.system,
                 prompt: prompt.prompt,
-                deadline_ms: EDIT_DEADLINE_MS,
+                deadline_ms: request.deadline_ms.map_or(EDIT_DEADLINE_MS, |chosen| {
+                    chosen.clamp(EDIT_DEADLINE_MS, MAX_CLEANUP_DEADLINE_MS)
+                }),
             },
             pending: PendingRefinement {
                 kind: RefineKind::Edit,
@@ -255,7 +265,9 @@ pub fn prepare_refinement(request: RefineRequest) -> RefinePlan {
         call: ModelCall {
             system: prompt.system,
             prompt: prompt.prompt,
-            deadline_ms: CLEANUP_DEADLINE_MS,
+            deadline_ms: request.deadline_ms.map_or(CLEANUP_DEADLINE_MS, |chosen| {
+                chosen.clamp(MIN_CLEANUP_DEADLINE_MS, MAX_CLEANUP_DEADLINE_MS)
+            }),
         },
         pending: PendingRefinement {
             kind: RefineKind::Cleanup,

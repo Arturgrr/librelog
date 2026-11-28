@@ -30,7 +30,7 @@ mod x11;
 mod tests;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::time::Duration;
 
 use anlg_annotate_macos::{AnnotateError, codes};
@@ -179,6 +179,7 @@ struct LabelsRequest {
     keep: Option<String>,
     draw: Option<String>,
     stop: Option<String>,
+    unheard: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -210,6 +211,8 @@ struct Current {
     ink: bool,
     labels: CapsuleLabels,
     warnings: Vec<String>,
+    /// The narration's microphone isn't recording.
+    unheard: bool,
     /// The recorder stopped by itself; `stop` collects it.
     ended: bool,
     /// When the overlay last let a scroll through, while it does.
@@ -363,6 +366,7 @@ impl Linux {
             drawable: current.ink,
             asking: current.machine.asking(),
             started_wall_ms: current.wall_ms,
+            unheard: current.unheard,
             labels: current.labels.clone(),
         }
     }
@@ -482,6 +486,7 @@ impl Linux {
                 keep: labels.keep.clone(),
                 draw: labels.draw.clone(),
                 stop: labels.stop.clone(),
+                unheard: labels.unheard.clone(),
             });
         let current = Current {
             dir: request.dir.clone(),
@@ -493,6 +498,7 @@ impl Linux {
             ink,
             labels,
             warnings,
+            unheard: false,
             ended: false,
             scrolled: None,
         };
@@ -891,6 +897,36 @@ impl Native for Linux {
                 after.generation
             };
             self.close_after(generation, linger);
+        }
+        Ok(())
+    }
+
+    fn narration(&self, heard: bool, level: f32) -> Result<(), AnnotateError> {
+        // Levels arrive many times a second from the recording task, so one
+        // that finds the state busy is skipped; the next one applies a
+        // microphone coming back. A lost microphone is rare and must show.
+        let mut state = if heard {
+            match self.state.try_lock() {
+                Ok(state) => state,
+                Err(TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(TryLockError::WouldBlock) => return Ok(()),
+            }
+        } else {
+            self.lock()
+        };
+        let State::Recording(current) = &mut *state else {
+            return Ok(());
+        };
+        if current.ended {
+            return Ok(());
+        }
+        if current.unheard == heard {
+            current.unheard = !heard;
+            self.surfaces.publish(&Self::surface_of(current));
+        }
+        drop(state);
+        if heard {
+            self.surfaces.level(level);
         }
         Ok(())
     }

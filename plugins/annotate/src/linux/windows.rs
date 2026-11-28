@@ -17,7 +17,7 @@ use tauri_plugin_capture::recorder::Stream;
 use tauri_specta::Event;
 
 use super::x11::{self, Shape};
-use crate::events::AnnotateSurface;
+use crate::events::{AnnotateLevel, AnnotateSurface};
 
 pub const INK_LABEL: &str = "annotate-ink";
 pub const CAPSULE_LABEL: &str = "annotate-capsule";
@@ -115,6 +115,8 @@ pub trait Surfaces: Send + Sync {
     /// Ok only once the X server shows the change.
     fn takes_pointer(&self, takes: bool) -> Result<(), String>;
     fn publish(&self, surface: &AnnotateSurface);
+    /// The narration's level, for the capsule's meter.
+    fn level(&self, level: f32);
     /// Replays one click of wheel `button` to whatever is under the pointer.
     fn scroll(&self, button: u8) -> Result<(), String>;
     fn close_ink(&self);
@@ -522,6 +524,14 @@ impl Surfaces for Windows {
     fn publish(&self, surface: &AnnotateSurface) {
         if let Err(error) = surface.clone().emit(&self.app) {
             tracing::warn!(%error, "annotate surface");
+        }
+    }
+
+    fn level(&self, level: f32) {
+        // Only the capsule shows it, 25 times a second.
+        let event = AnnotateLevel { level };
+        if let Err(error) = event.emit_to(&self.app, CAPSULE_LABEL) {
+            tracing::debug!(%error, "annotate level");
         }
     }
 

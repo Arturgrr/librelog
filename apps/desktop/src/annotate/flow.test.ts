@@ -37,6 +37,7 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
     screenRecordingDenied: vi.fn(),
     needsRestart: vi.fn(),
     microphoneDenied: vi.fn(),
+    narration: vi.fn(),
     transcriptionFailed: vi.fn(),
     transcriptionWaiting: vi.fn(),
     nothingToPaste: vi.fn(),
@@ -51,7 +52,11 @@ function setup(overrides: Partial<AnnotateDeps["plugin"]> = {}) {
     })),
     screenRecording: vi.fn(async () => "granted"),
     requestScreenRecording: vi.fn(async () => true),
-    start: vi.fn(async () => ({ id: stopped.id, dir: stopped.dir })),
+    start: vi.fn(async () => ({
+      id: stopped.id,
+      dir: stopped.dir,
+      narration: true,
+    })),
     stop: vi.fn(async () => stopped),
     finalize: vi.fn(async () => finalized),
     cancel: vi.fn(async () => {}),
@@ -145,6 +150,35 @@ describe("Annotate flow", () => {
     await restart.flow.start();
     expect(restart.notify.needsRestart).toHaveBeenCalled();
     expect(restart.plugin.start).not.toHaveBeenCalled();
+  });
+
+  it("records the screen without narration when the microphone is denied or fails, and says so", async () => {
+    const denied = setup();
+    vi.mocked(denied.deps.microphoneAuthorized).mockResolvedValue(false);
+    vi.mocked(denied.plugin.start).mockResolvedValue({
+      id: stopped.id,
+      dir: stopped.dir,
+      narration: false,
+    });
+    await denied.flow.start();
+    expect(denied.plugin.start).toHaveBeenCalledWith(false);
+    expect(denied.notify.microphoneDenied).toHaveBeenCalledOnce();
+    expect(denied.notify.narration).not.toHaveBeenCalled();
+    expect(denied.flow.phase).toBe("recording");
+
+    const failed = setup();
+    vi.mocked(failed.plugin.start).mockResolvedValue({
+      id: stopped.id,
+      dir: stopped.dir,
+      narration: false,
+    });
+    await failed.flow.start();
+    expect(failed.plugin.start).toHaveBeenCalledWith(true);
+    expect(failed.notify.narration).toHaveBeenCalledWith(false);
+    // It opens again while the screen records.
+    await failed.flow.onEvent({ type: "narration", heard: true });
+    expect(failed.notify.narration).toHaveBeenLastCalledWith(true);
+    expect(failed.flow.phase).toBe("recording");
   });
 
   it("still finalizes without a transcript when transcription fails", async () => {
@@ -287,9 +321,12 @@ describe("Annotate flow", () => {
     const { flow, plugin } = setup({
       start: vi.fn(
         () =>
-          new Promise<{ id: string; dir: string }>((resolve) => {
-            started = () => resolve({ id: stopped.id, dir: stopped.dir });
-          }),
+          new Promise<{ id: string; dir: string; narration: boolean }>(
+            (resolve) => {
+              started = () =>
+                resolve({ id: stopped.id, dir: stopped.dir, narration: true });
+            },
+          ),
       ),
     });
     const starting = flow.start();

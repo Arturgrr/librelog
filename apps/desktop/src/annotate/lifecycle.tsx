@@ -17,6 +17,7 @@ import { toast } from "@anlg/ui/components/ui/toast";
 import { useMountEffect } from "@anlg/ui/hooks/use-mount-effect";
 
 import { createAnnotateFlow, narrationMicrophone } from "./flow";
+import { narrationNotices } from "./narration-notices";
 import { chainRegistration } from "./registration";
 import { annotateRuns, useAnnotateStatus } from "./state";
 import {
@@ -83,6 +84,7 @@ export function AnnotateLifecycle() {
 type Flow = ReturnType<typeof createAnnotateFlow>;
 
 const BATCH_ID = `annotate-${crypto.randomUUID()}`;
+const NARRATION_TOAST = "annotate-narration";
 
 /**
  * What the mounted Annotate gives the flow: its transcriber, the speech-to-text
@@ -92,7 +94,8 @@ const live: {
   runBatch: ReturnType<typeof useRunBatch> | null;
   conn: ReturnType<typeof useSTTConnection>["conn"];
   microphone: string;
-} = { runBatch: null, conn: null, microphone: "" };
+  avoidBluetooth: boolean;
+} = { runBatch: null, conn: null, microphone: "", avoidBluetooth: true };
 let shared: Flow | null = null;
 
 /**
@@ -101,24 +104,37 @@ let shared: Flow | null = null;
  * remount's recovery never starts a second transcription of it.
  */
 function annotateFlow(): Flow {
-  shared ??= createAnnotateFlow({
+  if (shared) return shared;
+  const narration = narrationNotices({
+    lost: () =>
+      toast.warning(t`The narration isn't being recorded.`, {
+        id: NARRATION_TOAST,
+        description: t`The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back.`,
+      }),
+    back: () =>
+      toast(t`The microphone is recording the narration again.`, {
+        id: NARRATION_TOAST,
+      }),
+  });
+  shared = createAnnotateFlow({
     plugin: {
       status: async () => unwrap(await annotate.status()),
       screenRecording: async () => unwrap(await annotate.screenRecording()),
       requestScreenRecording: async () =>
         unwrap(await annotate.requestScreenRecording()),
-      start: async () => {
+      start: async (narrate) => {
         const microphone = await narrationMicrophone(
           async () => unwrap(await transcription.getCurrentMicrophoneDevice()),
           live.microphone || null,
         );
         return unwrap(
-          await annotate.start(microphone, {
+          await annotate.start(microphone, live.avoidBluetooth, narrate, {
             discardQuestion: t`Discard?`,
             discard: t`Discard`,
             keep: t`Keep`,
             draw: t`Draw`,
             stop: t`Stop`,
+            unheard: t`The narration isn't being recorded`,
           }),
         );
       },
@@ -205,9 +221,13 @@ function annotateFlow(): Flow {
           description: t`macOS applies the Screen Recording permission after a relaunch.`,
         }),
       microphoneDenied: () =>
-        toast.error(
-          t`Enable microphone permission in Settings > Permissions before annotating.`,
+        toast.warning(
+          t`This annotation records the screen without narration.`,
+          {
+            description: t`Enable microphone permission in Settings > Permissions to narrate.`,
+          },
         ),
+      narration: (heard) => narration.heard(heard),
       transcriptionFailed: (error) => {
         console.error("[annotate] transcription", error);
         toast.warning(
@@ -227,7 +247,10 @@ function annotateFlow(): Flow {
         }),
       error: (error) => toast.error(describe(error)),
     },
-    onPhase: (phase) => useAnnotateStatus.setState({ phase }),
+    onPhase: (phase) => {
+      if (phase !== "recording") narration.reset();
+      useAnnotateStatus.setState({ phase });
+    },
   });
   return shared;
 }
@@ -242,10 +265,14 @@ function ActiveAnnotate() {
   const [flow, setFlow] = useState<Flow | null>(null);
   const runBatch = useRunBatch(BATCH_ID);
   const microphone = useConfigValue("microphone_device");
+  // The setting dictation's microphone shares: a Bluetooth headset's
+  // microphone drops what it plays to call quality while narrating too.
+  const avoidBluetooth = useConfigValue("dictation_avoid_bluetooth_microphone");
   live.runBatch = runBatch;
   const { conn } = useSTTConnection();
   live.conn = conn;
   live.microphone = microphone;
+  live.avoidBluetooth = avoidBluetooth;
 
   useMountEffect(() => {
     let disposed = false;

@@ -14,11 +14,18 @@ tauri-plugin = { workspace = true, features = ["build"] }
 [dev-dependencies]
 specta-typescript = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "rt-multi-thread", "time"] }
 
 [dependencies]
 tauri-plugin-store2 = { workspace = true }
 tauri-plugin-updater = { workspace = true }
-tokio = { workspace = true, features = ["macros", "time", "sync"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt", "sync", "time"] }
+
+base64 = { workspace = true }
+futures-util = { workspace = true }
+minisign-verify = "0.2"
+reqwest = { workspace = true, features = ["stream"] }
+serde_json = { workspace = true }
 
 tauri = { workspace = true, features = ["test"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }

@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   prepareDictationRefinement: vi.fn(),
   resolveDictationRefinement: vi.fn(),
   model: null as unknown,
+  cleanupModel: null as unknown,
   rankDictationTerms: vi.fn(),
   recordUsedTerms: vi.fn(),
   checkPermission: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("~/stt/useSTTConnection", () => ({
 }));
 vi.mock("~/ai/hooks/useLLMConnection", () => ({
   useLanguageModel: () => mocks.model,
+  useDictationCleanupModel: () => mocks.cleanupModel ?? mocks.model,
 }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => mocks.platform }));
 vi.mock("~/settings/queries", () => ({ useSettingsReady: () => true }));
@@ -239,6 +241,7 @@ describe("dictation access and lifecycle", () => {
     mocks.recordUsedTerms.mockResolvedValue(undefined);
     mocks.keepOnClipboard.mockResolvedValue(undefined);
     mocks.model = null;
+    mocks.cleanupModel = null;
     mocks.settings.dictation_voice_edit = false;
     mocks.readDictationField.mockResolvedValue({
       text: null,
@@ -1123,6 +1126,82 @@ describe("dictation access and lifecycle", () => {
         inserted: true,
       }),
     );
+  });
+
+  it("cleans up on the model chosen for dictation with the person's instructions and deadline", async () => {
+    const selected = vi.fn();
+    mocks.model = new MockLanguageModelV3({ doGenerate: selected });
+    mocks.cleanupModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "hello there." }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: { total: 4, noCache: 4, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 2, text: 2, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    });
+    Object.assign(mocks.settings, {
+      dictation_cleanup: true,
+      dictation_cleanup_instructions: "  Write in lowercase.  ",
+      dictation_cleanup_deadline_seconds: 10,
+    });
+    mocks.prepareDictationRefinement.mockImplementation(
+      async (request: { text: string; deadlineMs: number }) => ({
+        type: "ask",
+        call: {
+          system: "rules",
+          prompt: request.text,
+          deadlineMs: request.deadlineMs,
+        },
+        pending: {
+          kind: "cleanup",
+          raw: request.text,
+          selection: null,
+          before: null,
+          instructed: true,
+          replacements: [],
+        },
+      }),
+    );
+    mocks.resolveDictationRefinement.mockImplementation(
+      async (
+        pending: { raw: string },
+        reply: { type: string; text?: string },
+      ) =>
+        reply.type === "text"
+          ? { type: "cleaned", text: reply.text }
+          : { type: "raw", text: pending.raw, reason: reply.type },
+    );
+    mocks.runBatch.mockImplementation(hears("um hello there"));
+    try {
+      render(<DictationLifecycle />);
+      await waitFor(() =>
+        expect(useDictationStatus.getState().ready).toBe(true),
+      );
+      await shortcut("pressed");
+      await shortcut("released");
+      await waitFor(() => expect(mocks.recordDictation).toHaveBeenCalled());
+      expect(mocks.prepareDictationRefinement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: "Write in lowercase.",
+          deadlineMs: 10_000,
+        }),
+      );
+      expect(mocks.recordDictation).toHaveBeenCalledWith(
+        expect.objectContaining({ finalText: "hello there.", inserted: true }),
+      );
+      expect(selected).not.toHaveBeenCalled();
+    } finally {
+      for (const key of [
+        "dictation_cleanup",
+        "dictation_cleanup_instructions",
+        "dictation_cleanup_deadline_seconds",
+      ]) {
+        delete mocks.settings[key];
+      }
+    }
   });
 
   it("types over the selection as said without a model, and keeps a failed voice edit's instruction from being the text", async () => {

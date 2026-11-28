@@ -91,6 +91,11 @@ public func annotateCapsule(stage: SRString) -> SRString {
   return reply { AnnotateReply.from(AnnotateSession.shared.capsule(name)) }
 }
 
+@_cdecl("_annotate_narration")
+public func annotateNarration(heard: Bool, level: Double) -> SRString {
+  reply { AnnotateReply.from(AnnotateSession.shared.narration(heard: heard, level: level)) }
+}
+
 @_cdecl("_annotate_poll_events")
 public func annotatePollEvents() -> SRString {
   reply { AnnotateReply.ok(AnnotateSession.shared.drainEvents()) }

@@ -32,6 +32,7 @@ import {
 import { useActiveDictationPreset } from "./presets";
 import {
   refineTranscript,
+  useCleanupPreferences,
   useSpokenRules,
   VoiceEditFailed,
   type RefineOptions,
@@ -39,7 +40,10 @@ import {
 import { sendAfterInsert } from "./send";
 import { useDictationStatus } from "./state";
 
-import { useLanguageModel } from "~/ai/hooks/useLLMConnection";
+import {
+  useDictationCleanupModel,
+  useLanguageModel,
+} from "~/ai/hooks/useLLMConnection";
 import { localizeExternalMessage } from "~/i18n/external-messages";
 import { useSettingsReady } from "~/settings/queries";
 import { isAppStoreBuild } from "~/shared/app-store";
@@ -221,6 +225,8 @@ function ActiveDictation() {
   const context = useConfigValue("dictation_context");
   const exclusions = useConfigValue("dictation_context_exclusions");
   const model = useLanguageModel();
+  const cleanupModel = useDictationCleanupModel();
+  const preferences = useCleanupPreferences();
   const weights = useConfigValue("dictation_term_weights");
   const spokenLanguages = useConfigValue("spoken_languages");
   // A preset's language replaces the spoken languages for dictation only.
@@ -254,6 +260,8 @@ function ActiveDictation() {
     context,
     exclusions,
     model,
+    cleanupModel,
+    preferences,
     weights,
     sounds,
     hudPosition,
@@ -278,6 +286,8 @@ function ActiveDictation() {
     context,
     exclusions,
     model,
+    cleanupModel,
+    preferences,
     weights,
     sounds,
     hudPosition,
@@ -370,14 +380,22 @@ function ActiveDictation() {
         const pressedAtMs = Date.now();
         // First, while the app being dictated into is still in front.
         const app = frontmostApp().catch(() => null);
-        const { learning, cleanup, voiceEdit, spoken, context, exclusions } =
-          current.current;
+        const {
+          learning,
+          cleanup,
+          voiceEdit,
+          spoken,
+          context,
+          exclusions,
+          preferences,
+        } = current.current;
         const options: RefineOptions = {
           cleanup,
           voiceEdit,
           context,
           replacements: current.current.replacements || [],
           spoken,
+          ...preferences,
         };
         const operationId = crypto.randomUUID();
         // What the field held before dictating, read natively only for the
@@ -604,7 +622,10 @@ function ActiveDictation() {
             terms: await keywords(),
             options: context.options,
             field: await context.read,
-            model: current.current.model,
+            models: {
+              cleanup: current.current.cleanupModel,
+              edit: current.current.model,
+            },
             signal,
           });
         } catch (error) {

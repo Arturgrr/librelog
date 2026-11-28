@@ -107,6 +107,26 @@ test("release notes explain the macOS 15 first launch, list the Linux packages a
   );
 });
 
+test("release notes keep English first and fold each translation below it", () => {
+  const notes = releaseNotes({
+    version: "0.1.0",
+    repository: "a/b",
+    changelog: '---\nsummary: "English."\n---\n\n## Dictation\n',
+    translations: [
+      {
+        locale: "pt",
+        changelog: '---\nsummary: "Português."\n---\n\n## Ditado\n',
+      },
+    ],
+  });
+
+  assert.match(
+    notes,
+    /## What's new\n\n## Dictation\n\n<details>\n<summary>Português \(Brasil\)<\/summary>\n\n## Ditado\n\n<\/details>\n$/,
+  );
+  assert.doesNotMatch(notes, /summary:/);
+});
+
 const manifestAssets = [
   { name: "Librelog_0.1.0-beta.1_aarch64.dmg" },
   { name: "Librelog_0.1.0-beta.1_aarch64.app.tar.gz" },

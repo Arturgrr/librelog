@@ -1,3 +1,4 @@
+mod choice;
 mod device;
 mod error;
 
@@ -10,6 +11,7 @@ pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+pub use choice::*;
 pub use device::*;
 pub use error::*;
 

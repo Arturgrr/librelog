@@ -207,33 +207,57 @@ export function recordDictation(entry: {
 }
 
 /**
- * The newest dictation's current text, while history is on. A voice edit
- * that failed has only its spoken instruction, as raw text, and is skipped.
+ * The newest dictations' current texts, newest first, while history is on.
+ * A voice edit that failed has only its spoken instruction, as raw text,
+ * and is skipped, as is a dictation that failed to transcribe.
  */
-export function latestDictation(): Promise<{
+export function recentDictations(
+  limit: number,
+): Promise<{ id: string; text: string }[]> {
+  return enqueueDatabaseWrite(WRITES, async () => {
+    const { retention } = await loadSettings();
+    if (retention === "off") return [];
+    const query = recentDictationsQuery(retentionCutoff(retention), limit);
+    return mapRecentDictations(
+      await liveQueryClient.execute<RecentDictationRow>(
+        query.sql,
+        query.params,
+      ),
+    );
+  });
+}
+
+/** The newest dictation's current text, while history is on. */
+export async function latestDictation(): Promise<{
   id: string;
   text: string;
 } | null> {
-  return enqueueDatabaseWrite(WRITES, async () => {
-    const { retention } = await loadSettings();
-    if (retention === "off") return null;
-    const [row] = await liveQueryClient.execute<{
-      id: string;
-      raw_text: string;
-      final_text: string;
-    }>(
-      `SELECT id, raw_text, final_text FROM dictation_history
-       WHERE created_at >= ? AND final_text <> ''
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
-      [retentionCutoff(retention) ?? ""],
-    );
-    if (!row) return null;
-    return {
-      id: row.id,
-      text: row.final_text.trim() ? row.final_text : row.raw_text,
-    };
-  });
+  const [latest] = await recentDictations(1);
+  return latest ?? null;
+}
+
+export type RecentDictationRow = {
+  id: string;
+  raw_text: string;
+  final_text: string;
+};
+
+/** What `recentDictations` reads, for a live query of the same entries. */
+export function recentDictationsQuery(cutoff: string | null, limit: number) {
+  return {
+    sql: `SELECT id, raw_text, final_text FROM dictation_history
+      WHERE created_at >= ? AND final_text <> ''
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?`,
+    params: [cutoff ?? "", limit],
+  };
+}
+
+export function mapRecentDictations(rows: RecentDictationRow[]) {
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.final_text.trim() ? row.final_text : row.raw_text,
+  }));
 }
 
 /**

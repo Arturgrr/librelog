@@ -6,4 +6,5 @@ an OS.
 
 Files are `<major>.<minor>.<patch>.md` or `<major>.<minor>.<patch>-beta.<n>.md`
 with `date` and plain-text `summary` frontmatter, as described in the parent
-instructions.
+instructions. Translations go in `<locale>/` subdirectories under the same
+file name; the parent instructions describe them.

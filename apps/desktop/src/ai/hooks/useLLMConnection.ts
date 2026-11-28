@@ -76,6 +76,57 @@ export const useLanguageModel = (): LanguageModelV3 | null => {
   return useMemo(() => (conn ? createLanguageModel(conn) : null), [conn]);
 };
 
+/**
+ * The model dictation cleanup runs on: the one chosen for it in Settings ›
+ * Dictation, or the selected AI model when none is chosen or the chosen one
+ * can't be used now.
+ */
+export const useDictationCleanupModel = (): LanguageModelV3 | null => {
+  const main = useLLMConnection();
+  const settingsReady = useSettingsReady();
+  const {
+    intelligence_disabled,
+    dictation_cleanup_provider,
+    dictation_cleanup_model,
+  } = useConfigValues([
+    "intelligence_disabled",
+    "dictation_cleanup_provider",
+    "dictation_cleanup_model",
+  ] as const);
+  const providerConfig = useAiProvider("llm", dictation_cleanup_provider) as
+    | AIProviderStorage
+    | undefined;
+
+  const conn = useMemo(() => {
+    if (
+      !settingsReady ||
+      intelligence_disabled ||
+      !dictation_cleanup_provider ||
+      !dictation_cleanup_model
+    ) {
+      return main.conn;
+    }
+    // Cleanup is a short rewrite, so the chosen model runs at its own default
+    // effort rather than the one set for the main model.
+    const chosen = resolveLLMConnection({
+      providerId: dictation_cleanup_provider,
+      modelId: dictation_cleanup_model,
+      reasoningEffort: "default",
+      providerConfig,
+    });
+    return chosen.conn ?? main.conn;
+  }, [
+    main.conn,
+    settingsReady,
+    intelligence_disabled,
+    dictation_cleanup_provider,
+    dictation_cleanup_model,
+    providerConfig,
+  ]);
+
+  return useMemo(() => (conn ? createLanguageModel(conn) : null), [conn]);
+};
+
 export const useLLMConnection = (): LLMConnectionResult => {
   const settingsReady = useSettingsReady();
 

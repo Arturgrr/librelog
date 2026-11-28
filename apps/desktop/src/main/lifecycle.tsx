@@ -12,6 +12,7 @@ import { DictationHistoryRetention } from "~/dictation/history/retention";
 import { DictationLifecycle } from "~/dictation/lifecycle";
 import { PasteLastLifecycle } from "~/dictation/paste-last";
 import { DictationPresetLifecycle } from "~/dictation/preset-switch";
+import { RecentDictationsTray } from "~/dictation/recent-tray";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { useSearchEngine } from "~/search/contexts/engine";
 import { initEnhancerService } from "~/services/enhancer";
@@ -55,6 +56,7 @@ export function ClassicMainServices() {
       <DictationLifecycle />
       <PasteLastLifecycle />
       <DictationPresetLifecycle />
+      <RecentDictationsTray />
       <DictationHistoryRetention />
       <AnnotateLifecycle />
       <AnnotateRetention />

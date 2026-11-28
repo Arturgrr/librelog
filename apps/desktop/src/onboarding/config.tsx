@@ -9,6 +9,7 @@ export type OnboardingStep =
   | "permissions"
   | "transcription"
   | "intelligence"
+  | "dictation"
   | "capture"
   | "final";
 
@@ -16,16 +17,19 @@ const STEPS_MACOS: OnboardingStep[] = [
   "permissions",
   "transcription",
   "intelligence",
+  "dictation",
   "capture",
   "final",
 ];
 const STEPS_OTHER: OnboardingStep[] = [
   "transcription",
   "intelligence",
+  "dictation",
   "final",
 ];
 
 const SAVED_STEP_KEY = "librelog.onboarding-step";
+const NO_TRANSCRIPTION_KEY = "librelog.onboarding-no-transcription";
 
 export function getOnboardingSteps(): OnboardingStep[] {
   if (platform() !== "macos") {
@@ -64,9 +68,32 @@ export function saveOnboardingStep(step: OnboardingStep | null) {
       localStorage.setItem(SAVED_STEP_KEY, step);
     } else {
       localStorage.removeItem(SAVED_STEP_KEY);
+      localStorage.removeItem(NO_TRANSCRIPTION_KEY);
     }
   } catch (error) {
     console.error("Failed to save the onboarding step", error);
+  }
+}
+
+// Kept across a restart, so someone who went on without a transcription
+// model isn't sent back to choose one.
+export function saveContinuedWithoutTranscription(value: boolean) {
+  try {
+    if (value) {
+      localStorage.setItem(NO_TRANSCRIPTION_KEY, "1");
+    } else {
+      localStorage.removeItem(NO_TRANSCRIPTION_KEY);
+    }
+  } catch (error) {
+    console.error("Failed to save the transcription choice", error);
+  }
+}
+
+export function readContinuedWithoutTranscription() {
+  try {
+    return localStorage.getItem(NO_TRANSCRIPTION_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 

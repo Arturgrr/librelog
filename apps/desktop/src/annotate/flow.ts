@@ -20,7 +20,8 @@ export type AnnotateDeps = {
     status: () => Promise<Status>;
     screenRecording: () => Promise<string>;
     requestScreenRecording: () => Promise<boolean>;
-    start: () => Promise<Started>;
+    /** Without `narrate` the microphone stays closed. */
+    start: (narrate: boolean) => Promise<Started>;
     stop: () => Promise<Stopped>;
     finalize: (
       id: string,
@@ -50,7 +51,13 @@ export type AnnotateDeps = {
     ready: (finalized: Finalized) => void;
     screenRecordingDenied: () => void;
     needsRestart: () => void;
+    /** The screen records without narration. */
     microphoneDenied: () => void;
+    /**
+     * The narration's microphone stopped or did not open (`heard` false),
+     * or records again; the screen records either way.
+     */
+    narration: (heard: boolean) => void;
     transcriptionFailed: (error: unknown) => void;
     /** The narration waits for another recording's local transcription. */
     transcriptionWaiting: () => void;
@@ -196,13 +203,13 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
     set("starting");
     try {
       if (!(await screenRecordingAllowed())) return toIdle();
-      if (!(await deps.microphoneAuthorized())) {
-        deps.notify.microphoneDenied();
-        return toIdle();
-      }
+      // Without the microphone the screen and the ink are still worth having.
+      const narrate = await deps.microphoneAuthorized();
+      if (!narrate) deps.notify.microphoneDenied();
       // Loads while it records, so the narration is transcribed at once.
       holdModel();
-      await deps.plugin.start();
+      const started = await deps.plugin.start(narrate);
+      if (narrate && !started.narration) deps.notify.narration(false);
       set("recording");
       await quietly(deps.setRecording(true));
     } catch (error) {
@@ -335,6 +342,11 @@ export function createAnnotateFlow(deps: AnnotateDeps) {
       case "discarded":
         return toIdle();
       case "ink":
+        return;
+      case "narration":
+        if (phase === "starting" || phase === "recording") {
+          deps.notify.narration(event.heard);
+        }
         return;
       case "failed":
         deps.notify.error(new Error(event.message));

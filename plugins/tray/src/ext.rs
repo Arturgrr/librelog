@@ -423,6 +423,9 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         if PASTE_LAST_VISIBLE.load(Ordering::SeqCst) {
             menu.append(&TrayPasteLast::build(app)?)?;
         }
+        if let Some(recent) = crate::menu_items::tray_recent_dictations::build(app)? {
+            menu.append(&recent)?;
+        }
         if CAPTURE_VISIBLE.load(Ordering::SeqCst) {
             menu.append(&TrayCaptureArea::build(app)?)?;
             menu.append(&TrayRecordScreen::build(app)?)?;
@@ -591,6 +594,13 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
         presets: Option<crate::TrayDictationPresets>,
     ) -> Result<()> {
         if !crate::menu_items::tray_dictation_presets::set(presets) {
+            return Ok(());
+        }
+        Self::rebuild_menu(self.manager.app_handle())
+    }
+
+    pub fn set_recent_dictations(&self, recent: Option<crate::TrayRecentDictations>) -> Result<()> {
+        if !crate::menu_items::tray_recent_dictations::set(recent) {
             return Ok(());
         }
         Self::rebuild_menu(self.manager.app_handle())

@@ -4,6 +4,8 @@ use std::task::{Context, Poll};
 
 use futures_util::{Stream, StreamExt};
 
+pub mod level;
+
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     #[error("no input device found")]

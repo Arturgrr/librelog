@@ -92,9 +92,16 @@ function startParakeetDownload(progress: number) {
 }
 
 test("Continue to Intelligence stays disabled until a transcription model is ready or downloading", () => {
-  const view = render(<TranscriptionStep onContinue={vi.fn()} />);
+  const view = render(
+    <TranscriptionStep onContinue={vi.fn()} onContinueWithoutModel={vi.fn()} />,
+  );
   const rerender = () =>
-    view.rerender(<TranscriptionStep onContinue={vi.fn()} />);
+    view.rerender(
+      <TranscriptionStep
+        onContinue={vi.fn()}
+        onContinueWithoutModel={vi.fn()}
+      />,
+    );
 
   expect(continueButton("Continue to Intelligence").disabled).toBe(true);
   expect(screen.getByRole("status").textContent).toContain(

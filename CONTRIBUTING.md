@@ -109,7 +109,7 @@ Check the affected workflow under `.github/workflows/` for stricter package-spec
 Releases are cut by merging a version bump into `main`:
 
 1. Set `version` in `apps/desktop/package.json`, for example `0.1.0-beta.2`.
-2. Add the release notes at `packages/changelog/content/desktop/<version>.md`.
+2. Add the release notes at `packages/changelog/content/desktop/<version>.md`, and optionally translations at `packages/changelog/content/desktop/<locale>/<version>.md` (`pt` for Portuguese; see `packages/changelog/content/AGENTS.md`).
 3. Merge to `main`. `.github/workflows/release.yaml` builds the macOS apps, uploads the updater manifest and checksums, and publishes the release; installed apps pick it up on their next update check.
 
 Betas are published as regular releases, not prereleases, because the updater reads `releases/latest`. If a build fails, rerun the workflow from the Actions tab with the same version.

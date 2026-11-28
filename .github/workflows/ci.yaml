@@ -22,3 +22,4 @@ jobs:
           scripts/release.test.mjs
           scripts/repack-linux-appimage.test.mjs
           scripts/security-dependencies.test.mjs
+      - run: pnpm -F @anlg/changelog test

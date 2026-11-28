@@ -699,7 +699,13 @@ context: ContextSnapshot | null;
  * Spoken commands to apply to a dictation that edits nothing, before the replacements and
  * any cleanup, so they hold even with cleanup off.
  */
-spoken: SpokenRules | null }
+spoken: SpokenRules | null; 
+/**
+ * How long cleanup waits for the model before typing the words as said; `None` keeps
+ * [`CLEANUP_DEADLINE_MS`]. An edit waits at least [`EDIT_DEADLINE_MS`], since it has no raw
+ * words to fall back to.
+ */
+deadlineMs: number | null }
 /**
  * A phrase said in dictation, and what is typed in its place.
  */

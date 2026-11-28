@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use ext::*;
 pub use menu_items::{
-    AnlgMenuItem, TrayDictationPresets, UpdateMenuState, handle_dictation_preset_menu_event,
-    quit_completely,
+    AnlgMenuItem, CopyRecentDictationEvent, TrayDictationPresets, TrayRecentDictation,
+    TrayRecentDictations, UpdateMenuState, handle_dictation_preset_menu_event, quit_completely,
 };
 
 const PLUGIN_NAME: &str = "anlg-tray";
@@ -26,7 +26,11 @@ pub fn init(enable_updates: bool) -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
     tauri::plugin::Builder::<tauri::Wry>::new(PLUGIN_NAME)
         .invoke_handler(specta_builder.invoke_handler())
-        .setup(|app, _api| {
+        .setup(move |app, _api| {
+            specta_builder.mount_events(app);
+            app.on_menu_event(|app, event| {
+                menu_items::tray_recent_dictations::handle_menu_event(app, event.id());
+            });
             #[cfg(target_os = "linux")]
             {
                 ext::watch_tray_host(app);
@@ -91,9 +95,11 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::set_tray_paste_last_visible,
             commands::set_tray_capture_visible,
             commands::set_tray_dictation_presets,
+            commands::set_tray_recent_dictations,
             commands::take_pending_tray_start,
             commands::tray_icon_shown_by_desktop,
         ])
+        .events(tauri_specta::collect_events![CopyRecentDictationEvent])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
 

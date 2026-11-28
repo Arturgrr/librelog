@@ -9,6 +9,7 @@ Default permissions for the plugin
 - `allow-set-tray-paste-last-visible`
 - `allow-set-tray-capture-visible`
 - `allow-set-tray-dictation-presets`
+- `allow-set-tray-recent-dictations`
 - `allow-set-tray-recording-title`
 - `allow-take-pending-tray-start`
 - `allow-tray-icon-shown-by-desktop`
@@ -148,6 +149,32 @@ Enables the set_tray_paste_last_visible command without any pre-configured scope
 <td>
 
 Denies the set_tray_paste_last_visible command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`anlg-tray:allow-set-tray-recent-dictations`
+
+</td>
+<td>
+
+Enables the set_tray_recent_dictations command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`anlg-tray:deny-set-tray-recent-dictations`
+
+</td>
+<td>
+
+Denies the set_tray_recent_dictations command without any pre-configured scope.
 
 </td>
 </tr>

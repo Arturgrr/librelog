@@ -47,10 +47,16 @@ export const commands = {
     }
   },
   /**
-   * Starts recording the display under the pointer and the microphone.
+   * Starts recording the display under the pointer and, when `narrate` is
+   * not false, the microphone: `microphone_device`, or the default input,
+   * which gives way to the built-in or wired microphone when it is a
+   * Bluetooth headset's unless `avoid_bluetooth_microphone` is false. The
+   * screen records even when the microphone does not open.
    */
   async start(
     microphoneDevice: string | null,
+    avoidBluetoothMicrophone: boolean | null,
+    narrate: boolean | null,
     labels: CapsuleLabels | null,
   ): Promise<Result<Started, string>> {
     try {
@@ -58,6 +64,8 @@ export const commands = {
         status: "ok",
         data: await TAURI_INVOKE("plugin:annotate|start", {
           microphoneDevice,
+          avoidBluetoothMicrophone,
+          narrate,
           labels,
         }),
       };
@@ -306,9 +314,11 @@ export const commands = {
 
 export const events = __makeEvents__<{
   annotateEvent: AnnotateEvent;
+  annotateLevel: AnnotateLevel;
   annotateSurface: AnnotateSurface;
 }>({
   annotateEvent: "plugin:annotate:annotate-event",
+  annotateLevel: "plugin:annotate:annotate-level",
   annotateSurface: "plugin:annotate:annotate-surface",
 });
 
@@ -336,7 +346,18 @@ export type AnnotateEvent =
   /**
    * Ending the recording failed; the session is idle again.
    */
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  /**
+   * The narration's microphone stopped (`heard` false) while recording,
+   * or opened again after stopping or failing to open. The screen keeps
+   * recording either way.
+   */
+  | { type: "narration"; heard: boolean };
+/**
+ * The narration's level on a meter, 0 to 1, about 25 times a second while
+ * the microphone hears: for the Linux capsule.
+ */
+export type AnnotateLevel = { level: number };
 /**
  * What the ink overlay and the capsule show while recording on Linux.
  */
@@ -353,6 +374,11 @@ export type AnnotateSurface = {
    */
   asking: boolean;
   startedWallMs: number;
+  /**
+   * The narration's microphone isn't recording: it was off, failed to
+   * open or stopped.
+   */
+  unheard: boolean;
   labels: CapsuleLabels;
 };
 /**
@@ -367,6 +393,11 @@ export type CapsuleLabels = {
    */
   draw: string | null;
   stop: string | null;
+  /**
+   * The Linux capsule's crossed-out microphone: the narration isn't
+   * being recorded.
+   */
+  unheard: string | null;
 };
 /**
  * What the capsule shows: the recording, then, once it stopped, that the
@@ -401,7 +432,16 @@ export type InkMode =
   | "drag";
 export type Phase = "idle" | "starting" | "recording" | "finishing";
 export type Retention = "week" | "month" | "forever";
-export type Started = { id: string; dir: string };
+export type Started = {
+  id: string;
+  dir: string;
+  /**
+   * Whether the narration's microphone opened. One that did not is tried
+   * again while the screen records, and a `narration` event says when it
+   * is heard.
+   */
+  narration: boolean;
+};
 export type Status = {
   /**
    * False off macOS and Linux, where nothing records.
@@ -430,6 +470,9 @@ export type Stopped = {
    * `stop`, `max_duration` or `stream_error`.
    */
   endedBy: string;
+  /**
+   * What the recording missed, the narration's gaps included.
+   */
   warnings: string[];
 };
 /**

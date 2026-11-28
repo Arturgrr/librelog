@@ -209,6 +209,10 @@ msgstr "{name} failed to start three times: {0}"
 msgid "{name} is running with {0}K tokens of context."
 msgstr "{name} is running with {0}K tokens of context."
 
+#: src/onboarding/dictation.tsx
+msgid "{name} is still downloading. You can try dictation once it finishes, or continue now; it keeps downloading in the background."
+msgstr "{name} is still downloading. You can try dictation once it finishes, or continue now; it keeps downloading in the background."
+
 #: src/meeting-float/labels.ts
 #: src/meeting-float/overlay/bar.tsx
 msgid "{notice}; stop listening"
@@ -218,6 +222,10 @@ msgstr "{notice}; stop listening"
 #: src/meeting-float/overlay/bar.tsx
 msgid "{notice}. Open Librelog to retry or change devices."
 msgstr "{notice}. Open Librelog to retry or change devices."
+
+#: src/settings/dictation-cleanup.tsx
+msgid "{option} seconds"
+msgstr "{option} seconds"
 
 #: src/stt/meeting-apps.ts
 msgid "{otherAppCount, plural, one {Ignore {firstName} and # other app?} other {Ignore {firstName} and # other apps?}}"
@@ -384,6 +392,10 @@ msgstr "A built-in model writes summaries and titles without sending your meetin
 msgid "A dictation that could not be transcribed is kept with its audio for 24 hours, so you can retry it."
 msgstr "A dictation that could not be transcribed is kept with its audio for 24 hours, so you can retry it."
 
+#: src/settings/dictation-cleanup.tsx
+msgid "A fast model just for cleaning up dictation, from the providers you set up in Intelligence. Edits by voice still use your selected AI model."
+msgstr "A fast model just for cleaning up dictation, from the providers you set up in Intelligence. Edits by voice still use your selected AI model."
+
 #: src/sidebar/folder-name-dialog.tsx
 msgid "A folder with this name already exists."
 msgstr "A folder with this name already exists."
@@ -449,6 +461,10 @@ msgstr "About {app}"
 #: src/settings/general/permissions.tsx
 msgid "Accessibility"
 msgstr "Accessibility"
+
+#: src/onboarding/permissions.tsx
+msgid "Accessibility access turned on"
+msgstr "Accessibility access turned on"
 
 #: src/settings/automations/index.tsx
 #: src/settings/automations/workflow-builder.tsx
@@ -1253,6 +1269,10 @@ msgstr "Bullet List"
 msgid "Busiest day"
 msgstr "Busiest day"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "By default, cleanup removes filler words and stutters, fixes grammar, punctuation and capitalization, writes numbers, dates, money, emails and links the way they're typed, spells your Dictionary words, and applies the corrections you say. It never answers, adds to or translates what you said. Your instructions come after these rules and win where they conflict; they also apply to edits by voice."
+msgstr "By default, cleanup removes filler words and stutters, fixes grammar, punctuation and capitalization, writes numbers, dates, money, emails and links the way they're typed, spells your Dictionary words, and applies the corrections you say. It never answers, adds to or translates what you said. Your instructions come after these rules and win where they conflict; they also apply to edits by voice."
+
 #: src/settings/ai/shared/provider-labels.ts
 msgid "BYO-model"
 msgstr "BYO-model"
@@ -1491,6 +1511,10 @@ msgstr "Choose a language model for summaries and chat."
 msgid "Choose a local transcription model file."
 msgstr "Choose a local transcription model file."
 
+#: src/onboarding/dictation.tsx
+msgid "Choose a model"
+msgstr "Choose a model"
+
 #: src/onboarding/model-setup.tsx
 msgid "Choose a model to continue"
 msgstr "Choose a model to continue"
@@ -1627,6 +1651,10 @@ msgstr "Chosen:"
 msgid "Claude Pro / Max"
 msgstr "Claude Pro / Max"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Clean up"
+msgstr "Clean up"
+
 #: src/settings/general/storage/legacy-cleanup.tsx
 msgid "Clean Up"
 msgstr "Clean Up"
@@ -1642,6 +1670,14 @@ msgstr "Clean up with AI"
 #: src/settings/general/storage/legacy-cleanup.tsx
 msgid "Cleaning up..."
 msgstr "Cleaning up..."
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Cleaning up…"
+msgstr "Cleaning up…"
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Cleanup model"
+msgstr "Cleanup model"
 
 #: src/note-types/picker.tsx
 msgid "Clear"
@@ -1699,6 +1735,10 @@ msgstr "Click a window · Space for an area · Esc to cancel"
 #: src/settings/dictation.tsx
 msgid "Click here, then use a dictation shortcut."
 msgstr "Click here, then use a dictation shortcut."
+
+#: src/onboarding/dictation.tsx
+msgid "Click here, then use your dictation shortcut and say something."
+msgstr "Click here, then use your dictation shortcut and say something."
 
 #: src/settings/capture-shortcuts.tsx
 msgid "Click the window you want."
@@ -1865,6 +1905,7 @@ msgid "Context length too small"
 msgstr "Context length too small"
 
 #: src/onboarding/capture.tsx
+#: src/onboarding/dictation.tsx
 #: src/onboarding/model-setup.tsx
 msgid "Continue"
 msgstr "Continue"
@@ -1872,6 +1913,10 @@ msgstr "Continue"
 #: src/onboarding/model-setup.tsx
 msgid "Continue to Intelligence"
 msgstr "Continue to Intelligence"
+
+#: src/onboarding/model-setup.tsx
+msgid "Continue without a model"
+msgstr "Continue without a model"
 
 #: src/settings/general/meeting-settings.tsx
 msgid "Control listening without reopening Librelog."
@@ -1903,6 +1948,7 @@ msgid "Copied"
 msgstr "Copied"
 
 #: src/capture/lifecycle.tsx
+#: src/dictation/recent-tray.tsx
 msgid "Copied to clipboard"
 msgstr "Copied to clipboard"
 
@@ -1935,6 +1981,10 @@ msgstr "Copy last dictation"
 #: src/chat/components/message/normal.tsx
 msgid "Copy message"
 msgstr "Copy message"
+
+#: src/dictation/recent-tray.tsx
+msgid "Copy recent dictation"
+msgstr "Copy recent dictation"
 
 #: src/settings/developers/webhooks.tsx
 msgid "Copy this signing secret now — it is only shown once."
@@ -2521,6 +2571,7 @@ msgstr "Device settings"
 msgid "Devices"
 msgstr "Devices"
 
+#: src/onboarding/index.tsx
 #: src/settings/dictation.tsx
 #: src/settings/stats/dictation-section.tsx
 #: src/sidebar/settings-nav-groups.ts
@@ -2565,6 +2616,10 @@ msgstr "Dictation is unavailable in password fields."
 msgid "Dictation is using the microphone."
 msgstr "Dictation is using the microphone."
 
+#: src/onboarding/dictation.tsx
+msgid "Dictation needs a transcription model, and none is set up yet. You can choose one now, or continue and set it up later."
+msgstr "Dictation needs a transcription model, and none is set up yet. You can choose one now, or continue and set it up later."
+
 #: src/dictation/preset-switch.tsx
 msgid "Dictation preset"
 msgstr "Dictation preset"
@@ -2577,6 +2632,10 @@ msgstr "Dictation presets"
 msgid "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
 msgstr "Dictation reads the text around the cursor to fit what it types, and reads fields and windows for the options above. It never reads the apps and websites listed here."
 
+#: src/onboarding/permissions.tsx
+msgid "Dictation records your voice only while you dictate"
+msgstr "Dictation records your voice only while you dictate"
+
 #: src/settings/dictation-shortcut.tsx
 msgid "Dictation shortcuts"
 msgstr "Dictation shortcuts"
@@ -2584,6 +2643,10 @@ msgstr "Dictation shortcuts"
 #: src/settings/dictation.tsx
 msgid "Dictation sounds"
 msgstr "Dictation sounds"
+
+#: src/onboarding/permissions.tsx
+msgid "Dictation types your words into the app you're using"
+msgstr "Dictation types your words into the app you're using"
 
 #: src/settings/dictation.tsx
 msgid "Dictation uses your microphone, transcription provider, languages, and dictionary. Your history keeps dictations on this computer for as long as you choose, and their recordings only if you turn on Keep dictation audio; otherwise each recording is deleted after transcription. With history off, only your last dictation is kept, in memory, until dictation is turned off or Librelog closes."
@@ -2917,13 +2980,13 @@ msgstr "Enable dictation"
 msgid "Enable Librelog in System Settings > Privacy & Security > Accessibility to insert dictation into other apps."
 msgstr "Enable Librelog in System Settings > Privacy & Security > Accessibility to insert dictation into other apps."
 
-#: src/annotate/lifecycle.tsx
-msgid "Enable microphone permission in Settings > Permissions before annotating."
-msgstr "Enable microphone permission in Settings > Permissions before annotating."
-
 #: src/dictation/lifecycle.tsx
 msgid "Enable microphone permission in Settings > Permissions before dictating."
 msgstr "Enable microphone permission in Settings > Permissions before dictating."
+
+#: src/annotate/lifecycle.tsx
+msgid "Enable microphone permission in Settings > Permissions to narrate."
+msgstr "Enable microphone permission in Settings > Permissions to narrate."
 
 #: src/capture/lifecycle.tsx
 msgid "Enable microphone permission in Settings > Permissions, or turn off recording the microphone for screen recordings."
@@ -3248,6 +3311,10 @@ msgstr "Food & Drink"
 msgid "For enabled notifications"
 msgstr "For enabled notifications"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "For example: Write in British English. Never use exclamation marks."
+msgstr "For example: Write in British English. Never use exclamation marks."
+
 #: src/settings/capture.tsx
 msgid "For screenshots."
 msgstr "For screenshots."
@@ -3551,9 +3618,17 @@ msgstr "Hold a shortcut while speaking, then release it to finish."
 msgid "Hold a shortcut while speaking, then release it to finish. Double-tap shortcuts start with two quick presses; keep holding the second one."
 msgstr "Hold a shortcut while speaking, then release it to finish. Double-tap shortcuts start with two quick presses; keep holding the second one."
 
+#: src/onboarding/dictation.tsx
+msgid "Hold the shortcut while you speak, then release it. Your words are typed where your cursor is."
+msgstr "Hold the shortcut while you speak, then release it. Your words are typed where your cursor is."
+
 #: src/settings/stats/index.tsx
 msgid "Hours transcribed"
 msgstr "Hours transcribed"
+
+#: src/settings/dictation-cleanup.tsx
+msgid "How long to wait for the model before typing your words as you said them. Edits by voice wait at least 17 seconds."
+msgstr "How long to wait for the model before typing your words as you said them. Edits by voice wait at least 17 seconds."
 
 #: src/settings/ai/llm/models.tsx
 msgid "How much the model thinks before answering. Default leaves it to the provider."
@@ -3706,6 +3781,10 @@ msgstr "Installed"
 msgid "Installing {0}"
 msgstr "Installing {0}"
 
+#: src/onboarding/dictation.tsx
+msgid "Installing {name}"
+msgstr "Installing {name}"
+
 #: src/onboarding/model-setup.tsx
 msgid "installing {percent}"
 msgstr "installing {percent}"
@@ -3730,6 +3809,10 @@ msgstr "Intelligence: <0/>"
 #: src/i18n/external-messages.ts
 msgid "Invalid dictation shortcut: {rest}"
 msgstr "Invalid dictation shortcut: {rest}"
+
+#: src/onboarding/dictation.tsx
+msgid "It works. Your words went straight into the field."
+msgstr "It works. Your words went straight into the field."
 
 #: src/settings/note-types/index.tsx
 msgid "Its subtypes are deleted too. Notes of this type will show no type."
@@ -3896,6 +3979,14 @@ msgstr "Left ⌥ twice"
 msgid "Less"
 msgstr "Less"
 
+#: src/onboarding/permissions.tsx
+msgid "Let Librelog hear what you dictate"
+msgstr "Let Librelog hear what you dictate"
+
+#: src/onboarding/permissions.tsx
+msgid "Let Librelog type into other apps"
+msgstr "Let Librelog type into other apps"
+
 #. placeholder {0}: update.version
 #: src/sidebar/toast/registry.tsx
 msgid "Librelog {0} is available"
@@ -3921,6 +4012,10 @@ msgstr "Librelog can hear your voice"
 #: src/onboarding/permissions.tsx
 msgid "Librelog can read meeting details"
 msgstr "Librelog can read meeting details"
+
+#: src/onboarding/permissions.tsx
+msgid "Librelog can type for you"
+msgstr "Librelog can type for you"
 
 #: src/capture/lifecycle.tsx
 msgid "Librelog can't capture the screen."
@@ -3982,6 +4077,10 @@ msgstr "Librelog couldn't prepare storage for this recording"
 #: src/stt/start-failure.ts
 msgid "Librelog doesn't have microphone access"
 msgstr "Librelog doesn't have microphone access"
+
+#: src/onboarding/dictation.tsx
+msgid "Librelog heard “{lastTranscript}”, but it didn't reach the field. Click in the field first, then try again."
+msgstr "Librelog heard “{lastTranscript}”, but it didn't reach the field. Click in the field first, then try again."
 
 #: src/settings/ai/llm/provider-context.ts
 msgid "Librelog hides models without **tool support** or text input. Turn on **Show ignored models** to see them."
@@ -4072,6 +4171,7 @@ msgstr "List action items."
 msgid "Listening..."
 msgstr "Listening..."
 
+#: src/onboarding/dictation.tsx
 #: src/settings/dictation.tsx
 msgid "Listening…"
 msgstr "Listening…"
@@ -4750,6 +4850,10 @@ msgstr "next week"
 msgid "No AI model configured"
 msgstr "No AI model configured"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "No AI model is available, so dictation would type your words as you said them."
+msgstr "No AI model is available, so dictation would type your words as you said them."
+
 #: src/settings/dictation-ai.tsx
 msgid "No AI model is selected, so dictation is typed as you said it."
 msgstr "No AI model is selected, so dictation is typed as you said it."
@@ -4919,6 +5023,10 @@ msgstr "No providers or models match your search and filters."
 #: src/chat/components/toolbar-controls.tsx
 msgid "No recent chats"
 msgstr "No recent chats"
+
+#: src/dictation/recent-tray.tsx
+msgid "No recent dictations"
+msgstr "No recent dictations"
 
 #: src/i18n/external-messages.ts
 msgid "No recording is running."
@@ -5153,6 +5261,10 @@ msgstr "Nothing is sent until you list an app."
 msgid "Nothing is shown; the start and stop sounds, if on, are the only cue."
 msgstr "Nothing is shown; the start and stop sounds, if on, are the only cue."
 
+#: src/onboarding/dictation.tsx
+msgid "Nothing reached the field. Click in it, then try again."
+msgstr "Nothing reached the field. Click in it, then try again."
+
 #: src/settings/general/index.tsx
 #: src/sidebar/settings-nav-groups.ts
 msgid "Notifications"
@@ -5222,6 +5334,10 @@ msgstr "On Wayland, your desktop asks you to approve each new shortcut and may l
 #: src/settings/dictation.tsx
 msgid "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Use Control + Alt + period to cancel. On X11, press Escape to cancel. Where a field doesn't take text through accessibility, Librelog pastes it through the clipboard; on Wayland your desktop asks once to allow Librelog to control the keyboard for that."
 msgstr "On Wayland, your desktop asks you to approve each new shortcut and may let you choose other keys; Librelog shows the keys it uses. Use Control + Alt + period to cancel. On X11, press Escape to cancel. Where a field doesn't take text through accessibility, Librelog pastes it through the clipboard; on Wayland your desktop asks once to allow Librelog to control the keyboard for that."
+
+#: src/onboarding/dictation.tsx
+msgid "On Wayland, your desktop asks you to approve Librelog's shortcut and may choose other keys. You can change the shortcut in Settings › Dictation."
+msgstr "On Wayland, your desktop asks you to approve Librelog's shortcut and may choose other keys. You can change the shortcut in Settings › Dictation."
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "On-device models can take a few minutes to warm up before text appears."
@@ -5329,6 +5445,7 @@ msgid "Opening sign-in…"
 msgstr "Opening sign-in…"
 
 #. placeholder {0}: localizeSettingsPane(accessibilityGuidance.paneTitle)
+#. placeholder {0}: localizeSettingsPane(guidance.paneTitle)
 #: src/onboarding/permissions.tsx
 msgid "Opens System Settings and guides you to add Librelog to the {0} list"
 msgstr "Opens System Settings and guides you to add Librelog to the {0} list"
@@ -5354,6 +5471,7 @@ msgstr "Opens your desktop's screenshot tool, where you pick the window."
 msgid "Optional"
 msgstr "Optional"
 
+#: src/onboarding/dictation.tsx
 #: src/settings/todo/permission.tsx
 msgid "or"
 msgstr "or"
@@ -5675,6 +5793,14 @@ msgstr "Press Enter to use this model ID."
 msgid "Press Escape to cancel the dictation you're recording; earlier ones still finish. Dictation stops after five minutes."
 msgstr "Press Escape to cancel the dictation you're recording; earlier ones still finish. Dictation stops after five minutes."
 
+#: src/onboarding/dictation.tsx
+msgid "Press the key twice quickly and keep holding it while you speak, then release it. Your words are typed where your cursor is."
+msgstr "Press the key twice quickly and keep holding it while you speak, then release it. Your words are typed where your cursor is."
+
+#: src/onboarding/dictation.tsx
+msgid "Press the key twice quickly to start, speak, then press it once to finish. Your words are typed where your cursor is."
+msgstr "Press the key twice quickly to start, speak, then press it once to finish. Your words are typed where your cursor is."
+
 #: src/settings/dictation-shortcut.tsx
 msgid "Press the keys you want, or press one modifier key twice quickly, then press Enter to save. Enter can't be part of a shortcut. Press Backspace to clear or Escape to cancel."
 msgstr "Press the keys you want, or press one modifier key twice quickly, then press Enter to save. Enter can't be part of a shortcut. Press Backspace to clear or Escape to cancel."
@@ -5682,6 +5808,10 @@ msgstr "Press the keys you want, or press one modifier key twice quickly, then p
 #: src/settings/dictation-shortcut.tsx
 msgid "Press the keys you want, then press Enter to save. Enter can't be part of a shortcut. Press Backspace to clear or Escape to cancel."
 msgstr "Press the keys you want, then press Enter to save. Enter can't be part of a shortcut. Press Backspace to clear or Escape to cancel."
+
+#: src/onboarding/dictation.tsx
+msgid "Press the shortcut to start, speak, then press it again to finish. Your words are typed where your cursor is."
+msgstr "Press the shortcut to start, speak, then press it again to finish. Your words are typed where your cursor is."
 
 #: src/settings/dictation-shortcut.tsx
 msgid "Press the shortcut…"
@@ -6216,6 +6346,10 @@ msgstr "Reset"
 msgid "Reset crop"
 msgstr "Reset crop"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Reset to default"
+msgstr "Reset to default"
+
 #: src/templates/auto-form.tsx
 msgid "Reset to default format"
 msgstr "Reset to default format"
@@ -6353,6 +6487,10 @@ msgstr "Runs once per note, when you name its last unnamed speaker."
 #: src/settings/ai/llm/builtin.tsx
 msgid "Runs with a short context and leaves little memory for other apps."
 msgstr "Runs with a short context and leaves little memory for other apps."
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Same as your AI model"
+msgstr "Same as your AI model"
 
 #: src/settings/general/timezone.tsx
 msgid "Sao Paulo"
@@ -7047,6 +7185,10 @@ msgstr "Source: OpenRouter or the AI model provider"
 msgid "Sparkle"
 msgstr "Sparkle"
 
+#: src/onboarding/index.tsx
+msgid "Speak instead of typing, in any app. Try it here before you use it elsewhere."
+msgstr "Speak instead of typing, in any app. Try it here before you use it elsewhere."
+
 #: src/settings/dictation.tsx
 msgid "Speak into the focused text field in your apps. Your transcript appears when you finish. You can start the next dictation while earlier ones are transcribed; they're inserted in order."
 msgstr "Speak into the focused text field in your apps. Your transcript appears when you finish. You can start the next dictation while earlier ones are transcribed; they're inserted in order."
@@ -7149,6 +7291,7 @@ msgstr "starting download…"
 msgid "Starting download…"
 msgstr "Starting download…"
 
+#: src/onboarding/dictation.tsx
 #: src/settings/dictation.tsx
 msgid "Starting microphone…"
 msgstr "Starting microphone…"
@@ -7456,6 +7599,10 @@ msgstr "Test runs are not available yet."
 msgid "Text"
 msgstr "Text"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Text to clean up"
+msgstr "Text to clean up"
+
 #: src/i18n/external-messages.ts
 msgid "That file is a recording in your captures. Choose another name."
 msgstr "That file is a recording in your captures. Choose another name."
@@ -7550,6 +7697,10 @@ msgstr "The macOS shortcut settings could not be read."
 msgid "The microphone could not be opened."
 msgstr "The microphone could not be opened."
 
+#: src/annotate/lifecycle.tsx
+msgid "The microphone is recording the narration again."
+msgstr "The microphone is recording the narration again."
+
 #: src/settings/dictation-microphone.tsx
 msgid "The microphone level shows once your meeting ends."
 msgstr "The microphone level shows once your meeting ends."
@@ -7561,6 +7712,10 @@ msgstr "The microphone level stopped."
 #: src/i18n/external-messages.ts
 msgid "The microphone stopped before anything was recorded."
 msgstr "The microphone stopped before anything was recorded."
+
+#: src/annotate/lifecycle.tsx
+msgid "The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back."
+msgstr "The microphone stopped or could not be opened. The screen keeps recording, and the narration resumes if the microphone comes back."
 
 #: src/chat/components/input/use-dictation.ts
 #: src/dictation/lifecycle.tsx
@@ -7579,9 +7734,21 @@ msgstr "The model files are removed from this computer. You can download them ag
 msgid "The model that writes summaries, answers in chat and titles your notes."
 msgstr "The model that writes summaries, answers in chat and titles your notes."
 
+#: src/settings/dictation-cleanup.tsx
+msgid "The model's reply changed what you said, so dictation would type your words as you said them."
+msgstr "The model's reply changed what you said, so dictation would type your words as you said them."
+
 #: src/annotate/lifecycle.tsx
 msgid "The narration could not be transcribed. The annotation is saved without it."
 msgstr "The narration could not be transcribed. The annotation is saved without it."
+
+#: src/annotate/lifecycle.tsx
+msgid "The narration isn't being recorded"
+msgstr "The narration isn't being recorded"
+
+#: src/annotate/lifecycle.tsx
+msgid "The narration isn't being recorded."
+msgstr "The narration isn't being recorded."
 
 #: src/i18n/external-messages.ts
 msgid "The new transcription returned much less text. Your saved transcript and recording were kept. Try transcribing again."
@@ -7689,6 +7856,10 @@ msgstr "There's no annotation to paste yet."
 msgid "There's no dictation to paste yet."
 msgstr "There's no dictation to paste yet."
 
+#: src/settings/dictation-cleanup.tsx
+msgid "There's nothing to clean up."
+msgstr "There's nothing to clean up."
+
 #: src/settings/stats/dictation-section.tsx
 msgid "These figures cover every dictation Librelog keeps, until you delete it."
 msgstr "These figures cover every dictation Librelog keeps, until you delete it."
@@ -7720,6 +7891,10 @@ msgstr "This action is not available for this trigger. Remove it or choose anoth
 #: src/i18n/external-messages.ts
 msgid "This annotation is no longer waiting to be finished."
 msgstr "This annotation is no longer waiting to be finished."
+
+#: src/annotate/lifecycle.tsx
+msgid "This annotation records the screen without narration."
+msgstr "This annotation records the screen without narration."
 
 #: src/settings/ai/llm/builtin.tsx
 msgid "This build of Librelog doesn’t include the model server. The release for Linux on x86-64 does."
@@ -7754,6 +7929,7 @@ msgid "This dictation has no audio."
 msgstr "This dictation has no audio."
 
 #: src/dictation/history/store.ts
+#: src/dictation/recent-tray.tsx
 msgid "This dictation is no longer in your history."
 msgstr "This dictation is no longer in your history."
 
@@ -7967,6 +8143,7 @@ msgid "Transcribing voice input"
 msgstr "Transcribing voice input"
 
 #: src/chat/components/input/index.tsx
+#: src/onboarding/dictation.tsx
 #: src/settings/dictation.tsx
 msgid "Transcribing…"
 msgstr "Transcribing…"
@@ -8047,6 +8224,7 @@ msgid "Trigger"
 msgstr "Trigger"
 
 #: src/contacts/details.tsx
+#: src/onboarding/dictation.tsx
 #: src/onboarding/model-setup.tsx
 #: src/onboarding/permissions.tsx
 #: src/settings/ai/llm/builtin.tsx
@@ -8057,6 +8235,7 @@ msgstr "Try again"
 msgid "Try again: {title}"
 msgstr "Try again: {title}"
 
+#: src/onboarding/index.tsx
 #: src/settings/dictation.tsx
 msgid "Try dictation"
 msgstr "Try dictation"
@@ -8065,6 +8244,14 @@ msgstr "Try dictation"
 msgid "Try GPU again"
 msgstr "Try GPU again"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Try it"
+msgstr "Try it"
+
+#: src/onboarding/dictation.tsx
+msgid "Try it here"
+msgstr "Try it here"
+
 #: src/chat/components/input/use-dictation.ts
 msgid "Try speaking a little closer to the microphone."
 msgstr "Try speaking a little closer to the microphone."
@@ -8072,6 +8259,10 @@ msgstr "Try speaking a little closer to the microphone."
 #: src/settings/ai/shared/list-apple-foundation.ts
 msgid "Turn on Apple Intelligence in System Settings."
 msgstr "Turn on Apple Intelligence in System Settings."
+
+#: src/onboarding/dictation.tsx
+msgid "Turn on dictation"
+msgstr "Turn on dictation"
 
 #: src/onboarding/capture.tsx
 msgid "Turn on screenshots and recordings"
@@ -8085,9 +8276,17 @@ msgstr "Turns off macOS's ⌘⇧3, ⌘⇧4 and ⌘⇧5 and uses them for Capture
 msgid "Type"
 msgstr "Type"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Type or paste what you might say to see what dictation would type, with your spoken commands, replacements, model and instructions."
+msgstr "Type or paste what you might say to see what dictation would type, with your spoken commands, replacements, model and instructions."
+
 #: src/settings/stats/insights.tsx
 msgid "Typical conversation length"
 msgstr "Typical conversation length"
+
+#: src/settings/dictation-cleanup.tsx
+msgid "um so let's meet on Tuesday, no, actually Wednesday at three thirty"
+msgstr "um so let's meet on Tuesday, no, actually Wednesday at three thirty"
 
 #: src/settings/developers/cli.tsx
 msgid "Unavailable"
@@ -8545,6 +8744,10 @@ msgstr "Voice recording is not active."
 msgid "Wait before treating microphone activity as a meeting."
 msgstr "Wait before treating microphone activity as a meeting."
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Wait for cleanup"
+msgstr "Wait for cleanup"
+
 #: src/automations/starters.tsx
 msgid "Wait until the transcript and note are complete."
 msgstr "Wait until the transcript and note are complete."
@@ -8668,8 +8871,8 @@ msgid "When this is off, captures are kept in Librelog's data folder and listed 
 msgstr "When this is off, captures are kept in Librelog's data folder and listed below."
 
 #: src/settings/dictation-microphone.tsx
-msgid "When your default microphone is a Bluetooth headset, dictate with your computer's built-in or wired microphone instead, so what plays in the headset doesn't drop to call quality. A microphone you choose above is always used."
-msgstr "When your default microphone is a Bluetooth headset, dictate with your computer's built-in or wired microphone instead, so what plays in the headset doesn't drop to call quality. A microphone you choose above is always used."
+msgid "When your default microphone is a Bluetooth headset, dictate and narrate annotations with your computer's built-in or wired microphone instead, so what plays in the headset doesn't drop to call quality. A microphone you choose above is always used."
+msgstr "When your default microphone is a Bluetooth headset, dictate and narrate annotations with your computer's built-in or wired microphone instead, so what plays in the headset doesn't drop to call quality. A microphone you choose above is always used."
 
 #: src/settings/ai/stt/index.tsx
 msgid "Where and how your meetings become text."
@@ -8773,6 +8976,18 @@ msgstr "You"
 msgid "You can"
 msgstr "You can"
 
+#: src/onboarding/model-setup.tsx
+msgid "You can also go on without one. Meetings and dictation ask you to choose a model when you first use them."
+msgstr "You can also go on without one. Meetings and dictation ask you to choose a model when you first use them."
+
+#: src/onboarding/dictation.tsx
+msgid "You can change the shortcut in Settings › Dictation."
+msgstr "You can change the shortcut in Settings › Dictation."
+
+#: src/onboarding/dictation.tsx
+msgid "You can change this later in Settings › Dictation."
+msgstr "You can change this later in Settings › Dictation."
+
 #: src/onboarding/capture.tsx
 msgid "You can change this later in Settings › Screenshots."
 msgstr "You can change this later in Settings › Screenshots."
@@ -8842,6 +9057,10 @@ msgstr "Your dictation is on the clipboard. Press Control+Shift+V to paste it."
 msgid "Your dictation is on the clipboard. Press Control+V to paste it."
 msgstr "Your dictation is on the clipboard. Press Control+V to paste it."
 
+#: src/onboarding/dictation.tsx
+msgid "Your dictation shortcut:"
+msgstr "Your dictation shortcut:"
+
 #: src/settings/dictionary/index.tsx
 msgid "Your dictionary is empty"
 msgstr "Your dictionary is empty"
@@ -8858,6 +9077,22 @@ msgstr "Your existing data was left unchanged. Please restart the app. If the pr
 msgid "Your insights"
 msgstr "Your insights"
 
+#: src/settings/dictation-cleanup.tsx
+msgid "Your instructions"
+msgstr "Your instructions"
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Your model didn't answer within {seconds} seconds, so dictation would type your words as you said them."
+msgstr "Your model didn't answer within {seconds} seconds, so dictation would type your words as you said them."
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Your model failed ({error}), so dictation would type your words as you said them."
+msgstr "Your model failed ({error}), so dictation would type your words as you said them."
+
+#: src/settings/dictation-cleanup.tsx
+msgid "Your model failed, so dictation would type your words as you said them."
+msgstr "Your model failed, so dictation would type your words as you said them."
+
 #: src/services/enhancer/summary-notification.ts
 msgid "Your summary is ready."
 msgstr "Your summary is ready."
@@ -8869,6 +9104,10 @@ msgstr "Your transcript could not be saved"
 #: src/settings/stats/insights.tsx
 msgid "Your week at a glance"
 msgstr "Your week at a glance"
+
+#: src/onboarding/dictation.tsx
+msgid "Your words appear in the field when you finish."
+msgstr "Your words appear in the field when you finish."
 
 #: src/templates/template-sidebar.tsx
 msgid "Z to A"

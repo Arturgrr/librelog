@@ -248,7 +248,7 @@ mod tests {
 
     /// Answers every chunk with two timed words and records what it was asked.
     struct FakeEngine {
-        seen_languages: Arc<Mutex<Vec<Vec<String>>>>,
+        seen: Arc<Mutex<Vec<anlg_transcribe_gguf::Request>>>,
     }
 
     impl Transcriber for FakeEngine {
@@ -257,10 +257,7 @@ mod tests {
             samples: &[f32],
             request: &anlg_transcribe_gguf::Request,
         ) -> Result<EngineTranscript, anlg_transcribe_gguf::Error> {
-            self.seen_languages
-                .lock()
-                .unwrap()
-                .push(request.languages.clone());
+            self.seen.lock().unwrap().push(request.clone());
             let duration = samples.len() as f64 / 16_000.0;
             Ok(EngineTranscript {
                 text: "hello world".into(),
@@ -297,11 +294,11 @@ mod tests {
         addr
     }
 
-    fn fake_service(languages: Arc<Mutex<Vec<Vec<String>>>>) -> TranscribeService {
+    fn fake_service(seen: Arc<Mutex<Vec<anlg_transcribe_gguf::Request>>>) -> TranscribeService {
         TranscribeService::builder()
             .loader(Arc::new(move || {
                 Ok(Box::new(FakeEngine {
-                    seen_languages: Arc::clone(&languages),
+                    seen: Arc::clone(&seen),
                 }) as BoxedTranscriber)
             }))
             .build()
@@ -310,7 +307,7 @@ mod tests {
     fn post(addr: SocketAddr, accept: Option<&str>) -> reqwest::RequestBuilder {
         let request = reqwest::Client::new()
             .post(format!(
-                "http://{addr}/v1/listen?channels=1&sample_rate=16000&language=pt"
+                "http://{addr}/v1/listen?channels=1&sample_rate=16000&language=pt&keywords=Librelog&keywords=Ottobit"
             ))
             .header("content-type", "audio/wav")
             .body(std::fs::read(anlg_data::english_1::AUDIO_PATH).unwrap());
@@ -340,11 +337,12 @@ mod tests {
 
     /// The `whispercpp` batch provider's contract: progress, a segment per
     /// speech chunk, then the result; word times on the recording's clock,
-    /// in order, on their channel; and the request's language passed on.
+    /// in order, on their channel; and the request's language and keywords
+    /// passed on.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn batch_json_and_sse_follow_the_listen_contract() {
-        let languages = Arc::new(Mutex::new(Vec::new()));
-        let addr = serve(fake_service(Arc::clone(&languages))).await;
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let addr = serve(fake_service(Arc::clone(&seen))).await;
 
         let json: owhisper_interface::batch::Response =
             post(addr, None).send().await.unwrap().json().await.unwrap();
@@ -359,7 +357,9 @@ mod tests {
         );
         assert!(alternative.words.iter().all(|word| word.channel == 0));
         assert!(json.metadata["duration"].as_f64().unwrap() > 1.0);
-        assert_eq!(languages.lock().unwrap()[0], ["pt"]);
+        let request = seen.lock().unwrap()[0].clone();
+        assert_eq!(request.languages, ["pt"]);
+        assert_eq!(request.vocabulary, ["Librelog", "Ottobit"]);
 
         let body = post(addr, Some("text/event-stream"))
             .send()

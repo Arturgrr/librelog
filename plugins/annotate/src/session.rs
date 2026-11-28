@@ -12,7 +12,7 @@ use anlg_annotate_core::retention::Preset;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{Clock, Narrated, Narration};
+use crate::audio::{Clock, Hear, Heard, Microphone, Narrated, Narration, Reopen};
 use crate::bundle::{CANDIDATES_DIR, Finalized, TranscriptInput};
 use crate::events::{AnnotateEvent, Stopped};
 use crate::native::{Candidate, Event, Native, StartReply, StopResult};
@@ -55,6 +55,10 @@ pub struct Status {
 pub struct Started {
     pub id: String,
     pub dir: String,
+    /// Whether the narration's microphone opened. One that did not is tried
+    /// again while the screen records, and a `narration` event says when it
+    /// is heard.
+    pub narration: bool,
 }
 
 /// The capsule's words in the app's language.
@@ -67,12 +71,16 @@ pub struct CapsuleLabels {
     /// The Linux capsule's pen and stop buttons.
     pub draw: Option<String>,
     pub stop: Option<String>,
+    /// The Linux capsule's crossed-out microphone: the narration isn't
+    /// being recorded.
+    pub unheard: Option<String>,
 }
 
 struct Active {
     id: String,
     dir: PathBuf,
-    narration: Narration,
+    /// None when the narration is off.
+    narration: Option<Narration>,
     poll: CancellationToken,
     start: StartReply,
     awake: Option<Box<dyn Send>>,
@@ -126,6 +134,42 @@ pub struct Session {
     awake: Awake,
     state: Mutex<State>,
     retention: Mutex<Option<Preset>>,
+}
+
+async fn end(narration: Option<Narration>) {
+    if let Some(narration) = narration {
+        narration.cancel().await;
+    }
+}
+
+fn clock(ms: u64) -> String {
+    let seconds = ms / 1_000;
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+/// What the narration misses, for the agent reading the stop's warnings.
+fn narration_warnings(narrated: Option<&Result<Narrated, Error>>) -> Vec<String> {
+    match narrated {
+        None => vec!["The microphone was off, so this annotation has no narration.".into()],
+        Some(Err(_)) => {
+            vec!["The microphone recorded nothing, so this annotation has no narration.".into()]
+        }
+        Some(Ok(narrated)) => narrated
+            .gaps
+            .iter()
+            .map(|gap| match gap.to_ms {
+                Some(to) => format!(
+                    "The microphone was not recording from {} to {}, so the narration is silent there.",
+                    clock(gap.from_ms),
+                    clock(to)
+                ),
+                None => format!(
+                    "The microphone stopped recording at {}, so the narration ends there.",
+                    clock(gap.from_ms)
+                ),
+            })
+            .collect(),
+    }
 }
 
 async fn blocking<T: Send + 'static>(
@@ -233,11 +277,11 @@ impl Session {
     }
 
     /// Opens the microphone, then starts the native recording into a new
-    /// bundle folder.
+    /// bundle folder. Without `microphone` it records no narration; one that
+    /// fails to open does not keep the screen from recording.
     pub async fn start(
         self: &Arc<Self>,
-        audio: Arc<dyn anlg_audio::AudioProvider>,
-        microphone: Option<String>,
+        microphone: Option<Microphone>,
         labels: Option<CapsuleLabels>,
     ) -> Result<Started, Error> {
         {
@@ -251,7 +295,7 @@ impl Session {
         }
         let id = anlg_annotate_core::new_bundle_id();
         let dir = self.root.join(&id);
-        let started = self.begin(&id, &dir, audio, microphone, labels).await;
+        let started = self.begin(&id, &dir, microphone, labels).await;
         if started.is_err() {
             let _ = std::fs::remove_dir_all(&dir);
             self.set_idle();
@@ -263,8 +307,7 @@ impl Session {
         self: &Arc<Self>,
         id: &str,
         dir: &Path,
-        audio: Arc<dyn anlg_audio::AudioProvider>,
-        microphone: Option<String>,
+        microphone: Option<Microphone>,
         labels: Option<CapsuleLabels>,
     ) -> Result<Started, Error> {
         ensure_root(&self.root)?;
@@ -274,12 +317,24 @@ impl Session {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
         }
-        let narration = Narration::start(
-            audio,
-            microphone,
-            dir.join(anlg_annotate_core::AUDIO_FILE),
-            self.clock.clone(),
-        )?;
+        let narration = match microphone {
+            Some(microphone) => {
+                let (path, clock, hear) = (
+                    dir.join(anlg_annotate_core::AUDIO_FILE),
+                    self.clock.clone(),
+                    self.hear(),
+                );
+                // Choosing and opening the microphone block.
+                Some(
+                    blocking(move || {
+                        Narration::start(microphone, path, clock, hear, Reopen::default())
+                    })
+                    .await?,
+                )
+            }
+            None => None,
+        };
+        let opened = narration.as_ref().is_some_and(|narration| narration.opened);
         #[cfg(not(target_os = "linux"))]
         let request = anlg_annotate_macos::StartRequest {
             dir: dir.to_string_lossy().into_owned(),
@@ -296,6 +351,7 @@ impl Session {
             "labels": labels.map(|labels| serde_json::json!({
                 "discard_question": labels.discard_question, "discard": labels.discard,
                 "keep": labels.keep, "draw": labels.draw, "stop": labels.stop,
+                "unheard": labels.unheard,
             })),
         })
         .to_string();
@@ -303,24 +359,27 @@ impl Session {
         let reply = match blocking(move || native.start(&request)).await {
             Ok(Ok(reply)) => reply,
             Ok(Err(error)) => {
-                narration.cancel().await;
+                end(narration).await;
                 return Err(error.into());
             }
             Err(error) => {
-                narration.cancel().await;
+                end(narration).await;
                 return Err(error);
             }
         };
         let start: StartReply = match serde_json::from_str(&reply) {
             Ok(start) => start,
             Err(error) => {
-                narration.cancel().await;
+                end(narration).await;
                 let native = self.native.clone();
                 let _ = blocking(move || native.cancel()).await;
                 return Err(Error::Native(error.to_string()));
             }
         };
-        narration.begin_at(start.started_host_ns);
+        if let Some(narration) = &narration {
+            narration.begin_at(start.started_host_ns);
+        }
+        let narration_hearing = narration.as_ref().is_some_and(Narration::hearing);
         let poll = CancellationToken::new();
         let active = Box::new(Active {
             id: id.to_owned(),
@@ -344,17 +403,47 @@ impl Session {
             // Quit, or a discard, while the native layer was starting.
             let native = self.native.clone();
             let (cancelled, ()) =
-                tokio::join!(blocking(move || native.cancel()), active.narration.cancel());
+                tokio::join!(blocking(move || native.cancel()), end(active.narration));
             if let Ok(Err(error)) = cancelled {
                 tracing::warn!(%error, "annotate cancel after start");
             }
             return Err(Error::Cancelled);
+        }
+        // The capsule is up now: it shows a microphone already lost.
+        if !narration_hearing {
+            self.narration(false, 0.0);
         }
         let session = self.clone();
         tauri::async_runtime::spawn(async move { session.poll(poll).await });
         Ok(Started {
             id: id.to_owned(),
             dir: dir.to_string_lossy().into_owned(),
+            narration: opened,
+        })
+    }
+
+    fn narration(&self, heard: bool, level: f32) {
+        if let Err(error) = self.native.narration(heard, level) {
+            tracing::debug!(%error, "annotate capsule narration");
+        }
+    }
+
+    /// The narration's level and state reach the capsule; its microphone
+    /// stopping or coming back reaches the frontend too.
+    fn hear(self: &Arc<Self>) -> Hear {
+        let session = Arc::downgrade(self);
+        Arc::new(move |heard| {
+            let Some(session) = session.upgrade() else {
+                return;
+            };
+            match heard {
+                Heard::Level(level) => session.narration(true, level),
+                Heard::Lost | Heard::Back => {
+                    let heard = heard == Heard::Back;
+                    session.narration(heard, 0.0);
+                    (session.emit)(AnnotateEvent::Narration { heard });
+                }
+            }
         })
     }
 
@@ -443,16 +532,24 @@ impl Session {
         } = *active;
         poll.cancel();
         let native = self.native.clone();
-        let (result, narrated) = tokio::join!(blocking(move || native.stop()), narration.stop());
-        let narrated: Option<Narrated> = narrated
-            .inspect_err(|error| tracing::warn!(%error, "annotate narration"))
-            .ok();
+        let (result, narrated) = tokio::join!(blocking(move || native.stop()), async move {
+            match narration {
+                Some(narration) => Some(narration.stop().await),
+                None => None,
+            }
+        });
+        let missed = narration_warnings(narrated.as_ref());
+        let narrated: Option<Narrated> = narrated.and_then(|narrated| {
+            narrated
+                .inspect_err(|error| tracing::warn!(%error, "annotate narration"))
+                .ok()
+        });
         let result = match result.and_then(|reply| reply.map_err(Error::from)) {
             Ok(json) => serde_json::from_str::<StopResult>(&json)
                 .map_err(|error| Error::Native(error.to_string())),
             Err(error) => Err(error),
         };
-        let result = match result {
+        let mut result = match result {
             Ok(result) => result,
             Err(error) => match self.salvage(&dir, &start, narrated.as_ref(), &error) {
                 Some(result) => result,
@@ -464,6 +561,7 @@ impl Session {
                 }
             },
         };
+        result.warnings.extend(missed);
         tracing::info!(
             ms = stopping.elapsed().as_millis() as u64,
             "annotate stopped; waiting for its transcript"
@@ -657,7 +755,7 @@ impl Session {
                 poll.cancel();
                 let native = self.native.clone();
                 let (cancelled, ()) =
-                    tokio::join!(blocking(move || native.cancel()), narration.cancel());
+                    tokio::join!(blocking(move || native.cancel()), end(narration));
                 let _ = std::fs::remove_dir_all(&dir);
                 self.set_idle();
                 cancelled?.map_err(Error::from)
@@ -754,6 +852,8 @@ mod tests {
         pens: AtomicUsize,
         /// The app is being kept awake while this is above zero.
         awake: AtomicUsize,
+        /// Whether the capsule was told the narration is heard, each time.
+        heard: Mutex<Vec<bool>>,
     }
 
     struct Awake(Arc<Fake>);
@@ -816,6 +916,10 @@ mod tests {
             self.capsules.lock().unwrap().push(stage.into());
             Ok(())
         }
+        fn narration(&self, heard: bool, _level: f32) -> Result<(), AnnotateError> {
+            self.heard.lock().unwrap().push(heard);
+            Ok(())
+        }
         fn poll_events(&self) -> Result<String, AnnotateError> {
             let events = std::mem::take(&mut *self.events.lock().unwrap());
             Ok(format!("[{}]", events.join(",")))
@@ -841,7 +945,10 @@ mod tests {
         }
     }
 
-    struct Mic;
+    /// A microphone that hears, or one that never opens.
+    struct Mic {
+        deaf: bool,
+    }
 
     impl anlg_audio::AudioProvider for Mic {
         fn open_capture(
@@ -863,6 +970,9 @@ mod tests {
             _: u32,
             chunk: usize,
         ) -> Result<anlg_audio::CaptureStream, anlg_audio::Error> {
+            if self.deaf {
+                return Err(anlg_audio::Error::NoInputDevice);
+            }
             let frame = anlg_audio::CaptureFrame {
                 raw_mic: Arc::from(vec![0.1_f32; chunk]),
                 raw_speaker: Arc::from([]),
@@ -894,6 +1004,10 @@ mod tests {
         fn probe_speaker(&self) -> Result<(), anlg_audio::Error> {
             Ok(())
         }
+    }
+
+    fn mic() -> Option<Microphone> {
+        Some(Microphone::new(Arc::new(Mic { deaf: false }), None, true))
     }
 
     struct FixedClock;
@@ -966,9 +1080,9 @@ mod tests {
     async fn a_recording_stops_and_finalizes_into_a_bundle_and_frees_the_session() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         assert!(matches!(
-            session.start(Arc::new(Mic), None, labels()).await,
+            session.start(mic(), labels()).await,
             Err(Error::Busy("recording"))
         ));
         tokio::time::sleep(Duration::from_millis(30)).await;
@@ -1024,14 +1138,14 @@ mod tests {
     async fn cancelling_deletes_the_folder_and_a_capped_recording_finalizes_without_a_transcript() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, events) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         session.cancel().await.unwrap();
         assert!(!PathBuf::from(&started.dir).exists());
         assert_eq!(fake.cancels.load(Ordering::SeqCst), 1);
         assert_eq!(session.status().phase, Phase::Idle);
 
         // The 20-minute cap: the poll stops it and hands it over.
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         fake.events
             .lock()
             .unwrap()
@@ -1066,7 +1180,7 @@ mod tests {
             message: "denied".into(),
         });
         assert!(matches!(
-            session.start(Arc::new(Mic), None, labels()).await,
+            session.start(mic(), labels()).await,
             Err(Error::Permission)
         ));
         assert_eq!(session.status().phase, Phase::Idle);
@@ -1074,10 +1188,38 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn a_microphone_that_fails_to_open_or_is_off_still_records_the_screen_and_says_so() {
+        let root = tempfile::tempdir().unwrap();
+        let (session, fake, _) = session(root.path());
+        let deaf = Microphone::new(Arc::new(Mic { deaf: true }), None, true);
+        let started = session.start(Some(deaf), labels()).await.unwrap();
+        assert!(!started.narration);
+        assert_eq!(session.status().phase, Phase::Recording);
+        // The capsule shows that nothing hears the narration.
+        assert_eq!(fake.heard.lock().unwrap().first(), Some(&false));
+        let stopped = session.stop().await.unwrap();
+        assert!(stopped.audio_path.is_none());
+        assert!(
+            stopped.warnings.iter().any(|w| w.contains("no narration")),
+            "{:?}",
+            stopped.warnings
+        );
+        let done = session.finalize(&started.id, None).await.unwrap();
+        assert!(PathBuf::from(done.contact_sheet).is_file());
+
+        let started = session.start(None, labels()).await.unwrap();
+        assert!(!started.narration);
+        let stopped = session.stop().await.unwrap();
+        assert!(stopped.audio_path.is_none());
+        assert!(stopped.warnings.iter().any(|w| w.contains("was off")));
+        session.finalize(&started.id, None).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn a_failed_native_stop_keeps_the_narration_and_frames_and_still_finalizes() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         let dir = PathBuf::from(&started.dir);
         crate::bundle::tests::stop_json(&dir, 4);
         tokio::time::sleep(Duration::from_millis(30)).await;
@@ -1102,7 +1244,7 @@ mod tests {
     async fn a_failed_finalize_is_kept_for_one_retry_then_left_in_its_folder() {
         let root = tempfile::tempdir().unwrap();
         let (session, _, _) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         let stopped = session.stop().await.unwrap();
         // A file where the frames folder goes makes writing the bundle fail.
         let dir = PathBuf::from(&stopped.dir);
@@ -1119,7 +1261,7 @@ mod tests {
     async fn a_discard_while_stopping_wins_quietly() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         *fake.stop_delay.lock().unwrap() = Some(Duration::from_millis(200));
         let stopping = tokio::spawn({
             let session = session.clone();
@@ -1139,7 +1281,7 @@ mod tests {
         *fake.start_delay.lock().unwrap() = Some(Duration::from_millis(200));
         let starting = tokio::spawn({
             let session = session.clone();
-            async move { session.start(Arc::new(Mic), None, labels()).await }
+            async move { session.start(mic(), labels()).await }
         });
         until(&session, |status| status.phase == Phase::Starting).await;
         session.cancel().await.unwrap();
@@ -1156,13 +1298,13 @@ mod tests {
     async fn quitting_discards_a_recording_or_one_waiting_to_be_finished() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         session.shutdown(Duration::from_secs(5)).await;
         assert_eq!(session.status().phase, Phase::Idle);
         assert_eq!(fake.cancels.load(Ordering::SeqCst), 1);
         assert!(!PathBuf::from(&started.dir).exists());
 
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         session.stop().await.unwrap();
         session.shutdown(Duration::from_secs(5)).await;
         assert_eq!(session.status().phase, Phase::Idle);
@@ -1175,14 +1317,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
         let capsules = || fake.capsules.lock().unwrap().clone();
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         session.stop().await.unwrap();
         // Processing from the stop on, which the native layer shows itself.
         assert!(capsules().is_empty());
         session.finalize(&started.id, None).await.unwrap();
         assert_eq!(capsules(), ["ready"]);
 
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         let stopped = session.stop().await.unwrap();
         std::fs::write(
             PathBuf::from(&stopped.dir).join(anlg_annotate_core::FRAMES_DIR),
@@ -1195,7 +1337,7 @@ mod tests {
         assert!(session.finalize(&started.id, None).await.is_err());
         assert_eq!(capsules(), ["ready", "failed"]);
 
-        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.start(mic(), labels()).await.unwrap();
         session.stop().await.unwrap();
         session.cancel().await.unwrap();
         assert_eq!(capsules(), ["ready", "failed", "hidden"]);
@@ -1205,7 +1347,7 @@ mod tests {
     async fn escape_follows_the_ink_and_is_always_given_back_when_recording_ends() {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _, escapes, pens) = session_with_escape(root.path());
-        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.start(mic(), labels()).await.unwrap();
         session.set_ink_mode("hover").unwrap();
         assert_eq!(escapes.lock().unwrap().last(), Some(&true));
         // The capsule's pen came on just before the stop.
@@ -1225,7 +1367,7 @@ mod tests {
         // reaches the pen.
         assert!(matches!(session.toggle_pen(), Err(Error::NotRecording)));
         session.cancel().await.unwrap();
-        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.start(mic(), labels()).await.unwrap();
         session.cancel().await.unwrap();
         assert_eq!(*pens.lock().unwrap(), [true, false, true, false]);
     }
@@ -1236,7 +1378,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (session, fake, _) = session(root.path());
         let awake = || fake.awake.load(Ordering::SeqCst);
-        let started = session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        let started = session.start(mic(), labels()).await.unwrap();
         assert_eq!(awake(), 1);
         session.stop().await.unwrap();
         // Transcribing the narration happens in between: still awake.
@@ -1244,11 +1386,11 @@ mod tests {
         session.finalize(&started.id, None).await.unwrap();
         assert_eq!(awake(), 0);
 
-        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.start(mic(), labels()).await.unwrap();
         session.stop().await.unwrap();
         session.cancel().await.unwrap();
         assert_eq!(awake(), 0);
-        session.start(Arc::new(Mic), None, labels()).await.unwrap();
+        session.start(mic(), labels()).await.unwrap();
         session.cancel().await.unwrap();
         assert_eq!(awake(), 0);
     }

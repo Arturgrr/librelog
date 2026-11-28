@@ -123,6 +123,13 @@ pub fn capsule(stage: &str) -> Result<(), AnnotateError> {
     reply::parse(&sys::capsule(stage)).map(drop)
 }
 
+/// What the recording capsule shows of the narration: whether its
+/// microphone records (a crossed-out microphone when not) and its level
+/// from 0 to 1. Ignored when nothing records.
+pub fn narration(heard: bool, level: f32) -> Result<(), AnnotateError> {
+    reply::parse(&sys::narration(heard, f64::from(level))).map(drop)
+}
+
 /// The capsule's and the safety timers' events since the last call, as a
 /// JSON array (`[{"type":"stop"}]`).
 pub fn poll_events() -> Result<String, AnnotateError> {
@@ -143,7 +150,7 @@ pub fn extract_frames(request: &str) -> Result<String, AnnotateError> {
 
 #[cfg(target_os = "macos")]
 mod sys {
-    use swift_rs::{Int, SRString, swift};
+    use swift_rs::{Bool, Double, Int, SRString, swift};
 
     swift!(fn _annotate_probe(tcc: Int) -> SRString);
     swift!(fn _annotate_request() -> SRString);
@@ -154,6 +161,7 @@ mod sys {
     swift!(fn _annotate_set_ink_mode(mode: &SRString) -> SRString);
     swift!(fn _annotate_toggle_pen() -> SRString);
     swift!(fn _annotate_capsule(stage: &SRString) -> SRString);
+    swift!(fn _annotate_narration(heard: Bool, level: Double) -> SRString);
     swift!(fn _annotate_poll_events() -> SRString);
     swift!(fn _annotate_status() -> SRString);
     swift!(fn _annotate_extract_frames(request: &SRString) -> SRString);
@@ -192,6 +200,10 @@ mod sys {
 
     pub fn capsule(stage: &str) -> String {
         unsafe { _annotate_capsule(&SRString::from(stage)) }.to_string()
+    }
+
+    pub fn narration(heard: bool, level: f64) -> String {
+        unsafe { _annotate_narration(heard, level) }.to_string()
     }
 
     pub fn poll_events() -> String {
@@ -245,6 +257,10 @@ mod sys {
     }
 
     pub fn capsule(_stage: &str) -> String {
+        UNSUPPORTED.to_owned()
+    }
+
+    pub fn narration(_heard: bool, _level: f64) -> String {
         UNSUPPORTED.to_owned()
     }
 

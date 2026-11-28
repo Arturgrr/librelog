@@ -23,13 +23,28 @@ it.each([
   [
     "macos",
     false,
-    ["permissions", "transcription", "intelligence", "capture", "final"],
+    [
+      "permissions",
+      "transcription",
+      "intelligence",
+      "dictation",
+      "capture",
+      "final",
+    ],
   ],
-  ["macos", true, ["permissions", "transcription", "intelligence", "final"]],
-  ["windows", false, ["transcription", "intelligence", "final"]],
-  ["linux", false, ["transcription", "intelligence", "capture", "final"]],
+  [
+    "macos",
+    true,
+    ["permissions", "transcription", "intelligence", "dictation", "final"],
+  ],
+  ["windows", false, ["transcription", "intelligence", "dictation", "final"]],
+  [
+    "linux",
+    false,
+    ["transcription", "intelligence", "dictation", "capture", "final"],
+  ],
 ])(
-  "sets up transcription and intelligence (and offers Capture outside the App Store build) before finishing on %s, App Store %s",
+  "sets up transcription, intelligence and dictation practice (and offers Capture outside the App Store build) before finishing on %s, App Store %s",
   (platform, appStore, steps) => {
     mocks.platform = platform;
     mocks.appStore = appStore;

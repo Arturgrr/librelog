@@ -11,6 +11,13 @@ summary: "One concise, user-facing sentence for the changelog index preview."
 ---
 ```
 
+# Translations
+
+- The English file is the source of truth. A translation lives at `desktop/<locale>/<version>.md`, where `<locale>` is the desktop app's Lingui locale id from `apps/desktop/lingui.config.ts` (Portuguese is `pt`, written in Brazilian Portuguese). Add one by copying the English file there and translating the body and `summary`; keep `date`, the headings' structure, links and custom tags.
+- Use the product terms of that locale's catalog (`apps/desktop/src/i18n/locales/<locale>/messages.po`), such as "Ditado", "Anotar", "Configurações" and "Dicionário" in Portuguese.
+- The app shows the translation for the UI language and falls back through the locale's parents to English (`pt-BR` → `pt` → `en`), silently. A translation without an English file for the same version fails the desktop changelog tests.
+- The GitHub release keeps English first and adds each translation below it in a collapsed section (`pt` is labelled "Português (Brasil)").
+
 # Custom Tags
 
 The desktop changelog renderer (Streamdown-based) supports custom HTML tags beyond standard markdown.

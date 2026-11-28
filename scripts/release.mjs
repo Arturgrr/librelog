@@ -78,7 +78,35 @@ export function changelogToGithubMarkdown(markdown) {
   );
 }
 
-export function releaseNotes({ version, repository, changelog }) {
+// Release-note translations are written for Brazilian readers; other locales
+// are named in their own language.
+const TRANSLATION_LABELS = { pt: "Português (Brasil)" };
+
+function translationLabel(locale) {
+  const label =
+    TRANSLATION_LABELS[locale] ??
+    new Intl.DisplayNames([locale], { type: "language" }).of(locale) ??
+    locale;
+  return label.charAt(0).toLocaleUpperCase(locale) + label.slice(1);
+}
+
+function translatedChangelog({ locale, changelog }) {
+  return [
+    "<details>",
+    `<summary>${translationLabel(locale)}</summary>`,
+    "",
+    changelogToGithubMarkdown(changelog),
+    "",
+    "</details>",
+  ].join("\n");
+}
+
+export function releaseNotes({
+  version,
+  repository,
+  changelog,
+  translations = [],
+}) {
   const dmg = (arch) => `Librelog_${version}_${arch}.dmg`;
   const rpm = `Librelog-${version}-1.x86_64.rpm`;
   const deb = `Librelog_${version}_amd64.deb`;
@@ -144,6 +172,10 @@ export function releaseNotes({ version, repository, changelog }) {
     "",
     changelogToGithubMarkdown(changelog),
     "",
+    ...translations.flatMap((translation) => [
+      translatedChangelog(translation),
+      "",
+    ]),
   ].join("\n");
 }
 
@@ -271,6 +303,22 @@ function changelogPath(version) {
   return join(changelogDir, `${version}.md`);
 }
 
+// Translations live at <locale>/<version>.md next to the English notes.
+function changelogTranslations(version) {
+  return readdirSync(changelogDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .filter((locale) => existsSync(join(changelogDir, locale, `${version}.md`)))
+    .map((locale) => ({
+      locale,
+      changelog: readFileSync(
+        join(changelogDir, locale, `${version}.md`),
+        "utf8",
+      ),
+    }));
+}
+
 function main([command, ...args]) {
   const env = process.env;
   switch (command) {
@@ -296,6 +344,7 @@ function main([command, ...args]) {
           version,
           repository: env.GITHUB_REPOSITORY,
           changelog: readFileSync(changelogPath(version), "utf8"),
+          translations: changelogTranslations(version),
         }),
       );
       return;

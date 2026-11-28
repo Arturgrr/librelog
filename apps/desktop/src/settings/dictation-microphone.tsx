@@ -93,10 +93,10 @@ export function DictationMicrophoneSettings() {
           title={<Trans>Avoid Bluetooth headset microphone</Trans>}
           description={
             <Trans>
-              When your default microphone is a Bluetooth headset, dictate with
-              your computer's built-in or wired microphone instead, so what
-              plays in the headset doesn't drop to call quality. A microphone
-              you choose above is always used.
+              When your default microphone is a Bluetooth headset, dictate and
+              narrate annotations with your computer's built-in or wired
+              microphone instead, so what plays in the headset doesn't drop to
+              call quality. A microphone you choose above is always used.
             </Trans>
           }
           checked={avoidBluetooth}

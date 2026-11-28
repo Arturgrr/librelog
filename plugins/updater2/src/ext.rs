@@ -107,19 +107,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
         }
     }
 
-    fn cache_update_bytes(&self, version: &str, bytes: &[u8]) -> Result<(), crate::Error> {
-        let cache_path =
-            get_cache_path(self.manager, version).ok_or(crate::Error::CachePathUnavailable)?;
-
-        if let Some(parent) = cache_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        std::fs::write(&cache_path, bytes)?;
-        tracing::debug!("cached_update_bytes: {:?}", cache_path);
-        Ok(())
-    }
-
     fn get_cached_update_bytes(&self, version: &str) -> Result<Vec<u8>, crate::Error> {
         let cache_path =
             get_cache_path(self.manager, version).ok_or(crate::Error::CachePathUnavailable)?;
@@ -138,8 +125,11 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
         let version = update.map(|u| u.version);
 
         // install_and_relaunch never returns, so this periodic check is the
-        // only place stale cached bins can be cleaned up.
-        prune_cached_updates(self.manager, version.as_deref());
+        // only place stale cached bins can be cleaned up. A running download
+        // owns its partial file, so pruning waits for the next check.
+        if let Ok(_download_guard) = DOWNLOAD_MUTEX.try_lock() {
+            prune_cached_updates(self.manager, version.as_deref());
+        }
 
         if let Some(version) = &version {
             if self.has_cached_update(version) {
@@ -165,6 +155,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
     }
 
     pub async fn download(&self, version: &str) -> Result<(), crate::Error> {
+        if semver::Version::parse(version).is_err() {
+            return Err(crate::Error::InvalidVersion(version.to_string()));
+        }
         if !self_update_supported() {
             return Err(crate::Error::SelfUpdateUnsupported);
         }
@@ -199,20 +192,51 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
         let app_handle = self.manager.app_handle().clone();
         let version_string = version.to_string();
         let result: Result<(), crate::Error> = async {
-            let bytes = update
-                .download(
-                    |chunk_length, content_length| {
-                        let _ = UpdateDownloadProgressEvent {
-                            version: version_string.clone(),
-                            chunk_length: chunk_length as u64,
-                            content_length,
-                        }
-                        .emit(&app_handle);
-                    },
-                    || {},
-                )
-                .await?;
-            self.cache_update_bytes(version, &bytes)?;
+            let config: tauri_plugin_updater::Config = serde_json::from_value(
+                self.manager
+                    .config()
+                    .plugins
+                    .0
+                    .get("updater")
+                    .cloned()
+                    .unwrap_or_default(),
+            )?;
+            let mut client = reqwest::ClientBuilder::new()
+                .user_agent(concat!(
+                    env!("CARGO_PKG_NAME"),
+                    "/",
+                    env!("CARGO_PKG_VERSION")
+                ))
+                .danger_accept_invalid_certs(config.dangerous_accept_invalid_certs)
+                .danger_accept_invalid_hostnames(config.dangerous_accept_invalid_hostnames);
+            if let Some(timeout) = update.timeout {
+                client = client.timeout(timeout);
+            }
+            if update.no_proxy {
+                client = client.no_proxy();
+            } else if let Some(proxy) = &update.proxy {
+                client = client.proxy(reqwest::Proxy::all(proxy.as_str())?);
+            }
+            let cache_path =
+                get_cache_path(self.manager, version).ok_or(crate::Error::CachePathUnavailable)?;
+            crate::download::download_to_path(
+                client,
+                &update.download_url,
+                &update.headers,
+                &update.signature,
+                &config.pubkey,
+                &cache_path,
+                |chunk_length, content_length| {
+                    let _ = UpdateDownloadProgressEvent {
+                        version: version_string.clone(),
+                        chunk_length,
+                        content_length,
+                    }
+                    .emit(&app_handle);
+                },
+            )
+            .await?;
+            tracing::debug!("cached_update: {:?}", cache_path);
             Ok(())
         }
         .await;
@@ -264,8 +288,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Updater2<'a, R, M> {
 
         let bytes = self.get_cached_update_bytes(version)?;
 
-        // The check only supplies the platform install plumbing; signature
-        // verification already happened when the cached bytes were downloaded.
+        // The check only supplies the platform install plumbing; download()
+        // publishes the cached file only after verifying its signature.
         let updater = self.manager.updater()?;
         let mut update = updater
             .check()
@@ -311,7 +335,14 @@ fn get_cache_path<R: tauri::Runtime, M: tauri::Manager<R>>(
     manager: &M,
     version: &str,
 ) -> Option<PathBuf> {
-    Some(get_updates_dir(manager)?.join(format!("{}.bin", version)))
+    cache_file(&get_updates_dir(manager)?, version)
+}
+
+/// The cached download of `version` in `dir`, for a version that is a
+/// semver and so cannot name a path outside it.
+fn cache_file(dir: &Path, version: &str) -> Option<PathBuf> {
+    semver::Version::parse(version).ok()?;
+    Some(dir.join(format!("{version}.bin")))
 }
 
 fn prune_cached_updates<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M, keep: Option<&str>) {
@@ -327,7 +358,10 @@ fn prune_updates_dir(dir: &Path, keep: Option<&str>) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("bin") {
+        if !matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("bin" | "part" | "identity")
+        ) {
             continue;
         }
         if keep.is_some() && path.file_stem().and_then(|s| s.to_str()) == keep {
@@ -342,7 +376,7 @@ fn prune_updates_dir(dir: &Path, keep: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use super::prune_updates_dir;
+    use super::{cache_file, prune_updates_dir};
 
     fn write_bins(dir: &std::path::Path, versions: &[&str]) {
         for v in versions {
@@ -351,15 +385,21 @@ mod tests {
     }
 
     #[test]
-    fn prune_keeps_only_the_kept_version_and_non_bin_files() {
+    fn prune_keeps_only_the_kept_version_and_unrelated_files() {
         let dir = tempfile::tempdir().unwrap();
         write_bins(dir.path(), &["1.4.1", "1.4.2", "1.4.8"]);
         std::fs::write(dir.path().join("notes.txt"), b"keep").unwrap();
+        std::fs::write(dir.path().join("1.4.8.part"), b"partial").unwrap();
+        std::fs::write(dir.path().join("1.4.1.part"), b"partial").unwrap();
+        std::fs::write(dir.path().join("1.4.1.identity"), b"identity").unwrap();
 
         prune_updates_dir(dir.path(), Some("1.4.8"));
 
         assert!(dir.path().join("1.4.8.bin").exists());
         assert!(dir.path().join("notes.txt").exists());
+        assert!(dir.path().join("1.4.8.part").exists());
+        assert!(!dir.path().join("1.4.1.part").exists());
+        assert!(!dir.path().join("1.4.1.identity").exists());
         assert!(!dir.path().join("1.4.1.bin").exists());
         assert!(!dir.path().join("1.4.2.bin").exists());
     }
@@ -373,5 +413,17 @@ mod tests {
 
         assert!(!dir.path().join("1.4.1.bin").exists());
         assert!(!dir.path().join("1.4.2.bin").exists());
+    }
+
+    #[test]
+    fn only_a_semver_names_a_cached_update() {
+        let dir = std::path::Path::new("/cache/updates");
+        assert_eq!(
+            cache_file(dir, "0.11.0-beta.1"),
+            Some(dir.join("0.11.0-beta.1.bin"))
+        );
+        for version in ["", "latest", "../../secret", "1.0.0/../../x", "1.0"] {
+            assert_eq!(cache_file(dir, version), None, "{version}");
+        }
     }
 }
