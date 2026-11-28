@@ -1,0 +1,38 @@
+# Starts the newest released Librelog RPM (or a chosen release's) in a
+# headless KDE Plasma 6 Wayland session: KWin with a virtual output and
+# XWayland, xdg-desktop-portal-kde and PipeWire in a Fedora container. It
+# checks that Librelog stays up, registers its app id with the portal, shows
+# its tray item and gets its dictation shortcut bound; scripts/linux-kde-smoke.sh
+# has the details. The session's packages are large and it tests a release,
+# not the pull request's code, so it runs nightly and on demand only.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release tag to test (empty: the newest with an x86_64 RPM)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "23 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kde_smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      # Bump with each Fedora release, for the newest Plasma.
+      image: fedora:45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: scripts/linux-kde-smoke.sh
+        env:
+          RELEASE_TAG: ${{ inputs.release }}
