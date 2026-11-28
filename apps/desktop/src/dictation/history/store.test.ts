@@ -46,6 +46,7 @@ vi.mock("@anlg/plugin-dictation", () => ({
 import {
   latestDictation,
   purgeExpiredDictations,
+  recentDictations,
   recordDictation,
   replaceDictationText,
   restoreDictationVersion,
@@ -140,6 +141,34 @@ describe("dictation history store", () => {
       id: "typed",
       text: "typed.",
     });
+  });
+
+  it("offers the five newest dictations with text, past failed transcriptions and voice edits", async () => {
+    const at = (seconds: number) =>
+      new Date(Date.now() - (60 - seconds) * 1_000).toISOString();
+    for (const [index, id] of ["d1", "d2", "d3", "d4", "d5", "d6"].entries()) {
+      await recordDictation(dictation(id, { createdAt: at(index * 2) }));
+    }
+    await recordDictation(
+      dictation("edit", {
+        createdAt: at(13),
+        rawText: "make it Friday",
+        finalText: "",
+        inserted: false,
+      }),
+    );
+    await recordDictation(
+      dictation("silent", {
+        createdAt: at(14),
+        rawText: "",
+        finalText: "",
+        inserted: false,
+      }),
+    );
+
+    await expect(recentDictations(5)).resolves.toEqual(
+      ["d6", "d5", "d4", "d3", "d2"].map((id) => ({ id, text: `${id}.` })),
+    );
   });
 
   it("keeps a dictation that failed to transcribe with its audio for a day, and retrying it makes its text the latest", async () => {

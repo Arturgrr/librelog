@@ -10,6 +10,7 @@ mod tray_open;
 mod tray_paste_last;
 mod tray_quit;
 mod tray_quit_completely;
+pub(crate) mod tray_recent_dictations;
 mod tray_settings;
 mod tray_start;
 mod tray_version;
@@ -28,6 +29,9 @@ pub use tray_open::TrayOpen;
 pub use tray_paste_last::TrayPasteLast;
 pub use tray_quit::TrayQuit;
 pub use tray_quit_completely::{TrayQuitCompletely, quit_completely};
+pub use tray_recent_dictations::{
+    CopyRecentDictationEvent, TrayRecentDictation, TrayRecentDictations,
+};
 pub use tray_settings::TraySettings;
 pub use tray_start::TrayStart;
 pub use tray_version::TrayVersion;

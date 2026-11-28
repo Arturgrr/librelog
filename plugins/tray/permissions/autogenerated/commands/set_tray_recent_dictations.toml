@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-tray-recent-dictations"
+description = "Enables the set_tray_recent_dictations command without any pre-configured scope."
+commands.allow = ["set_tray_recent_dictations"]
+
+[[permission]]
+identifier = "deny-set-tray-recent-dictations"
+description = "Denies the set_tray_recent_dictations command without any pre-configured scope."
+commands.deny = ["set_tray_recent_dictations"]

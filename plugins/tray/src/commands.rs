@@ -61,6 +61,19 @@ pub async fn set_tray_dictation_presets(
         .map_err(|error| error.to_string())
 }
 
+/// Shows the newest dictations in a submenu of the tray menu, to copy one;
+/// with none it says so, disabled, and `null` hides it.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tray_recent_dictations(
+    app: tauri::AppHandle<tauri::Wry>,
+    recent: Option<crate::TrayRecentDictations>,
+) -> Result<(), String> {
+    app.tray()
+        .set_recent_dictations(recent)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_recording_title(
